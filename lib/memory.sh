@@ -40,30 +40,47 @@ _memory_pull() {
   table_id=$(_get_or_create_memory_table)
 
   # Fetch record for the target date
-  local records
-  records=$(lark-cli base +record-list \
+  local raw_response
+  raw_response=$(lark-cli base +record-list \
     --base-token "$LARC_BASE_APP_TOKEN" \
     --table-id "$table_id" \
-    --jq ".items | map(select(.fields.date == \"${date}\" and .fields.agent_id == \"${agent_id}\")) | .[0]" \
     2>/dev/null || echo "")
 
   local ws="$LARC_CACHE/workspace/$agent_id"
   mkdir -p "$ws/memory"
 
-  if [[ -z "$records" ]]; then
+  # Parse the response: data.data (rows), data.fields (field names), data.record_id_list
+  local content
+  content=$(echo "$raw_response" | python3 -c "
+import sys, json
+resp = json.load(sys.stdin)
+d = resp.get('data', {})
+rows = d.get('data', [])
+fields = d.get('fields', [])
+target_date = '${date}'
+target_agent = '${agent_id}'
+# Find date/agent_id/content column indices
+try:
+    date_idx = fields.index('date')
+    agent_idx = fields.index('agent_id')
+    content_idx = fields.index('content')
+except ValueError:
+    sys.exit(0)
+for row in rows:
+    if len(row) > max(date_idx, agent_idx, content_idx):
+        if str(row[date_idx]) == target_date and str(row[agent_idx]) == target_agent:
+            print(row[content_idx] or '')
+            sys.exit(0)
+" 2>/dev/null || echo "")
+
+  if [[ -z "$content" ]]; then
     log_warn "No memory record found in Lark Base for ${date}"
     return 0
   fi
 
   # Restore content as-is
   local output="$ws/memory/${date}.md"
-  echo "$records" | python3 -c "
-import sys, json
-data = json.load(sys.stdin)
-fields = data.get('fields', {})
-content = fields.get('content', '')
-print(content if content else f'# Daily Context — {fields.get(\"date\", \"\")}')
-" > "$output" 2>/dev/null || echo "# ${date}" > "$output"
+  echo "$content" > "$output"
 
   log_ok "Saved: $output"
 }
@@ -151,7 +168,7 @@ _get_or_create_memory_table() {
   local table_id
   table_id=$(lark-cli base +table-list \
     --base-token "$LARC_BASE_APP_TOKEN" \
-    --jq '.items[] | select(.name == "agent_memory") | .table_id' \
+    --jq '.data.tables[] | select(.name == "agent_memory") | .id' \
     2>/dev/null | head -1 || echo "")
 
   if [[ -z "$table_id" ]]; then

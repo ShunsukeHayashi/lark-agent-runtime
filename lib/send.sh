@@ -49,10 +49,9 @@ ${message}"
   local run_id
   run_id=$(uuidgen 2>/dev/null || cat /proc/sys/kernel/random/uuid 2>/dev/null || date +%s)
 
-  lark-cli im messages send \
+  lark-cli im +messages-send \
     --chat-id "$chat_id" \
-    --msg-type "text" \
-    --content "{\"text\": $(echo "$full_message" | python3 -c 'import sys,json; print(json.dumps(sys.stdin.read()))')}" \
+    --text "$full_message" \
     &>/dev/null && {
     log_ok "Message sent"
     echo "Agent run started: ${run_id:0:8}-$(echo "$run_id" | tr -dc 'a-f0-9' | head -c4)-$(date +%s | tail -c4)"

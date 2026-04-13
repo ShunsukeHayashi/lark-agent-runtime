@@ -30,7 +30,7 @@
 
 ---
 
-## Current Truth — 2026-04-13
+## Current Truth — 2026-04-14
 
 ### 実装方針（承認済み）
 - `larc` は継続する
@@ -138,11 +138,11 @@
 - `scripts/smoke-check.sh` は通過済み
 - `scripts/live-check.sh` により OpenClaw → LARC → Lark IM の実動確認あり
 - Phase A: 完了。runtime の全 live path が通った
-- Phase B 着手: `auth suggest` が複合オフィスタスク（CRM+IM / expense+notify / drive+wiki / CRM+calendar）で正しいスコープを推論できるようになった
-  - scope-map v0.2.0: `create_crm_record` / `send_crm_followup` / `update_base_record` を追加
-  - keyword matching: 語順バグ・ハイフン語・bare keyword 欠落の3つの根本原因を修正
-  - 検証ケース 8件を `docs/auth-suggest-cases.md` に期待値付きで固定
-- 残課題: authority explanation (user/bot/tenant の理由表示) が未実装
+- Phase B: 完了。`auth suggest` が 8件の現実タスクで期待スコープを返す。authority explanation 実装済み。
+- Phase C: 完了。`larc agent list/register/show` が live Lark Base と連動。4エージェントを `agents.yaml` からバッチ登録済み。scopes フィールドをレジストリに保存。
+- Phase D: 完了。`config/gate-policy.json` 導入（32 task types × none/preview/approval）。`larc approve gate` コマンド実装。`auth suggest` 出力に gate 警告セクションを追加。
+- Phase E: 完了。`larc kg build/query/show/status` 実装。Lark Wiki を BFS 走査し 37 ノードをグラフ化。keyword query で親子・兄弟関係まで返す。
+- 残課題: Workstream 6 — OSS リリース準備（repo cleanliness, release packaging, MergeGate integration）
 
 ---
 

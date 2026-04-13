@@ -57,70 +57,60 @@ fi
 echo "[register-agents] source: $FILE_PATH"
 echo "[register-agents] mode: $([[ "$DRY_RUN" == "true" ]] && echo dry-run || echo apply)"
 
-python3 - "$FILE_PATH" <<'PY' | while IFS= read -r row; do
-import sys
-import json
+python3 - "$FILE_PATH" "$DRY_RUN" "$ROOT_DIR" <<'PY'
+import sys, json
 import yaml
 
-path = sys.argv[1]
+path, dry_run_flag, root_dir = sys.argv[1], sys.argv[2], sys.argv[3]
+dry_run = dry_run_flag == "true"
+
 with open(path, "r", encoding="utf-8") as fh:
     data = yaml.safe_load(fh) or {}
 
 agents = data.get("agents")
 if not isinstance(agents, list):
-    raise SystemExit("agents must be a list")
+    raise SystemExit("[register-agents] error: 'agents' must be a list in YAML")
+
+import subprocess, os, shlex
+
+larc_bin = os.path.join(root_dir, "bin", "larc")
 
 for index, agent in enumerate(agents, start=1):
     if not isinstance(agent, dict):
-        raise SystemExit(f"agents[{index}] must be a mapping")
-    agent_id = str(agent.get("id", "")).strip()
-    name = str(agent.get("name", "")).strip()
+        raise SystemExit(f"[register-agents] error: agents[{index}] must be a mapping")
+
+    agent_id   = str(agent.get("id", "")).strip()
+    name       = str(agent.get("name", "")).strip()
+    model      = str(agent.get("model", "claude-sonnet-4-6")).strip()
+    workspace  = str(agent.get("workspace", "")).strip()
+    chat_id    = str(agent.get("chat_id", "")).strip()
+    scopes_raw = agent.get("scopes") or []
+    scopes     = ",".join(str(s).strip() for s in scopes_raw if str(s).strip())
+
     if not agent_id or not name:
-        raise SystemExit(f"agents[{index}] requires id and name")
-    model = str(agent.get("model", "")).strip()
-    workspace = str(agent.get("workspace", "")).strip()
-    chat_id = str(agent.get("chat_id", "")).strip()
-    scopes = agent.get("scopes") or []
-    if isinstance(scopes, list):
-        scopes = ",".join(str(item).strip() for item in scopes if str(item).strip())
+        raise SystemExit(f"[register-agents] error: agents[{index}] requires id and name")
+
+    print(f"\n[register-agents] agent {index}/{len(agents)}: {agent_id}")
+
+    cmd = [larc_bin, "agent", "register", "--id", agent_id, "--name", name,
+           "--model", model]
+    if workspace:
+        cmd += ["--workspace", workspace]
+    if chat_id:
+        cmd += ["--chat", chat_id]
+    if scopes:
+        print(f"[register-agents]   scopes: {scopes}")
+        cmd += ["--scopes", scopes]
+
+    if dry_run:
+        print("[register-agents] dry-run: " + " ".join(shlex.quote(c) for c in cmd))
     else:
-        scopes = str(scopes).strip()
-    print(json.dumps({
-        "id": agent_id,
-        "name": name,
-        "model": model,
-        "workspace": workspace,
-        "chat_id": chat_id,
-        "scopes": scopes,
-    }, ensure_ascii=False))
+        result = subprocess.run(cmd, capture_output=False)
+        if result.returncode != 0:
+            print(f"[register-agents] warning: agent '{agent_id}' returned exit {result.returncode}")
+
+print("\n[register-agents] done")
 PY
-  agent_id=$(python3 -c 'import json,sys; print(json.loads(sys.stdin.read())["id"])' <<<"$row")
-  name=$(python3 -c 'import json,sys; print(json.loads(sys.stdin.read())["name"])' <<<"$row")
-  model=$(python3 -c 'import json,sys; print(json.loads(sys.stdin.read())["model"])' <<<"$row")
-  workspace=$(python3 -c 'import json,sys; print(json.loads(sys.stdin.read())["workspace"])' <<<"$row")
-  chat_id=$(python3 -c 'import json,sys; print(json.loads(sys.stdin.read())["chat_id"])' <<<"$row")
-  scopes=$(python3 -c 'import json,sys; print(json.loads(sys.stdin.read())["scopes"])' <<<"$row")
-
-  echo ""
-  echo "[register-agents] agent: $agent_id"
-
-  cmd=(bin/larc agent register --id "$agent_id" --name "$name")
-  [[ -n "$model" ]] && cmd+=(--model "$model")
-  [[ -n "$workspace" ]] && cmd+=(--workspace "$workspace")
-  [[ -n "$chat_id" ]] && cmd+=(--chat "$chat_id")
-
-  if [[ -n "$scopes" ]]; then
-    echo "[register-agents] note: scopes are informational for now -> $scopes"
-  fi
-
-  if [[ "$DRY_RUN" == "true" ]]; then
-    printf '[register-agents] dry-run:'
-    printf ' %q' "${cmd[@]}"
-    printf '\n'
-  else
-    "${cmd[@]}"
-  fi
-done
 
 echo ""
 echo "[register-agents] done"
