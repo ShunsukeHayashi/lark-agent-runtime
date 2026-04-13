@@ -8,11 +8,13 @@ cmd_memory() {
     pull) _memory_pull "$@" ;;
     push) _memory_push "$@" ;;
     list) _memory_list "$@" ;;
+    search) _memory_search "$@" ;;
     *)
-      echo "Usage: larc memory <pull|push|list>"
+      echo "Usage: larc memory <pull|push|list|search>"
       echo "  pull [--agent ID] [--date YYYY-MM-DD]  Lark Base → local"
       echo "  push [--agent ID] [--date YYYY-MM-DD]  local → Lark Base"
       echo "  list [--agent ID]                     list memory entries"
+      echo "  search --query <text> [--agent ID] [--days N]  search memory entries"
       ;;
   esac
 }
@@ -162,6 +164,103 @@ _memory_list() {
     --table-id "$table_id" \
     --jq ".items[] | select(.fields.agent_id == \"${agent_id}\") | {date: .fields.date, updated: .fields.updated_at}" \
     2>/dev/null || log_warn "No memory entries found"
+}
+
+_memory_search() {
+  local agent_id="main"
+  local query=""
+  local days="30"
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --agent) agent_id="$2"; shift 2 ;;
+      --query|-q) query="$2"; shift 2 ;;
+      --days) days="$2"; shift 2 ;;
+      *) log_warn "Unknown option: $1"; shift ;;
+    esac
+  done
+
+  [[ -z "$query" ]] && {
+    log_error "Usage: larc memory search --query <text> [--agent ID] [--days N]"
+    return 1
+  }
+
+  log_head "memory search — ${agent_id} / query='${query}' / past ${days} days"
+  [[ -z "$LARC_BASE_APP_TOKEN" ]] && {
+    log_error "LARC_BASE_APP_TOKEN is not set"; return 1
+  }
+
+  local table_id
+  table_id=$(_get_or_create_memory_table)
+
+  local raw_response
+  raw_response=$(lark-cli base +record-list \
+    --base-token "$LARC_BASE_APP_TOKEN" \
+    --table-id "$table_id" \
+    2>/dev/null || echo "{}")
+
+  python3 - "$raw_response" "$agent_id" "$query" "$days" <<'PY'
+import json, sys
+from datetime import datetime, timedelta, timezone
+
+resp = json.loads(sys.argv[1])
+target_agent = sys.argv[2]
+query = sys.argv[3].lower()
+days = int(sys.argv[4])
+
+d = resp.get("data", resp)
+rows = d.get("data", [])
+fields = d.get("fields", [])
+
+if not rows or not fields:
+    print("(no memory entries)")
+    raise SystemExit(0)
+
+def idx(name):
+    try:
+        return fields.index(name)
+    except ValueError:
+        return None
+
+date_idx = idx("date")
+agent_idx = idx("agent_id")
+content_idx = idx("content")
+updated_idx = idx("updated_at")
+
+if None in (date_idx, agent_idx, content_idx):
+    print("(memory table fields not ready)")
+    raise SystemExit(0)
+
+cutoff = datetime.now(timezone.utc).date() - timedelta(days=days)
+matches = []
+for row in rows:
+    if max(date_idx, agent_idx, content_idx) >= len(row):
+        continue
+    if str(row[agent_idx]) != target_agent:
+        continue
+    raw_date = str(row[date_idx] or "")
+    try:
+        row_date = datetime.strptime(raw_date, "%Y-%m-%d").date()
+    except ValueError:
+        continue
+    if row_date < cutoff:
+        continue
+    content = str(row[content_idx] or "")
+    if query not in content.lower():
+        continue
+    snippet = " ".join(content.strip().split())
+    if len(snippet) > 140:
+        snippet = snippet[:137] + "..."
+    updated = str(row[updated_idx]) if updated_idx is not None and updated_idx < len(row) else "-"
+    matches.append((raw_date, updated, snippet))
+
+if not matches:
+    print("(no matches)")
+    raise SystemExit(0)
+
+for raw_date, updated, snippet in sorted(matches, reverse=True):
+    print(f"{raw_date}  updated={updated}")
+    print(f"  {snippet}")
+PY
 }
 
 _get_or_create_memory_table() {

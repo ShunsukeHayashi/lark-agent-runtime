@@ -158,6 +158,7 @@ ${BOLD}Commands:${RESET}
                           --force       Ignore cache and re-fetch
   ${CYAN}memory pull${RESET}           Sync memory from Lark Base to local
   ${CYAN}memory push${RESET}           Write local memory back to Lark Base
+  ${CYAN}memory search${RESET}         Search recent Base-backed memory by keyword
   ${CYAN}heartbeat${RESET}             Record system state to Lark Base
   ${CYAN}send${RESET} "<message>"      Send message to Lark IM
                           (equivalent to: openclaw agent --agent main --json -m)
@@ -192,6 +193,7 @@ ${BOLD}Examples:${RESET}
   larc bootstrap --agent main
   larc send "Please draft an expense report"
   larc memory push
+  larc memory search --query "approval" --days 14
   larc task create --title "Q2 budget review" --due 2026-04-20
   larc agent register --id finance-bot --name "Finance Agent"
   larc approve scaffold-package --approval-code APPROVAL_CODE --output-dir ./approval-work
