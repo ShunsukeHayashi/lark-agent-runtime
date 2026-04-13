@@ -56,8 +56,8 @@ LARC 的切入点是 `permission-first`：
 
 ```bash
 npm install -g @larksuite/cli
-git clone https://github.com/ShunsukeHayashi/larc-openclaw-coding-agent
-cd larc-openclaw-coding-agent
+git clone https://github.com/ShunsukeHayashi/lark-agent-runtime
+cd lark-agent-runtime
 chmod +x bin/larc
 export PATH="$PWD/bin:$PATH"
 larc init

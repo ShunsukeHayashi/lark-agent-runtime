@@ -60,8 +60,8 @@ LARC takes a `permission-first` approach:
 
 ```bash
 npm install -g @larksuite/cli
-git clone https://github.com/ShunsukeHayashi/larc-openclaw-coding-agent
-cd larc-openclaw-coding-agent
+git clone https://github.com/ShunsukeHayashi/lark-agent-runtime
+cd lark-agent-runtime
 chmod +x bin/larc
 export PATH="$PWD/bin:$PATH"
 larc init
@@ -87,6 +87,7 @@ Key planning and design docs:
 - [docs/open-source-trilingual-plan.md](docs/open-source-trilingual-plan.md)
 - [docs/auth-suggest-cases.md](docs/auth-suggest-cases.md)
 - [CONTRIBUTING.md](CONTRIBUTING.md)
+- [CHANGELOG.md](CHANGELOG.md)
 - [docs/terminology-glossary.md](docs/terminology-glossary.md)
 - [docs/release-checklist.md](docs/release-checklist.md)
 - [docs/release-readiness-2026-04-14.md](docs/release-readiness-2026-04-14.md)

@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Read the README first
+    url: https://github.com/ShunsukeHayashi/larc-openclaw-coding-agent/blob/main/README.md
+    about: Start here for project scope and current status.
+  - name: Read the contribution guide
+    url: https://github.com/ShunsukeHayashi/larc-openclaw-coding-agent/blob/main/CONTRIBUTING.md
+    about: Check contribution boundaries before filing large requests.
