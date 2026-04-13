@@ -14,6 +14,7 @@ cmd_ingress() {
     next)    _ingress_next "$@" ;;
     run-once) _ingress_run_once "$@" ;;
     execute-stub) _ingress_execute_stub "$@" ;;
+    execute-apply) _ingress_execute_apply "$@" ;;
     approve) _ingress_approve "$@" ;;
     resume)  _ingress_resume "$@" ;;
     delegate) _ingress_delegate "$@" ;;
@@ -41,6 +42,7 @@ ${BOLD}Commands:${RESET}
   ${CYAN}next${RESET}      Pull the next actionable queue item for an agent
   ${CYAN}run-once${RESET}  Claim the next actionable queue item for an agent
   ${CYAN}execute-stub${RESET} Show a placeholder execution plan for an in-progress item
+  ${CYAN}execute-apply${RESET} Run safe adapter actions for an in-progress item
   ${CYAN}approve${RESET}   Mark a blocked approval item as approved
   ${CYAN}resume${RESET}    Move an approved item back to pending
   ${CYAN}delegate${RESET}  Assign a queue item to the best specialist agent
@@ -57,6 +59,7 @@ ${BOLD}Examples:${RESET}
   larc ingress next --agent crm-agent --days 14
   larc ingress run-once --agent crm-agent --days 14 --dry-run
   larc ingress execute-stub --queue-id 1234
+  larc ingress execute-apply --queue-id 1234 --dry-run
   larc ingress approve --queue-id 1234
   larc ingress resume --queue-id 1234
   larc ingress delegate --queue-id 1234
@@ -520,6 +523,137 @@ else:
         print(f"    - {cmd}")
 print(f"  suggested_finish_note: {'; '.join(dict.fromkeys(finish_hint)) if finish_hint else 'Completed placeholder execution path'}")
 PY
+}
+
+_ingress_execute_apply() {
+  local queue_id=""
+  local dry_run=false
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --queue-id) queue_id="$2"; shift 2 ;;
+      --dry-run) dry_run=true; shift ;;
+      *) log_warn "Unknown option: $1"; shift ;;
+    esac
+  done
+
+  [[ -z "$queue_id" ]] && { log_error "Usage: larc ingress execute-apply --queue-id <id> [--dry-run]"; return 1; }
+
+  local queue_json
+  queue_json=$(_ingress_get_local_queue_item "$queue_id")
+  [[ -z "$queue_json" ]] && { log_error "Queue item not found locally: $queue_id"; return 1; }
+
+  local current_status
+  current_status=$(python3 - "$queue_json" <<'PY'
+import json, sys
+d = json.loads(sys.argv[1])
+print(d.get("status", ""))
+PY
+)
+  if [[ "$current_status" != "in_progress" ]]; then
+    log_error "Queue item $queue_id is '$current_status'; execute-apply expects in_progress"
+    return 1
+  fi
+
+  local plan_json
+  plan_json=$(python3 - "$queue_json" <<'PY'
+import json, sys
+
+queue = json.loads(sys.argv[1])
+agent = queue.get("worker_agent_id") or queue.get("assigned_agent_id") or queue.get("agent_id") or "main"
+message = (queue.get("message_text") or "").replace('"', "'")
+task_types = queue.get("task_types", [])
+results = []
+
+for task_type in task_types:
+    if task_type == "send_crm_followup":
+        results.append({
+            "task_type": task_type,
+            "mode": "run",
+            "message": f"Follow-up prepared from queue {queue.get('queue_id')}",
+            "note": "Sent CRM follow-up placeholder"
+        })
+    elif task_type == "send_message":
+        results.append({
+            "task_type": task_type,
+            "mode": "run",
+            "message": message,
+            "note": "Sent outbound message"
+        })
+    else:
+        results.append({
+            "task_type": task_type,
+            "mode": "skip",
+            "note": "No safe auto-executor is defined yet"
+        })
+
+print(json.dumps({"agent": agent, "steps": results}, ensure_ascii=False))
+PY
+)
+
+  python3 - "$plan_json" <<'PY'
+import json, sys
+plan = json.loads(sys.argv[1])
+print("")
+print("Execute apply plan")
+print(f"  agent: {plan['agent']}")
+for step in plan["steps"]:
+    if step["mode"] == "run":
+        print(f"  - run: {step['task_type']} -> {step['message']}")
+    else:
+        print(f"  - skip: {step['task_type']} -> {step['note']}")
+PY
+
+  if [[ "$dry_run" == "true" ]]; then
+    return 0
+  fi
+
+  local send_messages
+  send_messages=$(python3 - "$plan_json" <<'PY'
+import json, sys
+plan = json.loads(sys.argv[1])
+for step in plan["steps"]:
+    if step["mode"] == "run":
+        print(json.dumps(step, ensure_ascii=False))
+PY
+)
+
+  if [[ -z "$send_messages" ]]; then
+    log_warn "No safe adapters to execute for queue item $queue_id"
+    return 0
+  fi
+
+  local worker_agent
+  worker_agent=$(python3 - "$plan_json" <<'PY'
+import json, sys
+plan = json.loads(sys.argv[1])
+print(plan["agent"])
+PY
+)
+
+  local execution_notes=()
+  while IFS= read -r step_json; do
+    [[ -z "$step_json" ]] && continue
+    local step_message step_note
+    step_message=$(python3 - "$step_json" <<'PY'
+import json, sys
+step = json.loads(sys.argv[1])
+print(step.get("message", ""))
+PY
+)
+    step_note=$(python3 - "$step_json" <<'PY'
+import json, sys
+step = json.loads(sys.argv[1])
+print(step.get("note", ""))
+PY
+)
+    cmd_send --agent "$worker_agent" "$step_message"
+    execution_notes+=("$step_note")
+  done <<< "$send_messages"
+
+  local finish_note
+  finish_note=$(printf '%s; ' "${execution_notes[@]}")
+  finish_note="${finish_note%; }"
+  _ingress_complete "$queue_id" "done" "${finish_note:-Completed safe adapter execution}" "false"
 }
 
 _ingress_approve() {

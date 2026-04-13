@@ -64,7 +64,7 @@ cmd_approve()   { source "$LIB_DIR/approve.sh";   cmd_approve "$@"; }
 cmd_agent()     { source "$LIB_DIR/agent.sh";     cmd_agent "$@"; }
 cmd_auth()      { source "$LIB_DIR/auth.sh";      cmd_auth "$@"; }
 cmd_kg()        { source "$LIB_DIR/knowledge-graph.sh"; cmd_kg "$@"; }
-cmd_ingress()   { source "$LIB_DIR/memory.sh"; source "$LIB_DIR/ingress.sh"; cmd_ingress "$@"; }
+cmd_ingress()   { source "$LIB_DIR/memory.sh"; source "$LIB_DIR/send.sh"; source "$LIB_DIR/ingress.sh"; cmd_ingress "$@"; }
 
 cmd_init() {
   log_head "larc init — Initialize Lark Drive agent workspace"
@@ -183,6 +183,7 @@ ${BOLD}Commands:${RESET}
   ${CYAN}ingress next${RESET}          Pull the next actionable queue item for an agent
   ${CYAN}ingress run-once${RESET}      Claim the next actionable queue item for an agent
   ${CYAN}ingress execute-stub${RESET}  Show a placeholder execution plan for an in-progress item
+  ${CYAN}ingress execute-apply${RESET} Execute safe adapter actions for an in-progress item
   ${CYAN}ingress approve${RESET}       Mark a blocked queue item as approved
   ${CYAN}ingress resume${RESET}        Resume an approved queue item into pending state
   ${CYAN}ingress delegate${RESET}      Assign a pending queue item to the best registered specialist agent
@@ -210,6 +211,7 @@ ${BOLD}Examples:${RESET}
   larc ingress next --agent crm-agent --days 14
   larc ingress run-once --agent crm-agent --days 14 --dry-run
   larc ingress execute-stub --queue-id <id>
+  larc ingress execute-apply --queue-id <id> --dry-run
   larc ingress approve --queue-id <id>
   larc ingress resume --queue-id <id>
   larc ingress delegate --queue-id <id>
