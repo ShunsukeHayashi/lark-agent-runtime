@@ -345,26 +345,28 @@ larc auth suggest "経費申請を作成して承認を求める"
 **ファイル候補**: `lib/bot-ingress.sh`, `scripts/run-bot-loop.sh`
 
 **タスク**:
-- [ ] Lark IM / webhook 受信イベントから task intent を取り出す
-- [ ] `larc auth suggest` と `larc approve gate` を前段で評価する
-- [ ] 実行してよいタスクだけ queue へ投入する
+- [x] CLI-based ingress surface: `lib/ingress.sh` に `enqueue` / `list` 実装
+- [x] `enqueue` 時に `larc auth suggest` 相当の scope inference と gate evaluation を内蔵
+- [ ] Lark IM / webhook 受信イベントから task intent を直接取り出す
 
 ### 5B: Queue / continuation
 **担当**: Agent-Queue  
 **ファイル候補**: `lib/queue.sh`
 
 **タスク**:
-- [ ] Base を queue ledger として使う最小実装
-- [ ] `pending / blocked / approved / running / done / failed` 状態を持つ
-- [ ] approval 完了イベント後に blocked task を再開する
+- [x] Local queue ledger を最小実装（Base は補助書き込み）
+- [x] `pending / pending_preview / blocked_approval / approved / delegated / in_progress / done / failed / partial` 状態を持つ
+- [x] `approve` / `resume` で blocked task の continuation を実装
+- [ ] approval 完了イベントを受けて自動再開する
 
 ### 5C: Delegation
 **担当**: Agent-Dispatch  
 **ファイル候補**: `lib/delegate.sh`
 
 **タスク**:
-- [ ] main が `expense-processor` / `crm-agent` / `doc-agent` へ委任する routing
-- [ ] registry に登録された scopes と workspace を見て最適 agent を選ぶ
+- [x] main が `expense-processor` / `crm-agent` / `doc-agent` へ委任する routing
+- [x] `agents.yaml` の scopes と workspace を見て最適 agent を選ぶ
+- [ ] Base registry を source-of-truth にした委任へ昇格
 - [ ] 実行ログと memory push を agent 単位で残す
 
 ### 5D: Searchable memory
@@ -372,15 +374,31 @@ larc auth suggest "経費申請を作成して承認を求める"
 **ファイル候補**: `lib/memory-search.sh`
 
 **タスク**:
-- [ ] Base 上の過去 memory を日付範囲・キーワードで検索
-- [ ] `bootstrap` 前に関連 memory を pull する retrieval hook を付ける
-- [ ] queue / delegation の文脈復元に使う
+- [x] Base 上の過去 memory を日付範囲・キーワードで検索
+- [x] retrieval hook を `context` / `handoff` / `run-once` bundle に統合
+- [x] queue / delegation の文脈復元に使う
+
+### 5E: Worker loop
+**担当**: Agent-Worker
+**ファイル候補**: `lib/ingress.sh`
+
+**タスク**:
+- [x] `next` で agent ごとの次タスクを pull
+- [x] `run-once` で queue item を `in_progress` に claim
+- [x] `execute-stub` で task type ごとの placeholder 実行計画を生成
+- [x] `execute-apply` で安全な adapter のみ限定実行
+- [x] `followup` で `partial` item を回収
+- [ ] task type ごとの本実行 adapter を拡張
+- [ ] worker の常駐ループ化
 
 ### 成功条件
-- [ ] IM で受けた依頼が queue に入る
-- [ ] 実行前に scope / gate が自動判定される
-- [ ] approval が必要な処理は blocked になり、承認後に resumed される
-- [ ] main agent が専門 agent に委任できる
+- [x] IM 相当の依頼文が queue に入る
+- [x] 実行前に scope / gate が自動判定される
+- [x] approval が必要な処理は blocked になり、承認後に resumed される
+- [x] main agent が専門 agent に委任できる
+- [x] worker が task を pull / claim / stub-execute できる
+- [x] `partial` follow-up を別レーンで見られる
+- [ ] IM webhook 経由で Lark 内から自動起動する
 - [ ] 完了後に memory と audit trail が自動で残る
 
 ---

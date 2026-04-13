@@ -64,6 +64,7 @@ In practical terms:
 | `larc kg build` / `larc kg query` | Indexes Lark Wiki node graph and answers concept queries with neighbor context |
 | `larc memory` | Syncs daily memory with Lark Base |
 | `larc send` / `larc task` | Provides basic execution paths for IM and task operations |
+| `larc ingress` | Runs the queue loop surface: enqueue, approve/resume, delegate, next, run-once, execute, followup |
 | Claude Code skills | Ships Lark-oriented skills in `.claude/skills/` |
 
 ---
@@ -94,7 +95,16 @@ The five foundational phases are complete and live-verified against a real Lark 
 | D — Approval & Execution Control | Gate policy (32 task types × none/preview/approval); `larc approve gate` command |
 | E — Knowledge Graph | Wiki BFS traversal; 37-node graph indexed; keyword query returns matches with neighbor context |
 
+What is now live in the Agentic LARC MVP surface:
+- queue ingestion: `enqueue`, `list`
+- continuation: `approve`, `resume`
+- delegation: `delegate`
+- retrieval and handoff: `context`, `handoff`, `memory search`
+- worker loop: `next`, `run-once`, `execute-stub`, `execute-apply`
+- outcome states: `done`, `failed`, `partial`, `followup`
+
 What is still experimental or future:
+- IM webhook / bot-triggered ingress from inside Lark itself
 - MergeGate integration for controlled execution review
 - Full OpenClaw CLI compatibility layer
 - Knowledge graph link extraction from document content (currently hierarchy-based)
@@ -134,6 +144,7 @@ lib/
   heartbeat.sh                 # System state logging
   auth.sh                      # Scope inference and authorization
   knowledge-graph.sh           # Wiki node graph build and query
+  ingress.sh                   # Queue, delegation, worker loop, partial follow-up
 config/
   scope-map.json               # 32 task types × required scopes × authority type
   gate-policy.json             # 32 task types × risk level × execution gate
