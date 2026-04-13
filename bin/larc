@@ -184,6 +184,7 @@ ${BOLD}Commands:${RESET}
   ${CYAN}ingress run-once${RESET}      Claim the next actionable queue item for an agent
   ${CYAN}ingress execute-stub${RESET}  Show a placeholder execution plan for an in-progress item
   ${CYAN}ingress execute-apply${RESET} Execute safe adapter actions for an in-progress item
+  ${CYAN}ingress followup${RESET}      Show partial items that still need manual follow-up
   ${CYAN}ingress approve${RESET}       Mark a blocked queue item as approved
   ${CYAN}ingress resume${RESET}        Resume an approved queue item into pending state
   ${CYAN}ingress delegate${RESET}      Assign a pending queue item to the best registered specialist agent
@@ -212,6 +213,7 @@ ${BOLD}Examples:${RESET}
   larc ingress run-once --agent crm-agent --days 14 --dry-run
   larc ingress execute-stub --queue-id <id>
   larc ingress execute-apply --queue-id <id> --dry-run
+  larc ingress followup --agent crm-agent
   larc ingress approve --queue-id <id>
   larc ingress resume --queue-id <id>
   larc ingress delegate --queue-id <id>

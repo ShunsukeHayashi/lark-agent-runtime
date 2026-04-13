@@ -15,6 +15,7 @@ cmd_ingress() {
     run-once) _ingress_run_once "$@" ;;
     execute-stub) _ingress_execute_stub "$@" ;;
     execute-apply) _ingress_execute_apply "$@" ;;
+    followup) _ingress_followup "$@" ;;
     approve) _ingress_approve "$@" ;;
     resume)  _ingress_resume "$@" ;;
     delegate) _ingress_delegate "$@" ;;
@@ -43,6 +44,7 @@ ${BOLD}Commands:${RESET}
   ${CYAN}run-once${RESET}  Claim the next actionable queue item for an agent
   ${CYAN}execute-stub${RESET} Show a placeholder execution plan for an in-progress item
   ${CYAN}execute-apply${RESET} Run safe adapter actions for an in-progress item
+  ${CYAN}followup${RESET}  Show partial items that still require manual follow-up
   ${CYAN}approve${RESET}   Mark a blocked approval item as approved
   ${CYAN}resume${RESET}    Move an approved item back to pending
   ${CYAN}delegate${RESET}  Assign a queue item to the best specialist agent
@@ -60,6 +62,7 @@ ${BOLD}Examples:${RESET}
   larc ingress run-once --agent crm-agent --days 14 --dry-run
   larc ingress execute-stub --queue-id 1234
   larc ingress execute-apply --queue-id 1234 --dry-run
+  larc ingress followup --agent crm-agent
   larc ingress approve --queue-id 1234
   larc ingress resume --queue-id 1234
   larc ingress delegate --queue-id 1234
@@ -673,6 +676,41 @@ PY
   _ingress_complete "$queue_id" "$final_status" "${finish_note:-Completed safe adapter execution}" "false"
 }
 
+_ingress_followup() {
+  local agent_id=""
+  local queue_id=""
+  local days="14"
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --agent) agent_id="$2"; shift 2 ;;
+      --queue-id) queue_id="$2"; shift 2 ;;
+      --days) days="$2"; shift 2 ;;
+      *) log_warn "Unknown option: $1"; shift ;;
+    esac
+  done
+
+  if [[ -n "$queue_id" ]]; then
+    local queue_json
+    queue_json=$(_ingress_get_local_queue_item "$queue_id")
+    [[ -z "$queue_json" ]] && { log_error "Queue item not found locally: $queue_id"; return 1; }
+    local status
+    status=$(python3 - "$queue_json" <<'PY'
+import json, sys
+d = json.loads(sys.argv[1])
+print(d.get("status", ""))
+PY
+)
+    if [[ "$status" != "partial" ]]; then
+      log_error "Queue item $queue_id is '$status'; followup expects partial"
+      return 1
+    fi
+    _ingress_render_bundle "followup" "$queue_json" "$days"
+    return 0
+  fi
+
+  _ingress_list_partial_items "$agent_id"
+}
+
 _ingress_approve() {
   local queue_id=""
   local dry_run=false
@@ -1106,6 +1144,42 @@ if items:
 PY
 }
 
+_ingress_list_partial_items() {
+  local agent_id_filter="${1:-}"
+  local queue_dir="$LARC_CACHE/queue"
+  [[ -d "$queue_dir" ]] || { echo "(no partial follow-up items)"; return 0; }
+
+  python3 - "$queue_dir" "$agent_id_filter" <<'PY'
+import json, os, sys
+
+queue_dir, agent_id_filter = sys.argv[1:3]
+items = []
+
+for name in os.listdir(queue_dir):
+    if not name.endswith(".jsonl"):
+        continue
+    path = os.path.join(queue_dir, name)
+    with open(path, "r", encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            d = json.loads(line)
+            if d.get("status") != "partial":
+                continue
+            effective_agent = d.get("worker_agent_id") or d.get("assigned_agent_id") or d.get("agent_id") or "main"
+            if agent_id_filter and effective_agent != agent_id_filter:
+                continue
+            items.append(d)
+
+if not items:
+    print("(no partial follow-up items)")
+else:
+    for d in items:
+        print(f"{d.get('queue_id','-')}  [{d.get('status','-')} / {d.get('gate','-')}]  {str(d.get('message_text',''))[:100]} -> {d.get('execution_note','manual follow-up required')}")
+PY
+}
+
 _ingress_claim_queue_item() {
   local queue_json="$1"
   local worker_agent_id="$2"
@@ -1338,6 +1412,20 @@ elif mode == "run-once":
     print(f"  message: {message_text}")
     print(f"  retrieval_tokens: {', '.join(sorted(token_set)) if token_set else '(none)'}")
     print(f"  started_at: {queue.get('started_at') or '-'}")
+elif mode == "followup":
+    print("")
+    print("Manual follow-up bundle")
+    print(f"  queue_id: {queue.get('queue_id')}")
+    print(f"  effective_agent: {effective_agent}")
+    print(f"  status: {queue.get('status')}")
+    print(f"  gate: {queue.get('gate')}")
+    print(f"  authority: {queue.get('authority')}")
+    print(f"  next_action: {next_action(queue)}")
+    print(f"  task_types: {', '.join(task_types) if task_types else '(none)'}")
+    print(f"  message: {message_text}")
+    print(f"  execution_note: {queue.get('execution_note') or '-'}")
+    print(f"  completed_at: {queue.get('completed_at') or '-'}")
+    print(f"  retrieval_tokens: {', '.join(sorted(token_set)) if token_set else '(none)'}")
 else:
     print("")
     print("Execution context bundle")
