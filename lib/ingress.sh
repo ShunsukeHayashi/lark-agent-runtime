@@ -14,6 +14,7 @@ cmd_ingress() {
     approve) _ingress_approve "$@" ;;
     resume)  _ingress_resume "$@" ;;
     delegate) _ingress_delegate "$@" ;;
+    context) _ingress_context "$@" ;;
     help|--help|-h) _ingress_help ;;
     *)
       log_error "Unknown ingress action: $action"
@@ -34,6 +35,7 @@ ${BOLD}Commands:${RESET}
   ${CYAN}approve${RESET}   Mark a blocked approval item as approved
   ${CYAN}resume${RESET}    Move an approved item back to pending
   ${CYAN}delegate${RESET}  Assign a queue item to the best specialist agent
+  ${CYAN}context${RESET}   Build a retrieval bundle for a queue item
 
 ${BOLD}Examples:${RESET}
   larc ingress enqueue --text "Please route this expense to approval" --sender ou_xxx --source im
@@ -43,6 +45,7 @@ ${BOLD}Examples:${RESET}
   larc ingress approve --queue-id 1234
   larc ingress resume --queue-id 1234
   larc ingress delegate --queue-id 1234
+  larc ingress context --queue-id 1234 --days 14
 
 EOF
 }
@@ -418,6 +421,128 @@ d = json.loads(sys.argv[1])
 print(d.get("assigned_agent_id","-"))
 PY
 )"
+}
+
+_ingress_context() {
+  local queue_id=""
+  local days="14"
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --queue-id) queue_id="$2"; shift 2 ;;
+      --days) days="$2"; shift 2 ;;
+      *) log_warn "Unknown option: $1"; shift ;;
+    esac
+  done
+
+  [[ -z "$queue_id" ]] && { log_error "Usage: larc ingress context --queue-id <id> [--days N]"; return 1; }
+
+  local queue_json
+  queue_json=$(_ingress_get_local_queue_item "$queue_id")
+  [[ -z "$queue_json" ]] && { log_error "Queue item not found locally: $queue_id"; return 1; }
+
+  [[ -z "$LARC_BASE_APP_TOKEN" ]] && {
+    log_error "LARC_BASE_APP_TOKEN is not set"
+    return 1
+  }
+
+  local memory_table_id
+  memory_table_id=$(_get_or_create_memory_table)
+
+  local raw_memory
+  raw_memory=$(lark-cli base +record-list \
+    --base-token "$LARC_BASE_APP_TOKEN" \
+    --table-id "$memory_table_id" \
+    2>/dev/null || echo "{}")
+
+  python3 - "$queue_json" "$raw_memory" "$days" <<'PY'
+import json, re, sys
+from datetime import datetime, timedelta, timezone
+
+queue = json.loads(sys.argv[1])
+resp = json.loads(sys.argv[2])
+days = int(sys.argv[3])
+
+message_text = queue.get("message_text", "")
+assigned_agent = queue.get("assigned_agent_id") or queue.get("agent_id") or "main"
+task_types = queue.get("task_types", [])
+
+tokens = []
+for token in re.findall(r"[A-Za-z0-9_-]{4,}", message_text.lower()):
+    if token not in {"please", "route", "this", "that", "with", "from", "into", "after", "send"}:
+        tokens.append(token)
+for task_type in task_types:
+    tokens.extend(re.findall(r"[a-z]{4,}", task_type.lower()))
+token_set = set(tokens)
+
+d = resp.get("data", resp)
+rows = d.get("data", [])
+fields = d.get("fields", [])
+
+def idx(name):
+    try:
+        return fields.index(name)
+    except ValueError:
+        return None
+
+date_idx = idx("date")
+agent_idx = idx("agent_id")
+content_idx = idx("content")
+updated_idx = idx("updated_at")
+
+cutoff = datetime.now(timezone.utc).date() - timedelta(days=days)
+matches = []
+if None not in (date_idx, agent_idx, content_idx):
+    for row in rows:
+        if max(date_idx, agent_idx, content_idx) >= len(row):
+            continue
+        if str(row[agent_idx]) != assigned_agent:
+            continue
+        raw_date = str(row[date_idx] or "")
+        try:
+            row_date = datetime.strptime(raw_date, "%Y-%m-%d").date()
+        except ValueError:
+            continue
+        if row_date < cutoff:
+            continue
+        content = str(row[content_idx] or "")
+        lowered = content.lower()
+        overlap = [t for t in token_set if t in lowered]
+        if not overlap:
+            continue
+        updated = str(row[updated_idx]) if updated_idx is not None and updated_idx < len(row) else "-"
+        snippet = " ".join(content.strip().split())
+        if len(snippet) > 180:
+            snippet = snippet[:177] + "..."
+        matches.append({
+            "date": raw_date,
+            "updated_at": updated,
+            "overlap": sorted(overlap),
+            "snippet": snippet,
+            "score": len(overlap),
+        })
+
+matches.sort(key=lambda x: (-x["score"], x["date"]), reverse=False)
+matches = sorted(matches, key=lambda x: (-x["score"], x["date"]), reverse=False)[:5]
+
+print("")
+print("Execution context bundle")
+print(f"  queue_id: {queue.get('queue_id')}")
+print(f"  effective_agent: {assigned_agent}")
+print(f"  status: {queue.get('status')}")
+print(f"  gate: {queue.get('gate')}")
+print(f"  authority: {queue.get('authority')}")
+print(f"  task_types: {', '.join(task_types) if task_types else '(none)'}")
+print(f"  message: {message_text}")
+print(f"  retrieval_tokens: {', '.join(sorted(token_set)) if token_set else '(none)'}")
+print("")
+print("Relevant recent memory:")
+if not matches:
+    print("  (no related memory found)")
+else:
+    for item in matches:
+        print(f"  - {item['date']}  overlap={','.join(item['overlap'])}")
+        print(f"    {item['snippet']}")
+PY
 }
 
 _ingress_transition() {

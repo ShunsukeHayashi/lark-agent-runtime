@@ -64,7 +64,7 @@ cmd_approve()   { source "$LIB_DIR/approve.sh";   cmd_approve "$@"; }
 cmd_agent()     { source "$LIB_DIR/agent.sh";     cmd_agent "$@"; }
 cmd_auth()      { source "$LIB_DIR/auth.sh";      cmd_auth "$@"; }
 cmd_kg()        { source "$LIB_DIR/knowledge-graph.sh"; cmd_kg "$@"; }
-cmd_ingress()   { source "$LIB_DIR/ingress.sh";   cmd_ingress "$@"; }
+cmd_ingress()   { source "$LIB_DIR/memory.sh"; source "$LIB_DIR/ingress.sh"; cmd_ingress "$@"; }
 
 cmd_init() {
   log_head "larc init — Initialize Lark Drive agent workspace"
@@ -183,6 +183,7 @@ ${BOLD}Commands:${RESET}
   ${CYAN}ingress approve${RESET}       Mark a blocked queue item as approved
   ${CYAN}ingress resume${RESET}        Resume an approved queue item into pending state
   ${CYAN}ingress delegate${RESET}      Assign a pending queue item to the best registered specialist agent
+  ${CYAN}ingress context${RESET}       Build an execution context bundle with related recent memory
   ${CYAN}kg build${RESET}              Traverse Lark Wiki and index node graph into Base
   ${CYAN}kg query${RESET} "<concept>"  Keyword search over indexed graph; show matches + neighbors
   ${CYAN}kg show${RESET} <token>       Show node details and neighbors from local cache
@@ -203,6 +204,7 @@ ${BOLD}Examples:${RESET}
   larc ingress approve --queue-id <id>
   larc ingress resume --queue-id <id>
   larc ingress delegate --queue-id <id>
+  larc ingress context --queue-id <id> --days 14
 
 ${BOLD}Environment:${RESET}
   LARC_HOME              Config and cache directory (default: ~/.larc)
