@@ -1,0 +1,32 @@
+{
+  "version": "0.2",
+  "language": "en",
+  "words": [
+    "larc",
+    "openclaw",
+    "mergegate",
+    "miyabi",
+    "feishu",
+    "lark",
+    "backoffice",
+    "bitable",
+    "shunsukehayashi",
+    "Shunsuke",
+    "Hayashi",
+    "voicevox",
+    "voicebox",
+    "gitnexus",
+    "ppal",
+    "bakuraku",
+    "larksuite",
+    "docx",
+    "wiki"
+  ],
+  "ignorePaths": [
+    "node_modules",
+    ".git",
+    "dist",
+    "crm-assets",
+    "miyabi-lark-assets"
+  ]
+}

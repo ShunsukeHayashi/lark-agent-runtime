@@ -1,0 +1,620 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "version": "1.0.0",
+  "description": "Agent Trigger Configuration - Phase B: Webhooks Event Bus",
+  "metadata": {
+    "issue": "#5 - GitHub as Operating System",
+    "phase": "Phase B: Webhooks",
+    "created": "2025-10-15",
+    "lastUpdated": "2025-10-15"
+  },
+  "globalSettings": {
+    "retryConfig": {
+      "maxRetries": 3,
+      "initialDelayMs": 1000,
+      "maxDelayMs": 10000,
+      "backoffMultiplier": 2
+    },
+    "timeoutConfig": {
+      "default": 300000,
+      "byPriority": {
+        "critical": 600000,
+        "high": 300000,
+        "medium": 180000,
+        "low": 120000
+      }
+    },
+    "concurrency": {
+      "maxConcurrent": 5,
+      "byAgent": {
+        "CoordinatorAgent": 2,
+        "CodeGenAgent": 3,
+        "ReviewAgent": 5,
+        "IssueAgent": 3,
+        "PRAgent": 2,
+        "DeploymentAgent": 1
+      }
+    }
+  },
+  "agents": {
+    "CoordinatorAgent": {
+      "displayName": "しきるん",
+      "color": "🔴",
+      "role": "リーダー",
+      "description": "タスク統括・DAG分解・Specialist割り当て",
+      "capabilities": [
+        "task_decomposition",
+        "dag_construction",
+        "specialist_assignment",
+        "status_reporting"
+      ],
+      "triggers": [
+        {
+          "id": "coordinator-agent-execute-label",
+          "eventType": "issues",
+          "action": "labeled",
+          "conditions": {
+            "labels": ["🤖agent-execute"]
+          },
+          "priority": "critical",
+          "description": "Agent execution request via label",
+          "executionMode": "async",
+          "timeout": 600000
+        },
+        {
+          "id": "coordinator-command-execute",
+          "eventType": "issue_comment",
+          "action": "created",
+          "conditions": {
+            "commentPattern": "^/agent\\s+execute"
+          },
+          "priority": "critical",
+          "description": "Agent execution request via command",
+          "executionMode": "async",
+          "timeout": 600000
+        },
+        {
+          "id": "coordinator-command-status",
+          "eventType": "issue_comment",
+          "action": "created",
+          "conditions": {
+            "commentPattern": "^/agent\\s+status"
+          },
+          "priority": "high",
+          "description": "Status check request",
+          "executionMode": "sync",
+          "timeout": 60000
+        }
+      ]
+    },
+    "CodeGenAgent": {
+      "displayName": "つくるん",
+      "color": "🟢",
+      "role": "実行役",
+      "description": "AI駆動コード生成 (Claude Sonnet 4)",
+      "capabilities": [
+        "code_generation",
+        "test_generation",
+        "documentation_generation",
+        "rust_implementation"
+      ],
+      "triggers": [
+        {
+          "id": "codegen-agent-label",
+          "eventType": "issues",
+          "action": "labeled",
+          "conditions": {
+            "labels": ["🤖agent:codegen"]
+          },
+          "priority": "high",
+          "description": "Code generation request via label",
+          "executionMode": "async",
+          "timeout": 300000
+        },
+        {
+          "id": "codegen-implementing-state",
+          "eventType": "issues",
+          "action": "labeled",
+          "conditions": {
+            "labels": ["🏗️state:implementing", "🤖agent:codegen"]
+          },
+          "priority": "high",
+          "description": "Code generation for implementing issue",
+          "executionMode": "async",
+          "timeout": 300000
+        }
+      ]
+    },
+    "ReviewAgent": {
+      "displayName": "めだまん",
+      "color": "🟢",
+      "role": "実行役",
+      "description": "コード品質レビュー (100点満点スコアリング)",
+      "capabilities": [
+        "quality_checks",
+        "code_review",
+        "quality_scoring",
+        "review_comments"
+      ],
+      "triggers": [
+        {
+          "id": "review-pr-opened",
+          "eventType": "pull_request",
+          "action": "opened",
+          "conditions": {
+            "draft": false
+          },
+          "priority": "high",
+          "description": "PR opened - run quality checks",
+          "executionMode": "async",
+          "timeout": 180000
+        },
+        {
+          "id": "review-pr-ready",
+          "eventType": "pull_request",
+          "action": "ready_for_review",
+          "conditions": {},
+          "priority": "high",
+          "description": "PR ready for review",
+          "executionMode": "async",
+          "timeout": 180000
+        },
+        {
+          "id": "review-pr-review-requested",
+          "eventType": "pull_request",
+          "action": "review_requested",
+          "conditions": {},
+          "priority": "high",
+          "description": "Review requested",
+          "executionMode": "async",
+          "timeout": 180000
+        },
+        {
+          "id": "review-pr-synchronize",
+          "eventType": "pull_request",
+          "action": "synchronize",
+          "conditions": {},
+          "priority": "medium",
+          "description": "PR updated - re-run quality checks",
+          "executionMode": "async",
+          "timeout": 180000
+        },
+        {
+          "id": "review-command",
+          "eventType": "issue_comment",
+          "action": "created",
+          "conditions": {
+            "commentPattern": "^/agent\\s+review"
+          },
+          "priority": "critical",
+          "description": "Manual review request via command",
+          "executionMode": "async",
+          "timeout": 180000
+        }
+      ]
+    },
+    "IssueAgent": {
+      "displayName": "みつけるん",
+      "color": "🔵",
+      "role": "分析役",
+      "description": "Issue分析・ラベリング (AI推論)",
+      "capabilities": [
+        "issue_analysis",
+        "auto_labeling",
+        "state_transitions",
+        "label_ai_inference"
+      ],
+      "triggers": [
+        {
+          "id": "issue-opened",
+          "eventType": "issues",
+          "action": "opened",
+          "conditions": {},
+          "priority": "high",
+          "description": "New issue - analyze and auto-label",
+          "executionMode": "async",
+          "timeout": 120000
+        },
+        {
+          "id": "issue-assigned",
+          "eventType": "issues",
+          "action": "assigned",
+          "conditions": {},
+          "priority": "high",
+          "description": "Issue assigned - transition to implementing",
+          "executionMode": "sync",
+          "timeout": 30000
+        },
+        {
+          "id": "issue-closed",
+          "eventType": "issues",
+          "action": "closed",
+          "conditions": {},
+          "priority": "medium",
+          "description": "Issue closed - transition to done",
+          "executionMode": "sync",
+          "timeout": 30000
+        },
+        {
+          "id": "issue-reopened",
+          "eventType": "issues",
+          "action": "reopened",
+          "conditions": {},
+          "priority": "low",
+          "description": "Issue reopened - re-analyze",
+          "executionMode": "async",
+          "timeout": 120000
+        },
+        {
+          "id": "issue-milestoned",
+          "eventType": "issues",
+          "action": "milestoned",
+          "conditions": {},
+          "priority": "low",
+          "description": "Issue milestoned - update phase",
+          "executionMode": "sync",
+          "timeout": 30000
+        },
+        {
+          "id": "issue-command-analyze",
+          "eventType": "issue_comment",
+          "action": "created",
+          "conditions": {
+            "commentPattern": "^/agent\\s+analyze"
+          },
+          "priority": "critical",
+          "description": "Manual issue analysis via command",
+          "executionMode": "async",
+          "timeout": 120000
+        }
+      ]
+    },
+    "PRAgent": {
+      "displayName": "まとめるん",
+      "color": "🟡",
+      "role": "サポート役",
+      "description": "Pull Request自動作成 (Conventional Commits)",
+      "capabilities": [
+        "pr_creation",
+        "conventional_commits",
+        "pr_description_generation"
+      ],
+      "triggers": [
+        {
+          "id": "pr-command-create",
+          "eventType": "issue_comment",
+          "action": "created",
+          "conditions": {
+            "commentPattern": "^/agent\\s+pr\\s+create"
+          },
+          "priority": "high",
+          "description": "Manual PR creation via command",
+          "executionMode": "async",
+          "timeout": 120000
+        },
+        {
+          "id": "pr-branch-ready",
+          "eventType": "issues",
+          "action": "labeled",
+          "conditions": {
+            "labels": ["🚀ready-for-pr"]
+          },
+          "priority": "medium",
+          "description": "Branch ready for PR creation",
+          "executionMode": "async",
+          "timeout": 120000
+        }
+      ]
+    },
+    "DeploymentAgent": {
+      "displayName": "はこぶん",
+      "color": "🟡",
+      "role": "サポート役",
+      "description": "CI/CDデプロイ自動化 (Firebase/Vercel/AWS)",
+      "capabilities": [
+        "firebase_deploy",
+        "vercel_deploy",
+        "health_checks",
+        "rollback"
+      ],
+      "triggers": [
+        {
+          "id": "deploy-pr-merged-main",
+          "eventType": "pull_request",
+          "action": "closed",
+          "conditions": {
+            "merged": true,
+            "base": "main"
+          },
+          "priority": "critical",
+          "description": "PR merged to main - deploy to production",
+          "executionMode": "async",
+          "timeout": 600000
+        },
+        {
+          "id": "deploy-pr-merged-other",
+          "eventType": "pull_request",
+          "action": "closed",
+          "conditions": {
+            "merged": true,
+            "base": "!main"
+          },
+          "priority": "medium",
+          "description": "PR merged to non-main - deploy to staging",
+          "executionMode": "async",
+          "timeout": 300000
+        },
+        {
+          "id": "deploy-push-main",
+          "eventType": "push",
+          "action": null,
+          "conditions": {
+            "branch": "main"
+          },
+          "priority": "critical",
+          "description": "Push to main - deploy to production",
+          "executionMode": "async",
+          "timeout": 600000
+        },
+        {
+          "id": "deploy-push-feat",
+          "eventType": "push",
+          "action": null,
+          "conditions": {
+            "branchPattern": "^feat/"
+          },
+          "priority": "medium",
+          "description": "Push to feat branch - run CI checks",
+          "executionMode": "async",
+          "timeout": 300000
+        },
+        {
+          "id": "deploy-push-fix",
+          "eventType": "push",
+          "action": null,
+          "conditions": {
+            "branchPattern": "^fix/"
+          },
+          "priority": "medium",
+          "description": "Push to fix branch - run CI checks",
+          "executionMode": "async",
+          "timeout": 300000
+        },
+        {
+          "id": "deploy-command",
+          "eventType": "issue_comment",
+          "action": "created",
+          "conditions": {
+            "commentPattern": "^/agent\\s+deploy"
+          },
+          "priority": "critical",
+          "description": "Manual deploy via command",
+          "executionMode": "async",
+          "timeout": 600000
+        }
+      ]
+    },
+    "Guardian": {
+      "displayName": "Guardian",
+      "color": "🔴",
+      "role": "エスカレーション",
+      "description": "Manual review for critical failures",
+      "capabilities": [
+        "manual_review",
+        "critical_issue_resolution",
+        "system_recovery"
+      ],
+      "triggers": [
+        {
+          "id": "guardian-workflow-failure-critical",
+          "eventType": "workflow_run",
+          "action": "completed",
+          "conditions": {
+            "conclusion": "failure",
+            "workflowName": ["agent-runner", "economic-circuit-breaker"]
+          },
+          "priority": "critical",
+          "description": "Critical workflow failure - escalate to Guardian",
+          "executionMode": "sync",
+          "timeout": 60000
+        }
+      ]
+    }
+  },
+  "commands": {
+    "/agent execute": {
+      "agent": "CoordinatorAgent",
+      "description": "Start autonomous execution",
+      "priority": "critical",
+      "requiresIssue": true,
+      "aliases": ["/execute", "/start"]
+    },
+    "/agent analyze": {
+      "agent": "IssueAgent",
+      "description": "Analyze issue and suggest labels",
+      "priority": "critical",
+      "requiresIssue": true,
+      "aliases": ["/analyze"]
+    },
+    "/agent review": {
+      "agent": "ReviewAgent",
+      "description": "Request code review",
+      "priority": "critical",
+      "requiresIssue": false,
+      "aliases": ["/review"]
+    },
+    "/agent status": {
+      "agent": "CoordinatorAgent",
+      "description": "Check current status",
+      "priority": "high",
+      "requiresIssue": true,
+      "aliases": ["/status"]
+    },
+    "/agent deploy": {
+      "agent": "DeploymentAgent",
+      "description": "Deploy to production/staging",
+      "priority": "critical",
+      "requiresIssue": false,
+      "aliases": ["/deploy"]
+    },
+    "/agent pr create": {
+      "agent": "PRAgent",
+      "description": "Create pull request",
+      "priority": "high",
+      "requiresIssue": true,
+      "aliases": ["/pr"]
+    },
+    "/agent help": {
+      "agent": null,
+      "description": "Show available commands",
+      "priority": "high",
+      "requiresIssue": false,
+      "aliases": ["/help"]
+    }
+  },
+  "priorityLevels": {
+    "critical": {
+      "sla": "< 1 min",
+      "useCases": ["Agent execution requests", "Critical failures"],
+      "timeout": 600000,
+      "retries": 5
+    },
+    "high": {
+      "sla": "< 5 min",
+      "useCases": ["New issues", "PRs", "Reviews"],
+      "timeout": 300000,
+      "retries": 3
+    },
+    "medium": {
+      "sla": "< 30 min",
+      "useCases": ["Deployments", "Merges"],
+      "timeout": 180000,
+      "retries": 3
+    },
+    "low": {
+      "sla": "Best effort",
+      "useCases": ["Reopens", "Non-critical updates"],
+      "timeout": 120000,
+      "retries": 2
+    }
+  },
+  "eventTypes": {
+    "issues": {
+      "actions": ["opened", "closed", "reopened", "assigned", "labeled", "unlabeled", "milestoned"],
+      "description": "GitHub Issue events"
+    },
+    "pull_request": {
+      "actions": ["opened", "closed", "reopened", "synchronize", "ready_for_review", "review_requested"],
+      "description": "GitHub Pull Request events"
+    },
+    "issue_comment": {
+      "actions": ["created", "edited", "deleted"],
+      "description": "GitHub Issue/PR comment events"
+    },
+    "push": {
+      "actions": [null],
+      "description": "Git push events"
+    },
+    "workflow_run": {
+      "actions": ["completed"],
+      "description": "GitHub Actions workflow run events"
+    }
+  },
+  "labelMapping": {
+    "agentExecutionTriggers": [
+      "🤖agent-execute",
+      "🤖trigger:agent-execute"
+    ],
+    "agentAssignmentLabels": {
+      "🤖agent:coordinator": "CoordinatorAgent",
+      "🤖agent:codegen": "CodeGenAgent",
+      "🤖agent:review": "ReviewAgent",
+      "🤖agent:issue": "IssueAgent",
+      "🤖agent:pr": "PRAgent",
+      "🤖agent:deployment": "DeploymentAgent"
+    },
+    "priorityLabels": {
+      "🔥priority:P0-Critical": "critical",
+      "⚡priority:P1-High": "high",
+      "⚠️priority:P2-Medium": "medium",
+      "📝priority:P3-Low": "low"
+    },
+    "stateLabels": {
+      "📥state:pending": "pending",
+      "🔍state:analyzing": "analyzing",
+      "🏗️state:implementing": "implementing",
+      "👀state:reviewing": "reviewing",
+      "✅state:done": "done",
+      "❌state:blocked": "blocked"
+    }
+  },
+  "escalationRules": {
+    "criticalWorkflowFailure": {
+      "agent": "Guardian",
+      "action": "create_sev1_issue",
+      "conditions": {
+        "workflowNames": ["agent-runner", "economic-circuit-breaker"],
+        "conclusion": "failure"
+      },
+      "issueTemplate": {
+        "title": "🚨 Critical Workflow Failure: {workflow_name}",
+        "labels": ["🚨severity:Sev.1-Critical", "🤖agent:guardian"],
+        "assignees": ["repository_owner"],
+        "body": "## 🚨 Critical Workflow Failure\n\n**Workflow**: {workflow_name}\n**Run ID**: {run_id}\n**Conclusion**: {conclusion}\n**URL**: {html_url}\n\n### Action Required\n\nImmediate manual review required. Check logs and determine next steps.\n\n---\n\n*Automated escalation by Guardian*"
+      }
+    },
+    "agentExecutionTimeout": {
+      "agent": "Guardian",
+      "action": "log_warning",
+      "conditions": {
+        "timeoutExceeded": true
+      }
+    }
+  },
+  "securitySettings": {
+    "webhookSignatureVerification": {
+      "enabled": false,
+      "algorithm": "sha256",
+      "secretEnvVar": "WEBHOOK_SECRET"
+    },
+    "rateLimiting": {
+      "enabled": true,
+      "maxRequestsPerMinute": 60,
+      "maxRequestsPerHour": 1000
+    },
+    "ipWhitelist": {
+      "enabled": false,
+      "allowedIPs": []
+    }
+  },
+  "monitoring": {
+    "metrics": {
+      "routingSuccessRate": {
+        "target": 99.0,
+        "unit": "percent"
+      },
+      "averageRoutingTime": {
+        "target": 5.0,
+        "unit": "seconds"
+      },
+      "retryRate": {
+        "target": 5.0,
+        "unit": "percent"
+      },
+      "criticalEventSLA": {
+        "target": 60.0,
+        "unit": "seconds"
+      },
+      "agentExecutionRate": {
+        "target": 90.0,
+        "unit": "percent"
+      }
+    },
+    "logging": {
+      "level": "info",
+      "includePayload": true,
+      "includeTimestamps": true,
+      "destination": "github_actions_logs"
+    }
+  }
+}

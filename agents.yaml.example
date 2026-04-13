@@ -1,0 +1,26 @@
+agents:
+  - id: office-assistant
+    name: Office Assistant
+    model: claude-sonnet-4-6
+    workspace: general
+    chat_id: oc_example_general
+    scopes:
+      - docs:doc:readonly
+      - im:message:send_as_bot
+
+  - id: expense-processor
+    name: Expense Processor
+    model: claude-haiku-4-5
+    workspace: finance
+    chat_id: oc_example_finance
+    scopes:
+      - base:record:created
+      - approval:approval:write
+
+  - id: crm-agent
+    name: CRM Agent
+    model: claude-sonnet-4-6
+    workspace: sales
+    scopes:
+      - base:record:created
+      - base:record:readonly

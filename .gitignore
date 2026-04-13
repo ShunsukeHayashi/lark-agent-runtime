@@ -1,0 +1,14 @@
+# Local config — never commit real tokens
+~/.larc/
+.larc/
+*.env
+.env*
+config.env
+
+# Cache and temp
+*.tmp
+*.log
+.DS_Store
+
+# Node
+node_modules/

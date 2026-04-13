@@ -1,0 +1,272 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "title": "Agent Name Mapping",
+  "description": "キャッチーなキャラクター名 ⇔ 技術的なAgent名のマッピング",
+  "version": "1.0.0",
+  "mappings": {
+    "coding": {
+      "しきるん": {
+        "technicalName": "CoordinatorAgent",
+        "englishName": "Shikiroon",
+        "color": "🔴",
+        "role": "リーダー",
+        "parallel": false,
+        "description": "チームのリーダー！みんなに仕事を分けて、順番を決めるよ"
+      },
+      "つくるん": {
+        "technicalName": "CodeGenAgent",
+        "englishName": "Tsukuroon",
+        "color": "🟢",
+        "role": "実行役",
+        "parallel": true,
+        "description": "プログラムを作る天才！AIの力でコードを自動生成するよ"
+      },
+      "めだまん": {
+        "technicalName": "ReviewAgent",
+        "englishName": "Medaman",
+        "color": "🔵",
+        "role": "分析役",
+        "parallel": true,
+        "description": "コードの品質をチェックする目利き！100点満点で採点するよ"
+      },
+      "みつけるん": {
+        "technicalName": "IssueAgent",
+        "englishName": "Mitsukeroon",
+        "color": "🔵",
+        "role": "分析役",
+        "parallel": true,
+        "description": "GitHub の Issue を分析する探偵！ラベルを自動で付けるよ"
+      },
+      "まとめるん": {
+        "technicalName": "PRAgent",
+        "englishName": "Matomeroon",
+        "color": "🟡",
+        "role": "サポート役",
+        "parallel": "conditional",
+        "description": "Pull Request を作るまとめ役！コードをキレイにまとめるよ"
+      },
+      "はこぶん": {
+        "technicalName": "DeploymentAgent",
+        "englishName": "Hakoboon",
+        "color": "🟡",
+        "role": "サポート役",
+        "parallel": "conditional",
+        "description": "完成したプログラムを配達する配達員！本番環境に届けるよ"
+      },
+      "つなぐん": {
+        "technicalName": "HooksIntegration",
+        "englishName": "Tsunagun",
+        "color": "🟡",
+        "role": "サポート役",
+        "parallel": "conditional",
+        "description": "みんなをつなぐ橋渡し役！イベントを監視するよ"
+      },
+      "ぴかぴかん": {
+        "technicalName": "RefresherAgent",
+        "englishName": "Pikapikan",
+        "color": "🟡",
+        "role": "サポート役",
+        "parallel": "conditional",
+        "description": "Issueの状態をピカピカに保つ監視役！ラベルを自動更新するよ"
+      }
+    },
+    "business": {
+      "あきんどさん": {
+        "technicalName": "AIEntrepreneurAgent",
+        "englishName": "Akindosan",
+        "color": "🔴",
+        "role": "リーダー",
+        "parallel": false,
+        "description": "ビジネス全体の社長さん！8つのステップでビジネスプランを作るよ"
+      },
+      "つくろん": {
+        "technicalName": "ProductConceptAgent",
+        "englishName": "Tsukuron",
+        "color": "🟢",
+        "role": "実行役",
+        "parallel": true,
+        "description": "商品のアイデアを考える発明家！MVPを設計するよ"
+      },
+      "かくん": {
+        "technicalName": "ProductDesignAgent",
+        "englishName": "Kakun",
+        "color": "🟢",
+        "role": "実行役",
+        "parallel": true,
+        "description": "デザインを考える絵描きさん！使いやすい画面を作るよ"
+      },
+      "みちびきん": {
+        "technicalName": "FunnelDesignAgent",
+        "englishName": "Michibikin",
+        "color": "🟢",
+        "role": "実行役",
+        "parallel": true,
+        "description": "お客さんの旅を案内する道先案内人！カスタマージャーニーを作るよ"
+      },
+      "なりきりん": {
+        "technicalName": "PersonaAgent",
+        "englishName": "Narikirin",
+        "color": "🔵",
+        "role": "分析役",
+        "parallel": true,
+        "description": "お客さんになりきる俳優さん！ペルソナを作るよ"
+      },
+      "じぶんさん": {
+        "technicalName": "SelfAnalysisAgent",
+        "englishName": "Jibunsan",
+        "color": "🔵",
+        "role": "分析役",
+        "parallel": true,
+        "description": "自分のことを深く知る哲学者！SWOT分析をするよ"
+      },
+      "しらべるん": {
+        "technicalName": "MarketResearchAgent",
+        "englishName": "Shiraberoon",
+        "color": "🔵",
+        "role": "分析役",
+        "parallel": true,
+        "description": "市場を調べる探偵！競合分析のプロだよ"
+      },
+      "ひろめるん": {
+        "technicalName": "MarketingAgent",
+        "englishName": "Hiromeroon",
+        "color": "🟢",
+        "role": "実行役",
+        "parallel": true,
+        "description": "マーケティング施策を考える宣伝マン！広告戦略を立てるよ"
+      },
+      "かくちゃん": {
+        "technicalName": "ContentCreationAgent",
+        "englishName": "Kakuchan",
+        "color": "🟢",
+        "role": "実行役",
+        "parallel": true,
+        "description": "記事や動画を作るクリエイター！コンテンツ制作のプロだよ"
+      },
+      "つぶやきん": {
+        "technicalName": "SNSStrategyAgent",
+        "englishName": "Tsubuyakin",
+        "color": "🟢",
+        "role": "実行役",
+        "parallel": true,
+        "description": "SNS 戦略を考える SNS マスター！投稿計画を立てるよ"
+      },
+      "どうがん": {
+        "technicalName": "YouTubeAgent",
+        "englishName": "Dougan",
+        "color": "🟢",
+        "role": "実行役",
+        "parallel": true,
+        "description": "YouTube 動画を企画するプロデューサー！台本も書くよ"
+      },
+      "うるん": {
+        "technicalName": "SalesAgent",
+        "englishName": "Uroon",
+        "color": "🟢",
+        "role": "実行役",
+        "parallel": true,
+        "description": "営業戦略を立てる営業マン！リードを管理するよ"
+      },
+      "おきゃくさま": {
+        "technicalName": "CRMAgent",
+        "englishName": "Okyakusama",
+        "color": "🟢",
+        "role": "実行役",
+        "parallel": true,
+        "description": "お客さんのデータを管理する管理人！LTV を最大化するよ"
+      },
+      "かぞえるん": {
+        "technicalName": "AnalyticsAgent",
+        "englishName": "Kazoeroon",
+        "color": "🔵",
+        "role": "分析役",
+        "parallel": true,
+        "description": "データを分析する数学者！レポートを作るよ"
+      },
+      "いぶさん": {
+        "technicalName": "JonathanIveDesignAgent",
+        "englishName": "Ibusan",
+        "color": "🟢",
+        "role": "実行役",
+        "parallel": true,
+        "description": "UI/UXを極限まで洗練させるデザイナー！ジョナサン・アイブの哲学でミニマリズムを実現するよ"
+      },
+      "かきこちゃん": {
+        "technicalName": "NoteAgent",
+        "englishName": "Kakikochan",
+        "color": "🟢",
+        "role": "実行役",
+        "parallel": true,
+        "description": "note.comに投稿する記事を書くライター！感情に訴えかける記事のプロだよ"
+      },
+      "えがくん": {
+        "technicalName": "ImageGenAgent",
+        "englishName": "Egakun",
+        "color": "🟢",
+        "role": "実行役",
+        "parallel": true,
+        "description": "note.com記事やSNS投稿用の画像を生成する専門スタッフ！かきこちゃんの記事に画像を追加するよ"
+      },
+      "ほのかちゃん": {
+        "technicalName": "HonokaAgent",
+        "englishName": "Honokachan",
+        "color": "🟢",
+        "role": "実行役",
+        "parallel": true,
+        "description": "オンラインコースを作る先生！13 ステップの Udemy コース設計のプロだよ"
+      }
+    }
+  },
+  "colorRules": {
+    "🔴": {
+      "name": "赤色 - リーダー",
+      "role": "指示を出す、全体を見る",
+      "parallel": false,
+      "count": 2
+    },
+    "🟢": {
+      "name": "緑色 - 実行役",
+      "role": "実際に作業する、動く",
+      "parallel": true,
+      "count": 13
+    },
+    "🔵": {
+      "name": "青色 - 分析役",
+      "role": "調べる、考える",
+      "parallel": true,
+      "count": 6
+    },
+    "🟡": {
+      "name": "黄色 - サポート役",
+      "role": "手伝う、つなぐ",
+      "parallel": "conditional",
+      "count": 4
+    }
+  },
+  "usageExamples": {
+    "parallel": [
+      {
+        "description": "3つの Issue を同時処理",
+        "agents": ["つくるん", "つくるん", "めだまん"],
+        "technicalNames": ["CodeGenAgent", "CodeGenAgent", "ReviewAgent"]
+      },
+      {
+        "description": "ビジネス企画を並列実行",
+        "agents": ["しらべるん", "なりきりん", "じぶんさん"],
+        "technicalNames": ["MarketResearchAgent", "PersonaAgent", "SelfAnalysisAgent"]
+      }
+    ],
+    "sequential": [
+      {
+        "description": "コーディングフロー",
+        "steps": [
+          { "agent": "しきるん", "technical": "CoordinatorAgent", "note": "最初に実行" },
+          { "agent": "つくるん", "technical": "CodeGenAgent", "note": "並列可能" },
+          { "agent": "めだまん", "technical": "ReviewAgent", "note": "並列可能" },
+          { "agent": "まとめるん", "technical": "PRAgent", "note": "条件付き" },
+          { "agent": "はこぶん", "technical": "DeploymentAgent", "note": "条件付き" }
+        ]
+      }
+    ]
+  }
+}

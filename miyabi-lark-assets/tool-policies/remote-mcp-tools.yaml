@@ -1,0 +1,627 @@
+# ===================================================================
+# Lark Open Platform MCP Tools Configuration (tools.yaml)
+# ===================================================================
+# This file defines the available tools, their sources, and toolsets
+# for the Lark Remote MCP Server implementation.
+# ===================================================================
+
+# -------------------------------------------------------------------
+# 1. Sources
+# -------------------------------------------------------------------
+# Define the API sources that tools will connect to.
+# Authentication credentials should be provided via environment
+# variables or command-line arguments at runtime.
+# -------------------------------------------------------------------
+sources:
+  lark_api_source:
+    kind: lark-openapi
+    description: "Lark's official Open Platform API. Handles authentication via the server's environment."
+    base_url: "https://open.larksuite.com"
+    auth_type: "tenant_access_token"
+    rate_limit:
+      requests_per_second: 10
+      burst_size: 20
+
+# -------------------------------------------------------------------
+# 2. Tools
+# -------------------------------------------------------------------
+# Define specific actions that AI agents can perform.
+# Each tool maps to a Lark API endpoint with clear descriptions
+# to help AI agents understand when and how to use them.
+# -------------------------------------------------------------------
+tools:
+  # ===== Calendar Management Tools =====
+  - name: create_calendar_event
+    kind: lark-api-call
+    source: lark_api_source
+    description: "Create a new calendar event in Lark. Can add attendees, set reminders, and configure recurrence."
+    endpoint: "POST /open-apis/calendar/v4/calendars/{calendar_id}/events"
+    parameters:
+      - name: "calendar_id"
+        type: "string"
+        required: true
+        description: "Calendar ID to add the event to. Use 'primary' for the user's primary calendar."
+      - name: "summary"
+        type: "string"
+        required: true
+        description: "Event title (e.g., 'Project Review Meeting')."
+      - name: "start_time"
+        type: "string"
+        required: true
+        description: "Event start time in ISO 8601 format (e.g., '2025-09-13T10:00:00+09:00')."
+      - name: "end_time"
+        type: "string"
+        required: true
+        description: "Event end time in ISO 8601 format (e.g., '2025-09-13T11:00:00+09:00')."
+      - name: "description"
+        type: "string"
+        required: false
+        description: "Detailed description of the event."
+      - name: "location"
+        type: "string"
+        required: false
+        description: "Event location (physical address or meeting room)."
+      - name: "attendees"
+        type: "array"
+        required: false
+        description: "List of attendee email addresses."
+      - name: "reminders"
+        type: "array"
+        required: false
+        description: "List of reminder configurations (minutes before event)."
+
+  - name: update_calendar_event
+    kind: lark-api-call
+    source: lark_api_source
+    description: "Update an existing calendar event in Lark."
+    endpoint: "PATCH /open-apis/calendar/v4/calendars/{calendar_id}/events/{event_id}"
+    parameters:
+      - name: "calendar_id"
+        type: "string"
+        required: true
+        description: "Calendar ID containing the event."
+      - name: "event_id"
+        type: "string"
+        required: true
+        description: "Event ID to update."
+      - name: "summary"
+        type: "string"
+        required: false
+        description: "New event title."
+      - name: "start_time"
+        type: "string"
+        required: false
+        description: "New start time in ISO 8601 format."
+      - name: "end_time"
+        type: "string"
+        required: false
+        description: "New end time in ISO 8601 format."
+      - name: "description"
+        type: "string"
+        required: false
+        description: "New event description."
+
+  - name: delete_calendar_event
+    kind: lark-api-call
+    source: lark_api_source
+    description: "Delete a calendar event from Lark."
+    endpoint: "DELETE /open-apis/calendar/v4/calendars/{calendar_id}/events/{event_id}"
+    parameters:
+      - name: "calendar_id"
+        type: "string"
+        required: true
+        description: "Calendar ID containing the event."
+      - name: "event_id"
+        type: "string"
+        required: true
+        description: "Event ID to delete."
+
+  - name: list_calendar_events
+    kind: lark-api-call
+    source: lark_api_source
+    description: "List calendar events within a specified time range."
+    endpoint: "GET /open-apis/calendar/v4/calendars/{calendar_id}/events"
+    parameters:
+      - name: "calendar_id"
+        type: "string"
+        required: true
+        description: "Calendar ID to query."
+      - name: "start_time"
+        type: "string"
+        required: false
+        description: "Start of time range in ISO 8601 format."
+      - name: "end_time"
+        type: "string"
+        required: false
+        description: "End of time range in ISO 8601 format."
+      - name: "page_size"
+        type: "integer"
+        required: false
+        description: "Number of events per page (default: 50, max: 500)."
+      - name: "page_token"
+        type: "string"
+        required: false
+        description: "Token for pagination."
+
+  # ===== Messaging Tools =====
+  - name: send_message
+    kind: lark-api-call
+    source: lark_api_source
+    description: "Send a message to a user or group in Lark. Supports text, rich text, images, and interactive cards."
+    endpoint: "POST /open-apis/im/v1/messages?receive_id_type={receive_id_type}"
+    parameters:
+      - name: "receive_id_type"
+        type: "string"
+        required: true
+        description: "Type of receiver ID: 'open_id', 'user_id', 'email', or 'chat_id'."
+      - name: "receive_id"
+        type: "string"
+        required: true
+        description: "Receiver's ID corresponding to the receive_id_type."
+      - name: "content"
+        type: "string"
+        required: true
+        description: "Message content in JSON format (e.g., '{\"text\":\"Hello World\"}')"
+      - name: "msg_type"
+        type: "string"
+        required: true
+        description: "Message type: 'text', 'post', 'image', 'interactive', etc."
+
+  - name: reply_to_message
+    kind: lark-api-call
+    source: lark_api_source
+    description: "Reply to an existing message in Lark."
+    endpoint: "POST /open-apis/im/v1/messages/{message_id}/reply"
+    parameters:
+      - name: "message_id"
+        type: "string"
+        required: true
+        description: "ID of the message to reply to."
+      - name: "content"
+        type: "string"
+        required: true
+        description: "Reply content in JSON format."
+      - name: "msg_type"
+        type: "string"
+        required: true
+        description: "Message type for the reply."
+
+  - name: create_group_chat
+    kind: lark-api-call
+    source: lark_api_source
+    description: "Create a new group chat in Lark."
+    endpoint: "POST /open-apis/im/v1/chats"
+    parameters:
+      - name: "name"
+        type: "string"
+        required: true
+        description: "Group chat name."
+      - name: "description"
+        type: "string"
+        required: false
+        description: "Group chat description."
+      - name: "user_id_list"
+        type: "array"
+        required: true
+        description: "List of user IDs to add to the group."
+      - name: "owner_id"
+        type: "string"
+        required: false
+        description: "User ID of the group owner."
+
+  # ===== Bitable (Database) Tools =====
+  - name: list_bitable_records
+    kind: lark-api-call
+    source: lark_api_source
+    description: "Retrieve records from a Lark Bitable (multidimensional table/database)."
+    endpoint: "GET /open-apis/bitable/v1/apps/{app_token}/tables/{table_id}/records"
+    parameters:
+      - name: "app_token"
+        type: "string"
+        required: true
+        description: "Bitable app token identifying the database."
+      - name: "table_id"
+        type: "string"
+        required: true
+        description: "Table ID within the Bitable app."
+      - name: "view_id"
+        type: "string"
+        required: false
+        description: "View ID to filter records (optional)."
+      - name: "filter"
+        type: "string"
+        required: false
+        description: "Filter expression to query specific records."
+      - name: "sort"
+        type: "string"
+        required: false
+        description: "Sort expression for ordering results."
+      - name: "page_size"
+        type: "integer"
+        required: false
+        description: "Number of records per page (default: 20, max: 500)."
+      - name: "page_token"
+        type: "string"
+        required: false
+        description: "Token for pagination."
+
+  - name: create_bitable_record
+    kind: lark-api-call
+    source: lark_api_source
+    description: "Create a new record in a Lark Bitable."
+    endpoint: "POST /open-apis/bitable/v1/apps/{app_token}/tables/{table_id}/records"
+    parameters:
+      - name: "app_token"
+        type: "string"
+        required: true
+        description: "Bitable app token."
+      - name: "table_id"
+        type: "string"
+        required: true
+        description: "Table ID to add the record to."
+      - name: "fields"
+        type: "object"
+        required: true
+        description: "Record data as key-value pairs matching table schema."
+
+  - name: update_bitable_record
+    kind: lark-api-call
+    source: lark_api_source
+    description: "Update an existing record in a Lark Bitable."
+    endpoint: "PUT /open-apis/bitable/v1/apps/{app_token}/tables/{table_id}/records/{record_id}"
+    parameters:
+      - name: "app_token"
+        type: "string"
+        required: true
+        description: "Bitable app token."
+      - name: "table_id"
+        type: "string"
+        required: true
+        description: "Table ID containing the record."
+      - name: "record_id"
+        type: "string"
+        required: true
+        description: "Record ID to update."
+      - name: "fields"
+        type: "object"
+        required: true
+        description: "Updated field values."
+
+  - name: delete_bitable_record
+    kind: lark-api-call
+    source: lark_api_source
+    description: "Delete a record from a Lark Bitable."
+    endpoint: "DELETE /open-apis/bitable/v1/apps/{app_token}/tables/{table_id}/records/{record_id}"
+    parameters:
+      - name: "app_token"
+        type: "string"
+        required: true
+        description: "Bitable app token."
+      - name: "table_id"
+        type: "string"
+        required: true
+        description: "Table ID containing the record."
+      - name: "record_id"
+        type: "string"
+        required: true
+        description: "Record ID to delete."
+
+  # ===== Document Management Tools =====
+  - name: create_document
+    kind: lark-api-call
+    source: lark_api_source
+    description: "Create a new Lark document in a specified folder."
+    endpoint: "POST /open-apis/drive/v1/files/create"
+    parameters:
+      - name: "folder_token"
+        type: "string"
+        required: true
+        description: "Parent folder token where the document will be created."
+      - name: "title"
+        type: "string"
+        required: true
+        description: "Document title."
+      - name: "type"
+        type: "string"
+        required: true
+        description: "Document type: 'doc', 'sheet', 'bitable', 'mindmap', etc."
+
+  - name: get_document_content
+    kind: lark-api-call
+    source: lark_api_source
+    description: "Retrieve the content of a Lark document."
+    endpoint: "GET /open-apis/docx/v1/documents/{document_id}/raw_content"
+    parameters:
+      - name: "document_id"
+        type: "string"
+        required: true
+        description: "Document ID to retrieve."
+      - name: "lang"
+        type: "string"
+        required: false
+        description: "Language preference for the content."
+
+  - name: update_document_content
+    kind: lark-api-call
+    source: lark_api_source
+    description: "Update the content of a Lark document."
+    endpoint: "PUT /open-apis/docx/v1/documents/{document_id}/blocks/{block_id}"
+    parameters:
+      - name: "document_id"
+        type: "string"
+        required: true
+        description: "Document ID to update."
+      - name: "block_id"
+        type: "string"
+        required: true
+        description: "Block ID within the document to update."
+      - name: "content"
+        type: "object"
+        required: true
+        description: "New content for the block."
+
+  - name: share_document
+    kind: lark-api-call
+    source: lark_api_source
+    description: "Share a Lark document with specific users or groups."
+    endpoint: "POST /open-apis/drive/v1/permissions/{file_token}/members"
+    parameters:
+      - name: "file_token"
+        type: "string"
+        required: true
+        description: "Document token to share."
+      - name: "member_type"
+        type: "string"
+        required: true
+        description: "Type of member: 'user', 'chat', 'department', etc."
+      - name: "member_id"
+        type: "string"
+        required: true
+        description: "ID of the member to share with."
+      - name: "perm"
+        type: "string"
+        required: true
+        description: "Permission level: 'view', 'edit', 'full_access'."
+
+  # ===== Task Management Tools =====
+  - name: create_task
+    kind: lark-api-call
+    source: lark_api_source
+    description: "Create a new task in Lark's task management system."
+    endpoint: "POST /open-apis/task/v1/tasks"
+    parameters:
+      - name: "summary"
+        type: "string"
+        required: true
+        description: "Task title or summary."
+      - name: "description"
+        type: "string"
+        required: false
+        description: "Detailed task description."
+      - name: "due_time"
+        type: "string"
+        required: false
+        description: "Task due date/time in ISO 8601 format."
+      - name: "assignee"
+        type: "string"
+        required: false
+        description: "User ID of the task assignee."
+      - name: "collaborators"
+        type: "array"
+        required: false
+        description: "List of collaborator user IDs."
+
+  - name: update_task_status
+    kind: lark-api-call
+    source: lark_api_source
+    description: "Update the status of an existing task."
+    endpoint: "PATCH /open-apis/task/v1/tasks/{task_id}"
+    parameters:
+      - name: "task_id"
+        type: "string"
+        required: true
+        description: "Task ID to update."
+      - name: "status"
+        type: "string"
+        required: true
+        description: "New status: 'todo', 'in_progress', 'done', 'cancelled'."
+      - name: "complete_time"
+        type: "string"
+        required: false
+        description: "Completion time in ISO 8601 format (for 'done' status)."
+
+  # ===== User and Organization Tools =====
+  - name: get_user_info
+    kind: lark-api-call
+    source: lark_api_source
+    description: "Retrieve information about a Lark user."
+    endpoint: "GET /open-apis/contact/v3/users/{user_id}"
+    parameters:
+      - name: "user_id"
+        type: "string"
+        required: true
+        description: "User ID to query."
+      - name: "user_id_type"
+        type: "string"
+        required: false
+        description: "Type of user ID: 'user_id', 'open_id', 'union_id'."
+
+  - name: list_departments
+    kind: lark-api-call
+    source: lark_api_source
+    description: "List departments in the organization."
+    endpoint: "GET /open-apis/contact/v3/departments"
+    parameters:
+      - name: "parent_department_id"
+        type: "string"
+        required: false
+        description: "Parent department ID to list subdepartments."
+      - name: "page_size"
+        type: "integer"
+        required: false
+        description: "Number of departments per page."
+      - name: "page_token"
+        type: "string"
+        required: false
+        description: "Token for pagination."
+
+  # ===== Approval Tools =====
+  - name: create_approval_instance
+    kind: lark-api-call
+    source: lark_api_source
+    description: "Create a new approval workflow instance."
+    endpoint: "POST /open-apis/approval/v4/instances"
+    parameters:
+      - name: "approval_code"
+        type: "string"
+        required: true
+        description: "Approval definition code."
+      - name: "user_id"
+        type: "string"
+        required: true
+        description: "User ID of the applicant."
+      - name: "form"
+        type: "object"
+        required: true
+        description: "Form data for the approval."
+      - name: "approvers"
+        type: "array"
+        required: false
+        description: "List of approver user IDs."
+
+  - name: approve_or_reject
+    kind: lark-api-call
+    source: lark_api_source
+    description: "Approve or reject an approval instance."
+    endpoint: "POST /open-apis/approval/v4/instances/{instance_id}/approve"
+    parameters:
+      - name: "instance_id"
+        type: "string"
+        required: true
+        description: "Approval instance ID."
+      - name: "action"
+        type: "string"
+        required: true
+        description: "Action to take: 'approve' or 'reject'."
+      - name: "comment"
+        type: "string"
+        required: false
+        description: "Comment for the approval/rejection."
+
+# -------------------------------------------------------------------
+# 3. Toolsets
+# -------------------------------------------------------------------
+# Group tools into logical sets for different use cases or roles.
+# AI agents can be assigned specific toolsets based on their purpose.
+# -------------------------------------------------------------------
+toolsets:
+  # Complete business assistant with all capabilities
+  lark_business_assistant:
+    - create_calendar_event
+    - update_calendar_event
+    - delete_calendar_event
+    - list_calendar_events
+    - send_message
+    - reply_to_message
+    - create_group_chat
+    - list_bitable_records
+    - create_bitable_record
+    - update_bitable_record
+    - delete_bitable_record
+    - create_document
+    - get_document_content
+    - update_document_content
+    - share_document
+    - create_task
+    - update_task_status
+    - get_user_info
+    - list_departments
+    - create_approval_instance
+    - approve_or_reject
+
+  # Calendar-focused assistant
+  calendar_manager:
+    - create_calendar_event
+    - update_calendar_event
+    - delete_calendar_event
+    - list_calendar_events
+
+  # Communication-focused assistant
+  communication_assistant:
+    - send_message
+    - reply_to_message
+    - create_group_chat
+    - get_user_info
+
+  # Data management assistant
+  data_analyst:
+    - list_bitable_records
+    - create_bitable_record
+    - update_bitable_record
+    - delete_bitable_record
+    - get_document_content
+
+  # Document collaboration assistant
+  document_collaborator:
+    - create_document
+    - get_document_content
+    - update_document_content
+    - share_document
+
+  # Project management assistant
+  project_manager:
+    - create_task
+    - update_task_status
+    - create_calendar_event
+    - send_message
+    - create_document
+
+  # HR assistant
+  hr_assistant:
+    - get_user_info
+    - list_departments
+    - create_approval_instance
+    - approve_or_reject
+    - send_message
+
+  # Read-only observer (for monitoring/reporting)
+  observer:
+    - list_calendar_events
+    - list_bitable_records
+    - get_document_content
+    - get_user_info
+    - list_departments
+
+# -------------------------------------------------------------------
+# 4. Configuration
+# -------------------------------------------------------------------
+# Additional configuration options for the MCP server
+# -------------------------------------------------------------------
+config:
+  # Default toolset to use if none specified
+  default_toolset: "lark_business_assistant"
+
+  # Enable/disable specific features
+  features:
+    auto_retry: true
+    rate_limiting: true
+    caching: true
+    audit_logging: true
+
+  # Retry configuration
+  retry:
+    max_attempts: 3
+    initial_delay_ms: 1000
+    max_delay_ms: 10000
+    exponential_base: 2
+
+  # Cache configuration
+  cache:
+    ttl_seconds: 300
+    max_size_mb: 100
+
+  # Audit configuration
+  audit:
+    log_all_requests: true
+    log_all_responses: false
+    sensitive_field_masking: true

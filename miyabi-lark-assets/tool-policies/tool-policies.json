@@ -1,0 +1,104 @@
+{
+  "policies": [
+    {
+      "server": "filesystem",
+      "entryConditions": [
+        {
+          "type": "metadataFlag",
+          "path": "toolControl.allow.filesystem",
+          "expected": true,
+          "failureMessage": "Filesystem MCP は toolControl.allow.filesystem=true の場合にのみ使用できます。"
+        }
+      ],
+      "exitConditions": [
+        {
+          "type": "metadataFlag",
+          "path": "toolControl.exit.filesystem",
+          "expected": true,
+          "failureMessage": "Filesystem MCP を終了するには toolControl.exit.filesystem=true を指定してください。"
+        }
+      ]
+    },
+    {
+      "server": "github",
+      "entryConditions": [
+        {
+          "type": "metadataFlag",
+          "path": "toolControl.allow.github",
+          "expected": true,
+          "failureMessage": "GitHub MCP は toolControl.allow.github=true の場合にのみ使用できます。"
+        }
+      ],
+      "exitConditions": [
+        {
+          "type": "metadataFlag",
+          "path": "toolControl.exit.github",
+          "expected": true,
+          "failureMessage": "GitHub MCP を終了するには toolControl.exit.github=true を指定してください。"
+        }
+      ]
+    },
+    {
+      "server": "lark_openapi_enhanced",
+      "entryConditions": [
+        {
+          "type": "metadataFlag",
+          "path": "toolControl.allow.lark_openapi_enhanced",
+          "expected": true,
+          "failureMessage": "Lark OpenAPI MCP を利用するには toolControl.allow.lark_openapi_enhanced=true が必要です。"
+        }
+      ],
+      "exitConditions": [
+        {
+          "type": "metadataFlag",
+          "path": "toolControl.exit.lark_openapi_enhanced",
+          "expected": true,
+          "failureMessage": "Lark OpenAPI MCP を終了するには toolControl.exit.lark_openapi_enhanced=true を指定してください。"
+        }
+      ]
+    },
+    {
+      "server": "lark_wiki_agents",
+      "entryConditions": [
+        {
+          "type": "metadataFlag",
+          "path": "toolControl.allow.lark_wiki_agents",
+          "expected": true,
+          "failureMessage": "Lark Wiki MCP を利用するには toolControl.allow.lark_wiki_agents=true が必要です。"
+        },
+        {
+          "type": "promptIncludes",
+          "keywords": ["wiki"],
+          "failureMessage": "プロンプトに 'wiki' を含めるか、明示的に許可フラグを設定してください。"
+        }
+      ],
+      "exitConditions": [
+        {
+          "type": "metadataFlag",
+          "path": "toolControl.exit.lark_wiki_agents",
+          "expected": true,
+          "failureMessage": "Lark Wiki MCP を終了するには toolControl.exit.lark_wiki_agents=true を指定してください。"
+        }
+      ]
+    },
+    {
+      "server": "lark_open_doc_search",
+      "entryConditions": [
+        {
+          "type": "metadataFlag",
+          "path": "toolControl.allow.lark_open_doc_search",
+          "expected": true,
+          "failureMessage": "Lark ドキュメント検索 MCP を利用するには toolControl.allow.lark_open_doc_search=true が必要です。"
+        }
+      ],
+      "exitConditions": [
+        {
+          "type": "metadataFlag",
+          "path": "toolControl.exit.lark_open_doc_search",
+          "expected": true,
+          "failureMessage": "Lark ドキュメント検索 MCP を終了するには toolControl.exit.lark_open_doc_search=true を指定してください。"
+        }
+      ]
+    }
+  ]
+}

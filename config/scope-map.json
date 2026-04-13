@@ -1,0 +1,233 @@
+{
+  "_comment": "タスク種別 → 必要 Lark スコープのマッピング定義。identity は user / bot / either のいずれか。",
+  "_version": "0.1.0",
+  "_updated": "2026-04-13",
+
+  "tasks": {
+    "read_document": {
+      "scopes": ["docs:doc:readonly"],
+      "identity": "user",
+      "description": "飞书文档の読み取り"
+    },
+    "create_document": {
+      "scopes": ["docs:doc:create"],
+      "identity": "user",
+      "description": "飞书文档の新規作成"
+    },
+    "update_document": {
+      "scopes": ["docs:doc"],
+      "identity": "user",
+      "description": "飞书文档の編集・更新"
+    },
+    "read_wiki": {
+      "scopes": ["wiki:wiki:readonly"],
+      "identity": "user",
+      "description": "Wikiスペース・ノードの読み取り"
+    },
+    "write_wiki": {
+      "scopes": ["wiki:wiki"],
+      "identity": "user",
+      "description": "Wikiノードの作成・更新"
+    },
+    "manage_wiki": {
+      "scopes": ["wiki:wiki", "wiki:wiki.node"],
+      "identity": "user",
+      "description": "Wikiスペースの管理（メンバー・権限含む）"
+    },
+    "send_message": {
+      "scopes": ["im:message:send_as_bot"],
+      "identity": "bot",
+      "description": "Bot としてメッセージを送信"
+    },
+    "read_message": {
+      "scopes": ["im:message:readonly"],
+      "identity": "user",
+      "description": "メッセージ・チャット履歴の読み取り"
+    },
+    "read_drive": {
+      "scopes": ["drive:drive:readonly"],
+      "identity": "user",
+      "description": "Drive ファイル・フォルダの読み取り"
+    },
+    "create_drive_file": {
+      "scopes": ["drive:file:create"],
+      "identity": "user",
+      "description": "Drive へのファイルアップロード・作成"
+    },
+    "manage_drive": {
+      "scopes": ["drive:drive", "drive:file:create"],
+      "identity": "user",
+      "description": "Drive ファイル・フォルダの作成・移動・削除"
+    },
+    "read_base": {
+      "scopes": ["base:record:readonly"],
+      "identity": "user",
+      "description": "Bitable/Base レコードの読み取り"
+    },
+    "create_base_record": {
+      "scopes": ["base:record:created"],
+      "identity": "user",
+      "description": "Bitable/Base への新規レコード作成"
+    },
+    "manage_base": {
+      "scopes": ["bitable:app", "bitable:table", "bitable:record"],
+      "identity": "user",
+      "description": "Bitable アプリ・テーブル・レコードの全管理"
+    },
+    "read_calendar": {
+      "scopes": ["calendar:calendar:readonly"],
+      "identity": "user",
+      "description": "カレンダー・イベントの読み取り"
+    },
+    "write_calendar": {
+      "scopes": ["calendar:calendar"],
+      "identity": "user",
+      "description": "カレンダーイベントの作成・更新・削除"
+    },
+    "create_expense": {
+      "scopes": ["base:record:created", "approval:approval:write"],
+      "identity": "user",
+      "description": "経費申請レコードの作成と承認フローの起動"
+    },
+    "submit_approval": {
+      "scopes": ["approval:approval:write"],
+      "identity": "user",
+      "description": "承認フローへのインスタンス作成・提出"
+    },
+    "read_approval": {
+      "scopes": ["approval:approval:readonly"],
+      "identity": "user",
+      "description": "承認フロー情報・ステータスの読み取り"
+    },
+    "read_contact": {
+      "scopes": ["contact:user.base:readonly", "contact:department.base:readonly"],
+      "identity": "user",
+      "description": "ユーザー・部署情報の読み取り"
+    },
+    "manage_contact": {
+      "scopes": ["contact:user.base", "contact:department.base"],
+      "identity": "user",
+      "description": "ユーザー・部署情報の管理"
+    },
+    "read_task": {
+      "scopes": ["task:task:readonly"],
+      "identity": "user",
+      "description": "タスク・チェックリストの読み取り"
+    },
+    "write_task": {
+      "scopes": ["task:task"],
+      "identity": "user",
+      "description": "タスクの作成・更新・完了"
+    },
+    "read_attendance": {
+      "scopes": ["attendance:record:readonly"],
+      "identity": "user",
+      "description": "考勤打刻レコードの読み取り"
+    },
+    "read_minutes": {
+      "scopes": ["minutes:content:readonly"],
+      "identity": "user",
+      "description": "飞书妙记（会議録）の読み取り"
+    },
+    "read_vc": {
+      "scopes": ["vc:record:readonly"],
+      "identity": "user",
+      "description": "ビデオ会議レコードの読み取り"
+    },
+    "manage_sheets": {
+      "scopes": ["sheets:spreadsheet"],
+      "identity": "user",
+      "description": "电子表格の作成・読み書き"
+    },
+    "manage_slides": {
+      "scopes": ["docx:document"],
+      "identity": "user",
+      "description": "スライド（PPT）の作成・編集"
+    }
+  },
+
+  "profiles": {
+    "readonly": {
+      "description": "読み取り専用プロファイル — データ閲覧・分析用途",
+      "scopes": [
+        "docs:doc:readonly",
+        "wiki:wiki:readonly",
+        "base:record:readonly",
+        "drive:drive:readonly",
+        "calendar:calendar:readonly",
+        "approval:approval:readonly",
+        "contact:user.base:readonly",
+        "contact:department.base:readonly",
+        "task:task:readonly",
+        "attendance:record:readonly",
+        "minutes:content:readonly",
+        "vc:record:readonly"
+      ]
+    },
+    "writer": {
+      "description": "書き込みプロファイル — 日常業務・コンテンツ作成用途",
+      "scopes": [
+        "docs:doc:create",
+        "docs:doc",
+        "wiki:wiki",
+        "base:record:created",
+        "drive:file:create",
+        "im:message:send_as_bot",
+        "calendar:calendar",
+        "task:task",
+        "sheets:spreadsheet"
+      ]
+    },
+    "admin": {
+      "description": "管理者プロファイル — ワークスペース・フロー管理用途",
+      "scopes": [
+        "docs:doc",
+        "wiki:wiki",
+        "wiki:wiki.node",
+        "bitable:app",
+        "bitable:table",
+        "bitable:record",
+        "drive:drive",
+        "drive:file:create",
+        "im:message:send_as_bot",
+        "calendar:calendar",
+        "approval:approval:write",
+        "approval:approval:readonly",
+        "contact:user.base",
+        "contact:department.base",
+        "task:task",
+        "sheets:spreadsheet"
+      ]
+    },
+    "backoffice_agent": {
+      "description": "バックオフィスエージェント — 経費・稟議・ドキュメント処理用途",
+      "scopes": [
+        "docs:doc:readonly",
+        "wiki:wiki:readonly",
+        "base:record:created",
+        "base:record:readonly",
+        "drive:file:create",
+        "drive:drive:readonly",
+        "im:message:send_as_bot",
+        "approval:approval:write",
+        "approval:approval:readonly",
+        "task:task"
+      ]
+    }
+  },
+
+  "error_hints": {
+    "131006": {
+      "message": "permission denied: wiki space permission denied",
+      "fix": "Lark Open Platform でアプリを Wiki スペースのメンバーに追加してください"
+    },
+    "99991663": {
+      "message": "The app has not been granted permission",
+      "fix": "Open Platform の「権限とスコープ」で必要なスコープを有効化してください"
+    },
+    "99991668": {
+      "message": "User is not authorized",
+      "fix": "tenant access token を使用するか、ユーザーにアプリへの権限付与を依頼してください"
+    }
+  }
+}

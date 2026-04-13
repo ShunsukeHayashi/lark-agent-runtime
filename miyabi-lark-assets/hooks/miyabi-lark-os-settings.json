@@ -1,0 +1,153 @@
+{
+  "$schema": "https://docs.claude.com/schemas/settings.json",
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "command": ".claude/hooks/log-commands.sh \"$PROMPT\"",
+        "description": "Log user prompts to .ai/logs/ for LDD (Log-Driven Development)"
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "command": ".claude/hooks/auto-format.sh",
+        "description": "Auto-format code before editing/writing files"
+      },
+      {
+        "matcher": "Bash",
+        "command": "echo \"⚠️  About to execute: $TOOL_INPUT\" >&2",
+        "description": "Warn before executing bash commands"
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "command": ".claude/hooks/validate-typescript.sh",
+        "description": "Validate TypeScript code after editing/writing files"
+      },
+      {
+        "matcher": "Bash",
+        "command": ".claude/hooks/agent-event.sh progress $AGENT_ID $ISSUE_NUMBER 50 \"Command executed: $TOOL_INPUT\"",
+        "description": "Send agent progress event after bash execution"
+      }
+    ],
+    "Stop": [
+      {
+        "command": ".claude/hooks/session-continue.sh",
+        "description": "Prompt to continue or save session state"
+      }
+    ],
+    "SessionStart": [
+      {
+        "command": "echo \"🚀 Miyabi Lark OS Session Started\" && echo \"📍 Working directory: $CLAUDE_PROJECT_DIR\" && git status --short",
+        "description": "Display project status on session start"
+      },
+      {
+        "command": ".claude/hooks/autocompact-manager.sh check",
+        "description": "Display auto-compact optimization tips"
+      },
+      {
+        "command": ".claude/hooks/session-keepalive.sh start",
+        "description": "Start session keep-alive mechanism to prevent timeout"
+      }
+    ],
+    "SessionEnd": [
+      {
+        "command": ".claude/hooks/session-keepalive.sh stop",
+        "description": "Stop session keep-alive mechanism"
+      },
+      {
+        "command": "echo \"📊 Session Statistics:\" && echo \"Duration: $(date)\" && git status --short",
+        "description": "Display session summary on exit"
+      }
+    ],
+    "Notification": [
+      {
+        "command": "echo \"🔔 Notification: $NOTIFICATION_MESSAGE\"",
+        "description": "Log Claude Code notifications"
+      }
+    ],
+    "PreCompact": [
+      {
+        "command": "echo \"🗜️  Context window compacting...\" && echo \"Current size: $CONTEXT_SIZE tokens\"",
+        "description": "Warn before context compaction"
+      }
+    ]
+  },
+  "timeout": {
+    "default": 1800000,
+    "perCommand": {
+      ".claude/hooks/auto-format.sh": 300000,
+      ".claude/hooks/validate-typescript.sh": 600000
+    },
+    "mcp": {
+      "connectionTimeout": 300000,
+      "requestTimeout": 1800000,
+      "idleTimeout": 7200000
+    },
+    "session": {
+      "inactivityTimeout": 14400000,
+      "maxSessionDuration": 28800000,
+      "keepAliveInterval": 60000,
+      "reconnectAttempts": 10,
+      "reconnectDelay": 5000
+    }
+  },
+  "security": {
+    "blockedPaths": [
+      ".env",
+      ".env.local",
+      ".env.production",
+      ".git/",
+      "*.key",
+      "*.pem",
+      "**/node_modules/**",
+      "**/.worktrees/**",
+      "**/credentials.json",
+      "**/*.secret"
+    ],
+    "allowedCommands": [
+      "echo",
+      "git",
+      "npm",
+      "node",
+      "npx",
+      "tsc",
+      ".claude/hooks/*.sh"
+    ]
+  },
+  "plugins": [],
+  "allow": [
+    "Read(/Users/shunsuke/Dev/miyabi-lark-os/**)",
+    "Write(/Users/shunsuke/Dev/miyabi-lark-os/**)",
+    "Edit(/Users/shunsuke/Dev/miyabi-lark-os/**)",
+    "Glob(/Users/shunsuke/Dev/miyabi-lark-os/**)",
+    "Grep(/Users/shunsuke/Dev/miyabi-lark-os/**)",
+    "Bash(git *)",
+    "Bash(npm *)",
+    "Bash(node *)",
+    "Bash(npx *)",
+    "Bash(tsc *)",
+    "Bash(gh *)",
+    "Bash(echo *)",
+    "Bash(cat *)",
+    "Bash(ls *)",
+    "Bash(mkdir *)",
+    "Bash(rm *)",
+    "Bash(mv *)",
+    "Bash(cp *)",
+    "Bash(.claude/hooks/*.sh *)",
+    "Task(*)",
+    "SlashCommand(*)",
+    "Skill(*)",
+    "NotebookEdit(/Users/shunsuke/Dev/miyabi-lark-os/**)",
+    "WebFetch(*)",
+    "WebSearch(*)"
+  ],
+  "sandbox": {
+    "enabled": true,
+    "autoAllowBashIfSandboxed": true
+  },
+  "enableAllProjectMcpServers": true,
+  "mcpServers": {}
+}
