@@ -11,6 +11,7 @@ cmd_ingress() {
   case "$action" in
     enqueue) _ingress_enqueue "$@" ;;
     list)    _ingress_list "$@" ;;
+    next)    _ingress_next "$@" ;;
     approve) _ingress_approve "$@" ;;
     resume)  _ingress_resume "$@" ;;
     delegate) _ingress_delegate "$@" ;;
@@ -35,6 +36,7 @@ ${BOLD}larc ingress${RESET} — Normalize inbound Lark events into queued tasks
 ${BOLD}Commands:${RESET}
   ${CYAN}enqueue${RESET}   Create a queue item from message text / stdin
   ${CYAN}list${RESET}      List queued items from Base or local cache
+  ${CYAN}next${RESET}      Pull the next actionable queue item for an agent
   ${CYAN}approve${RESET}   Mark a blocked approval item as approved
   ${CYAN}resume${RESET}    Move an approved item back to pending
   ${CYAN}delegate${RESET}  Assign a queue item to the best specialist agent
@@ -48,6 +50,7 @@ ${BOLD}Examples:${RESET}
   echo "Create CRM record and send a follow-up message" | larc ingress enqueue --agent crm-agent
   larc ingress enqueue --text "Upload the file to drive and update the wiki" --dry-run
   larc ingress list --agent main
+  larc ingress next --agent crm-agent --days 14
   larc ingress approve --queue-id 1234
   larc ingress resume --queue-id 1234
   larc ingress delegate --queue-id 1234
@@ -326,6 +329,39 @@ if not found:
   fi
 
   echo "(no queue items)"
+}
+
+_ingress_next() {
+  local agent_id="main"
+  local days="14"
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --agent) agent_id="$2"; shift 2 ;;
+      --days) days="$2"; shift 2 ;;
+      *) log_warn "Unknown option: $1"; shift ;;
+    esac
+  done
+
+  local queue_json
+  queue_json=$(_ingress_find_next_local_queue_item "$agent_id")
+  if [[ -z "$queue_json" ]]; then
+    echo "(no actionable queue item for $agent_id)"
+    return 0
+  fi
+
+  local status
+  status=$(python3 - "$queue_json" <<'PY'
+import json, sys
+d = json.loads(sys.argv[1])
+print(d.get("status", ""))
+PY
+)
+
+  if [[ "$status" == "delegated" ]]; then
+    _ingress_render_bundle "handoff" "$queue_json" "$days"
+  else
+    _ingress_render_bundle "context" "$queue_json" "$days"
+  fi
 }
 
 _ingress_approve() {
@@ -703,6 +739,61 @@ for name in os.listdir(queue_dir):
                 f.write(json.dumps(row, ensure_ascii=False) + "\n")
         raise SystemExit(0)
 raise SystemExit(1)
+PY
+}
+
+_ingress_find_next_local_queue_item() {
+  local agent_id="$1"
+  local queue_dir="$LARC_CACHE/queue"
+  [[ -d "$queue_dir" ]] || return 0
+
+  python3 - "$queue_dir" "$agent_id" <<'PY'
+import json, os, sys
+from datetime import datetime, timezone
+
+queue_dir, agent_id = sys.argv[1:3]
+items = []
+
+def parse_ts(value):
+    if not value:
+        return datetime.max.replace(tzinfo=timezone.utc)
+    for candidate in (value, value.replace("Z", "+00:00")):
+        try:
+            return datetime.fromisoformat(candidate)
+        except ValueError:
+            pass
+    return datetime.max.replace(tzinfo=timezone.utc)
+
+for name in os.listdir(queue_dir):
+    if not name.endswith(".jsonl"):
+        continue
+    path = os.path.join(queue_dir, name)
+    with open(path, "r", encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            d = json.loads(line)
+            status = d.get("status", "")
+            assigned = d.get("assigned_agent_id")
+            owner = d.get("agent_id")
+            if agent_id == "main":
+                if status not in {"pending", "pending_preview"}:
+                    continue
+                if assigned:
+                    continue
+                if owner != "main":
+                    continue
+            else:
+                if status != "delegated":
+                    continue
+                if assigned != agent_id:
+                    continue
+            items.append(d)
+
+items.sort(key=lambda d: parse_ts(d.get("created_at")))
+if items:
+    print(json.dumps(items[0], ensure_ascii=False))
 PY
 }
 
