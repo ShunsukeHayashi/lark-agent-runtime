@@ -11,6 +11,7 @@ cmd_ingress() {
   case "$action" in
     enqueue) _ingress_enqueue "$@" ;;
     list)    _ingress_list "$@" ;;
+    openclaw) _ingress_openclaw "$@" ;;
     next)    _ingress_next "$@" ;;
     run-once) _ingress_run_once "$@" ;;
     execute-stub) _ingress_execute_stub "$@" ;;
@@ -40,6 +41,7 @@ ${BOLD}larc ingress${RESET} — Normalize inbound Lark events into queued tasks
 ${BOLD}Commands:${RESET}
   ${CYAN}enqueue${RESET}   Create a queue item from message text / stdin
   ${CYAN}list${RESET}      List queued items from Base or local cache
+  ${CYAN}openclaw${RESET}  Build the next-step bundle for an OpenClaw agent
   ${CYAN}next${RESET}      Pull the next actionable queue item for an agent
   ${CYAN}run-once${RESET}  Claim the next actionable queue item for an agent
   ${CYAN}execute-stub${RESET} Show a placeholder execution plan for an in-progress item
@@ -58,6 +60,7 @@ ${BOLD}Examples:${RESET}
   echo "Create CRM record and send a follow-up message" | larc ingress enqueue --agent crm-agent
   larc ingress enqueue --text "Upload the file to drive and update the wiki" --dry-run
   larc ingress list --agent main
+  larc ingress openclaw --agent main --days 14
   larc ingress next --agent crm-agent --days 14
   larc ingress run-once --agent crm-agent --days 14 --dry-run
   larc ingress execute-stub --queue-id 1234
@@ -374,6 +377,34 @@ PY
   else
     _ingress_render_bundle "context" "$queue_json" "$days"
   fi
+}
+
+_ingress_openclaw() {
+  local agent_id="main"
+  local queue_id=""
+  local days="14"
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --agent) agent_id="$2"; shift 2 ;;
+      --queue-id) queue_id="$2"; shift 2 ;;
+      --days) days="$2"; shift 2 ;;
+      *) log_warn "Unknown option: $1"; shift ;;
+    esac
+  done
+
+  local queue_json=""
+  if [[ -n "$queue_id" ]]; then
+    queue_json=$(_ingress_get_local_queue_item "$queue_id")
+    [[ -z "$queue_json" ]] && { log_error "Queue item not found locally: $queue_id"; return 1; }
+  else
+    queue_json=$(_ingress_find_next_local_queue_item "$agent_id")
+    if [[ -z "$queue_json" ]]; then
+      echo "(no actionable queue item for $agent_id)"
+      return 0
+    fi
+  fi
+
+  _ingress_render_bundle "openclaw" "$queue_json" "$days"
 }
 
 _ingress_run_once() {
@@ -1376,9 +1407,11 @@ def next_action(queue):
     status = queue.get("status")
     if status == "partial":
         return "manual_followup_required"
-    if gate == "approval" and status in {"blocked_approval", "approved"}:
-        return "approval_still_needed"
-    if gate == "preview" or status == "pending_preview":
+    if gate == "approval" and status not in {"done", "failed"}:
+        return "approval_or_controlled_execution_required"
+    if gate == "preview" and status not in {"done", "failed"}:
+        return "preview_required"
+    if status == "pending_preview":
         return "preview_required"
     return "ready_for_execution"
 
@@ -1412,6 +1445,59 @@ elif mode == "run-once":
     print(f"  message: {message_text}")
     print(f"  retrieval_tokens: {', '.join(sorted(token_set)) if token_set else '(none)'}")
     print(f"  started_at: {queue.get('started_at') or '-'}")
+elif mode == "openclaw":
+    queue_id = queue.get("queue_id")
+    status = queue.get("status")
+    target_agent = queue.get("worker_agent_id") or queue.get("assigned_agent_id") or effective_agent
+    commands = []
+    if status in {"pending", "pending_preview"}:
+        commands = [
+            f"larc ingress context --queue-id {queue_id} --days {days}",
+            f"larc ingress delegate --queue-id {queue_id}",
+            f"larc ingress run-once --agent {target_agent} --days {days}",
+        ]
+    elif status == "delegated":
+        commands = [
+            f"larc ingress handoff --queue-id {queue_id} --days {days}",
+            f"larc ingress run-once --agent {target_agent} --days {days}",
+        ]
+    elif status == "in_progress":
+        commands = [
+            f"larc ingress execute-stub --queue-id {queue_id}",
+            f"larc ingress execute-apply --queue-id {queue_id} --dry-run",
+            f"larc ingress done --queue-id {queue_id} --note \"Completed by {target_agent}\"",
+        ]
+    elif status == "partial":
+        commands = [
+            f"larc ingress followup --queue-id {queue_id} --days {days}",
+            f"larc ingress done --queue-id {queue_id} --note \"Manual follow-up completed by {target_agent}\"",
+            f"larc ingress fail --queue-id {queue_id} --note \"Unable to complete manual follow-up\"",
+        ]
+    elif status == "blocked_approval":
+        commands = [
+            f"larc ingress approve --queue-id {queue_id}",
+            f"larc ingress resume --queue-id {queue_id}",
+        ]
+    elif status == "approved":
+        commands = [f"larc ingress resume --queue-id {queue_id}"]
+    else:
+        commands = [f"larc ingress context --queue-id {queue_id} --days {days}"]
+
+    print("")
+    print("OpenClaw runtime bundle")
+    print(f"  queue_id: {queue_id}")
+    print(f"  target_agent: {target_agent}")
+    print(f"  status: {status}")
+    print(f"  gate: {queue.get('gate')}")
+    print(f"  authority: {queue.get('authority')}")
+    print(f"  next_action: {next_action(queue)}")
+    print(f"  task_types: {', '.join(task_types) if task_types else '(none)'}")
+    print(f"  scopes: {', '.join(scopes) if scopes else '(none)'}")
+    print(f"  message: {message_text}")
+    print(f"  retrieval_tokens: {', '.join(sorted(token_set)) if token_set else '(none)'}")
+    print("  recommended_commands:")
+    for cmd in commands:
+        print(f"    - {cmd}")
 elif mode == "followup":
     print("")
     print("Manual follow-up bundle")

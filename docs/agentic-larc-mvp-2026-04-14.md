@@ -24,16 +24,31 @@ Upper-layer agent (Claude Code / OpenClaw-like controller)
 
 This is already useful, but it is still a supervised runtime rather than a resident agent.
 
+The most natural primary path is:
+
+```text
+OpenClaw Agent
+  -> official openclaw-lark plugin (atomic Feishu tools)
+  -> LARC (permission / gate / queue / delegation / memory)
+  -> Lark tenant surfaces
+```
+
+In this model, LARC does not need to become a standalone IM bot first. It works as the governed runtime layer used by OpenClaw.
+
 ## Gap to true agentic behavior
 
-### 1. Bot ingress
+### 1. OpenClaw-first ingress
 
 Missing:
-- IM/webhook receiver that turns Lark messages into executable tasks
-- intent extraction and task normalization
+- a stable OpenClaw-facing handoff bundle for queue items
+- explicit runtime guidance about what the next safe action should be
 
 Why it matters:
-- without ingress, LARC cannot start from user actions inside Lark itself
+- this is the simplest route to practical agent operation without introducing another resident bot runtime
+
+Optional later:
+- IM/webhook receiver that turns Lark messages into executable tasks
+- intent extraction and task normalization from native Lark events
 
 ### 2. Queue and continuation
 
@@ -65,11 +80,12 @@ Why it matters:
 
 ## Recommended next implementation order
 
-1. Bot ingress MVP
+1. OpenClaw-first ingress and handoff
 2. Queue / continuation ledger
 3. Delegation to registered agents
 4. Searchable memory retrieval
-5. MergeGate integration as a higher-order review layer
+5. Optional IM/webhook ingress
+6. MergeGate integration as a higher-order review layer
 
 ## Why MergeGate is not first
 
@@ -78,15 +94,15 @@ MergeGate is strategically valuable, but it improves review and controlled execu
 In short:
 
 - MergeGate strengthens governance
-- Bot ingress + queue creates actual agentic operation
+- OpenClaw-first ingress + queue creates the simplest real agentic operation
 
-For that reason, the next product-defining milestone should be the agentic loop, not review orchestration.
+For that reason, the next product-defining milestone should be the OpenClaw-first agentic loop, not review orchestration.
 
 ## Milestone definition
 
 LARC reaches its first true agentic milestone when:
 
-- a Lark message can create a queued task
+- an OpenClaw agent can pull the next governed queue action from LARC
 - `auth suggest` and `approve gate` run automatically before execution
 - blocked approval tasks resume after approval completion
 - work can be delegated to a registered specialist agent

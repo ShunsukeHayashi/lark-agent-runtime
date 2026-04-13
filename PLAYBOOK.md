@@ -338,16 +338,25 @@ larc auth suggest "経費申請を作成して承認を求める"
 
 ## PHASE 5 — Agentic LARC MVP
 
-**目的**: LARC を「人が叩く便利 CLI」から「Lark 上で継続動作する agent runtime」へ進める
+**目的**: LARC を「人が叩く便利 CLI」から「OpenClaw の上で継続動作する Lark runtime」へ進める
 
-### 5A: Bot ingress
+**主経路**:
+- `OpenClaw Agent -> official openclaw-lark plugin -> Lark`
+- `LARC -> permission / gate / queue / delegation / memory`
+
+**補足**:
+- Lark IM / webhook bot ingress は便利な追加入口だが、現時点では primary path ではない
+- 先に固めるべきなのは OpenClaw-first の supervised / semi-agentic runtime
+
+### 5A: OpenClaw-first ingress
 **担当**: Agent-Loop  
 **ファイル候補**: `lib/bot-ingress.sh`, `scripts/run-bot-loop.sh`
 
 **タスク**:
 - [x] CLI-based ingress surface: `lib/ingress.sh` に `enqueue` / `list` 実装
+- [x] `openclaw` bundle で OpenClaw agent 向けの次アクションを返す
 - [x] `enqueue` 時に `larc auth suggest` 相当の scope inference と gate evaluation を内蔵
-- [ ] Lark IM / webhook 受信イベントから task intent を直接取り出す
+- [ ] Lark IM / webhook 受信イベントから task intent を直接取り出す（optional ingress）
 
 ### 5B: Queue / continuation
 **担当**: Agent-Queue  
@@ -398,7 +407,8 @@ larc auth suggest "経費申請を作成して承認を求める"
 - [x] main agent が専門 agent に委任できる
 - [x] worker が task を pull / claim / stub-execute できる
 - [x] `partial` follow-up を別レーンで見られる
-- [ ] IM webhook 経由で Lark 内から自動起動する
+- [x] OpenClaw agent が queue item の次アクション bundle を取得できる
+- [ ] IM webhook 経由で Lark 内から自動起動する（optional）
 - [ ] 完了後に memory と audit trail が自動で残る
 
 ---

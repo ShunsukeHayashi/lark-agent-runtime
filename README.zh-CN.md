@@ -100,7 +100,8 @@ larc bootstrap
 
 - LARC 已经是一个可运行的、面向飞书 Agent work 的 runtime surface
 - 但现阶段它仍然主要是供 Claude Code 等上层 Agent 使用的 supervised runtime
-- 下一阶段目标是 `Agentic LARC MVP`：加入 bot ingress、queue、continuation、delegation、searchable memory
+- 当前最自然的主路径是 `OpenClaw Agent -> official openclaw-lark plugin + LARC`
+- Lark IM / webhook bot ingress 更适合作为后续可选入口，而不是当前的核心必经路径
 
 更多背景请看：
 

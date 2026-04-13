@@ -64,7 +64,7 @@ In practical terms:
 | `larc kg build` / `larc kg query` | Indexes Lark Wiki node graph and answers concept queries with neighbor context |
 | `larc memory` | Syncs daily memory with Lark Base |
 | `larc send` / `larc task` | Provides basic execution paths for IM and task operations |
-| `larc ingress` | Runs the queue loop surface: enqueue, approve/resume, delegate, next, run-once, execute, followup |
+| `larc ingress` | Runs the queue loop surface: enqueue, OpenClaw bundle, approve/resume, delegate, next, run-once, execute, followup |
 | Claude Code skills | Ships Lark-oriented skills in `.claude/skills/` |
 
 ---
@@ -104,7 +104,7 @@ What is now live in the Agentic LARC MVP surface:
 - outcome states: `done`, `failed`, `partial`, `followup`
 
 What is still experimental or future:
-- IM webhook / bot-triggered ingress from inside Lark itself
+- IM webhook / bot-triggered ingress from inside Lark itself (optional path, not the primary architecture)
 - MergeGate integration for controlled execution review
 - Full OpenClaw CLI compatibility layer
 - Knowledge graph link extraction from document content (currently hierarchy-based)
@@ -113,8 +113,9 @@ What is still experimental or future:
 Important nuance:
 
 - LARC is already a working runtime surface for Lark-backed agent work
-- today, it is still primarily a supervised runtime used by an upper-layer agent such as Claude Code
-- the next milestone is an `Agentic LARC MVP` with bot ingress, queue/continuation, delegation, and searchable memory
+- today, it is best used as a supervised runtime under an upper-layer agent such as OpenClaw or Claude Code
+- the primary path is `OpenClaw Agent -> official openclaw-lark plugin + LARC`
+- IM/webhook bot ingress is an optional future entrypoint, not the required core path
 
 Key docs:
 
@@ -144,7 +145,7 @@ lib/
   heartbeat.sh                 # System state logging
   auth.sh                      # Scope inference and authorization
   knowledge-graph.sh           # Wiki node graph build and query
-  ingress.sh                   # Queue, delegation, worker loop, partial follow-up
+  ingress.sh                   # Queue, OpenClaw bundle, delegation, worker loop, partial follow-up
 config/
   scope-map.json               # 32 task types × required scopes × authority type
   gate-policy.json             # 32 task types × risk level × execution gate

@@ -94,7 +94,8 @@ larc bootstrap
 
 - LARC はすでに、Lark ベースの agent work を支える runtime surface としては動いています
 - ただし現時点では、Claude Code などの上位エージェントが使う supervised runtime です
-- 次の節目は、bot ingress / queue / continuation / delegation / searchable memory を持つ `Agentic LARC MVP` です
+- 現時点の主経路は `OpenClaw Agent -> official openclaw-lark plugin + LARC` です
+- Lark IM / webhook bot ingress は将来の追加入口であり、必須の中核経路ではありません
 
 詳しくは以下を参照してください。
 
