@@ -133,6 +133,17 @@
 - `larc auth check/login`
 - `scripts/smoke-check.sh` が通る
 
+**現在地（2026-04-14）**:
+- `bootstrap` / `memory` / `send` / `task` の live path は確認済み
+- `scripts/smoke-check.sh` は通過済み
+- `scripts/live-check.sh` により OpenClaw → LARC → Lark IM の実動確認あり
+- Phase A: 完了。runtime の全 live path が通った
+- Phase B 着手: `auth suggest` が複合オフィスタスク（CRM+IM / expense+notify / drive+wiki / CRM+calendar）で正しいスコープを推論できるようになった
+  - scope-map v0.2.0: `create_crm_record` / `send_crm_followup` / `update_base_record` を追加
+  - keyword matching: 語順バグ・ハイフン語・bare keyword 欠落の3つの根本原因を修正
+  - 検証ケース 8件を `docs/auth-suggest-cases.md` に期待値付きで固定
+- 残課題: authority explanation (user/bot/tenant の理由表示) が未実装
+
 ---
 
 ## PHASE 1 — 基盤整備（並列実行可）
@@ -146,9 +157,13 @@
 **担当**: Agent-Drive  
 **ファイル**: `scripts/setup-workspace.sh`  
 **タスク**:
-- [ ] Lark Drive に `agent-workspace/` フォルダ構造を自動作成
-- [ ] テンプレートファイル（SOUL/USER/MEMORY）をアップロード
-- [ ] agents_registry Base テーブルを自動プロビジョニング
+- [x] Lark Drive に `agent-workspace/` フォルダ構造を自動作成
+- [x] テンプレートファイル（SOUL/USER/MEMORY）をアップロード
+- [x] agents_registry Base テーブルを自動プロビジョニング
+
+**状態メモ**:
+- 実装済み。現在は runtime sync の完全往復が次の論点
+- 以後は `setup` の有無ではなく `hydrate / publish` の完成度で評価する
 
 ```bash
 # 実行コマンド
@@ -157,11 +172,24 @@
 
 ### 1C: 権限マッピング定義
 **担当**: Agent-Perms  
-**ファイル**: `config/permission-profiles.json`  
+**ファイル**: `config/scope-map.json`  
 **タスク**:
-- [ ] タスク種別 → 必要スコープのマスターマップ作成
-- [ ] `readonly` / `writer` / `admin` の3段階プロファイル定義
-- [ ] `larc auth check <task>` コマンドで事前権限判定を実装
+- [x] タスク種別 → 必要スコープのマスターマップ作成
+- [x] `readonly` / `writer` / `admin` の3段階プロファイル定義
+- [x] `larc auth suggest "<task>"` の初期実装
+- [x] compound office tasks のスコープ推論: CRM / expense / drive / calendar 複合タスク対応（v0.2.0）
+- [x] keyword matching の根本バグ3件修正（語順・ハイフン・bare keyword）
+- [x] 検証ケース 8件を `docs/auth-suggest-cases.md` に期待値付きで固定
+- [x] authority explanation の追加（user / tenant / bot の理由表示）
+- [x] Case 7 の over-permission (1 scope) 解消: CRM+follow-up で IM が不要な場合の除外ロジック
+- [x] `scripts/auth-suggest-check.sh` による回帰確認導線の追加
+- [x] 三言語 README 初版 (`README.md` / `README.zh-CN.md` / `README.ja.md`) と OSS 準備ドキュメント追加
+
+**状態メモ（2026-04-14）**:
+- `auth suggest` は「存在する」段階を抜け、8件の現実タスクで期待スコープを返せる「信頼できる初期実装」段階に入った
+- Playbook §14 マイルストーン「minimum likely scopes を説明できる」は達成
+- authority path の説明は CLI 出力に追加済み
+- 残る差別化: 最小権限化の精度向上、docs / tests / implementation の継続同期、private から三言語 OSS へ移るための衛生整備
 
 ### 1D: インストールスクリプト
 **担当**: Agent-Install  
