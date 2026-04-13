@@ -447,6 +447,7 @@ import json, sys
 
 queue = json.loads(sys.argv[1])
 task_types = queue.get("task_types", [])
+message = queue.get("message_text") or ""
 
 TASK_PLANS = {
     "create_crm_record": "Create or upsert the CRM/Base record for the target customer or lead.",
@@ -462,7 +463,22 @@ TASK_PLANS = {
     "write_calendar": "Create or update the meeting/event entry in Calendar.",
 }
 
+TASK_ADAPTERS = {
+    "create_crm_record": "larc memory push --agent {agent}",
+    "send_crm_followup": "larc send --agent {agent} \"Follow-up prepared from queue {queue_id}\"",
+    "send_message": "larc send --agent {agent} \"{message}\"",
+    "create_expense": "larc approve gate create_expense",
+    "submit_approval": "larc approve create",
+    "read_base": "larc memory search --query \"{message}\" --days 30",
+    "update_base_record": "larc memory push --agent {agent}",
+    "create_document": "larc send --agent {agent} \"Draft document requested: {message}\"",
+    "update_document": "larc send --agent {agent} \"Update document requested: {message}\"",
+    "write_wiki": "larc send --agent {agent} \"Wiki update requested: {message}\"",
+    "write_calendar": "larc send --agent {agent} \"Calendar action requested: {message}\"",
+}
+
 finish_hint = []
+adapter_cmds = []
 for task_type in task_types:
     if task_type in {"create_crm_record", "update_base_record"}:
         finish_hint.append("Updated Base/CRM record")
@@ -474,6 +490,13 @@ for task_type in task_types:
         finish_hint.append("Updated document content")
     elif task_type == "write_calendar":
         finish_hint.append("Scheduled calendar event")
+    adapter = TASK_ADAPTERS.get(task_type)
+    if adapter:
+        adapter_cmds.append(adapter.format(
+            agent=queue.get("worker_agent_id") or queue.get("assigned_agent_id") or queue.get("agent_id") or "main",
+            queue_id=queue.get("queue_id"),
+            message=message.replace('"', "'"),
+        ))
 
 print("")
 print("Execution stub plan")
@@ -489,6 +512,12 @@ else:
     for task_type in task_types:
         plan = TASK_PLANS.get(task_type, "Handle this task type with a manual or future specialized executor.")
         print(f"    - {task_type}: {plan}")
+print("  adapter_commands:")
+if not adapter_cmds:
+    print("    - No direct adapter is defined yet; manual execution is required.")
+else:
+    for cmd in dict.fromkeys(adapter_cmds):
+        print(f"    - {cmd}")
 print(f"  suggested_finish_note: {'; '.join(dict.fromkeys(finish_hint)) if finish_hint else 'Completed placeholder execution path'}")
 PY
 }
