@@ -181,6 +181,7 @@ ${BOLD}Commands:${RESET}
   ${CYAN}ingress list${RESET}          List queued inbound tasks from Base/local cache
   ${CYAN}ingress approve${RESET}       Mark a blocked queue item as approved
   ${CYAN}ingress resume${RESET}        Resume an approved queue item into pending state
+  ${CYAN}ingress delegate${RESET}      Assign a pending queue item to the best registered specialist agent
   ${CYAN}kg build${RESET}              Traverse Lark Wiki and index node graph into Base
   ${CYAN}kg query${RESET} "<concept>"  Keyword search over indexed graph; show matches + neighbors
   ${CYAN}kg show${RESET} <token>       Show node details and neighbors from local cache
@@ -199,6 +200,7 @@ ${BOLD}Examples:${RESET}
   larc ingress list --agent main
   larc ingress approve --queue-id <id>
   larc ingress resume --queue-id <id>
+  larc ingress delegate --queue-id <id>
 
 ${BOLD}Environment:${RESET}
   LARC_HOME              Config and cache directory (default: ~/.larc)

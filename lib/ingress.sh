@@ -13,6 +13,7 @@ cmd_ingress() {
     list)    _ingress_list "$@" ;;
     approve) _ingress_approve "$@" ;;
     resume)  _ingress_resume "$@" ;;
+    delegate) _ingress_delegate "$@" ;;
     help|--help|-h) _ingress_help ;;
     *)
       log_error "Unknown ingress action: $action"
@@ -32,6 +33,7 @@ ${BOLD}Commands:${RESET}
   ${CYAN}list${RESET}      List queued items from Base or local cache
   ${CYAN}approve${RESET}   Mark a blocked approval item as approved
   ${CYAN}resume${RESET}    Move an approved item back to pending
+  ${CYAN}delegate${RESET}  Assign a queue item to the best specialist agent
 
 ${BOLD}Examples:${RESET}
   larc ingress enqueue --text "Please route this expense to approval" --sender ou_xxx --source im
@@ -40,6 +42,7 @@ ${BOLD}Examples:${RESET}
   larc ingress list --agent main
   larc ingress approve --queue-id 1234
   larc ingress resume --queue-id 1234
+  larc ingress delegate --queue-id 1234
 
 EOF
 }
@@ -249,6 +252,28 @@ _ingress_list() {
 
   log_head "Ingress queue (${agent_id})"
 
+  local queue_file="$LARC_CACHE/queue/${agent_id}.jsonl"
+  if [[ -f "$queue_file" ]]; then
+    python3 - "$queue_file" <<'PY'
+import json, sys
+path = sys.argv[1]
+found = False
+with open(path, "r", encoding="utf-8") as f:
+    for line in f:
+        line = line.strip()
+        if not line:
+            continue
+        found = True
+        d = json.loads(line)
+        assigned = d.get('assigned_agent_id')
+        suffix = f" -> {assigned}" if assigned else ""
+        print(f"{d.get('queue_id','-')}  [{d.get('status','-')} / {d.get('gate','-')}]  {str(d.get('message_text',''))[:100]}{suffix}")
+if not found:
+    print("(no queue items)")
+PY
+    return 0
+  fi
+
   if [[ -n "$LARC_BASE_APP_TOKEN" ]]; then
     local table_id
     table_id=$(_get_or_create_queue_table)
@@ -288,27 +313,7 @@ if not found:
     log_warn "No queue rows returned from Base — falling back to local queue"
   fi
 
-  local queue_file="$LARC_CACHE/queue/${agent_id}.jsonl"
-  if [[ ! -f "$queue_file" ]]; then
-    echo "(no queue items)"
-    return 0
-  fi
-
-  python3 - "$queue_file" <<'PY'
-import json, sys
-path = sys.argv[1]
-found = False
-with open(path, "r", encoding="utf-8") as f:
-    for line in f:
-        line = line.strip()
-        if not line:
-            continue
-        found = True
-        d = json.loads(line)
-        print(f"{d.get('queue_id','-')}  [{d.get('status','-')} / {d.get('gate','-')}]  {str(d.get('message_text',''))[:100]}")
-if not found:
-    print("(no queue items)")
-PY
+  echo "(no queue items)"
 }
 
 _ingress_approve() {
@@ -339,6 +344,80 @@ _ingress_resume() {
 
   [[ -z "$queue_id" ]] && { log_error "Usage: larc ingress resume --queue-id <id> [--dry-run]"; return 1; }
   _ingress_transition "$queue_id" "approved" "pending" "Queue item resumed after approval." "$dry_run"
+}
+
+_ingress_delegate() {
+  local queue_id=""
+  local dry_run=false
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --queue-id) queue_id="$2"; shift 2 ;;
+      --dry-run) dry_run=true; shift ;;
+      *) log_warn "Unknown option: $1"; shift ;;
+    esac
+  done
+
+  [[ -z "$queue_id" ]] && { log_error "Usage: larc ingress delegate --queue-id <id> [--dry-run]"; return 1; }
+
+  local queue_json
+  queue_json=$(_ingress_get_local_queue_item "$queue_id")
+  [[ -z "$queue_json" ]] && { log_error "Queue item not found locally: $queue_id"; return 1; }
+
+  local current_status
+  current_status=$(python3 - "$queue_json" <<'PY'
+import json, sys
+d = json.loads(sys.argv[1])
+print(d.get("status", ""))
+PY
+)
+  case "$current_status" in
+    pending|pending_preview) ;;
+    *) log_error "Queue item $queue_id is '$current_status'; delegation expects pending or pending_preview"; return 1 ;;
+  esac
+
+  local selected_json
+  selected_json=$(_ingress_select_best_agent "$queue_json")
+  [[ -z "$selected_json" ]] && { log_error "No suitable agent found for queue item: $queue_id"; return 1; }
+
+  local updated_json
+  updated_json=$(python3 - "$queue_json" "$selected_json" <<'PY'
+import json, sys
+from datetime import datetime, timezone
+queue = json.loads(sys.argv[1])
+agent = json.loads(sys.argv[2])
+queue["assigned_agent_id"] = agent["agent_id"]
+queue["assigned_agent_name"] = agent.get("name", "")
+queue["delegation_reason"] = agent.get("reason", "")
+queue["status"] = "delegated"
+queue["updated_at"] = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+print(json.dumps(queue, ensure_ascii=False))
+PY
+)
+
+  if [[ "$dry_run" == "true" ]]; then
+    python3 - "$updated_json" <<'PY'
+import json, sys
+d = json.loads(sys.argv[1])
+print("")
+print(f"  queue_id: {d['queue_id']}")
+print(f"  assigned_agent_id: {d.get('assigned_agent_id','-')}")
+print(f"  assigned_agent_name: {d.get('assigned_agent_name','-')}")
+print(f"  reason: {d.get('delegation_reason','-')}")
+print(f"  new_status: {d['status']}")
+PY
+    return 0
+  fi
+
+  _ingress_replace_local_queue_item "$queue_id" "$updated_json"
+  if [[ -n "$LARC_BASE_APP_TOKEN" ]]; then
+    _ingress_write_base "$updated_json"
+  fi
+  log_ok "Delegated to $(python3 - "$updated_json" <<'PY'
+import json, sys
+d = json.loads(sys.argv[1])
+print(d.get("assigned_agent_id","-"))
+PY
+)"
 }
 
 _ingress_transition() {
@@ -467,6 +546,90 @@ for name in os.listdir(queue_dir):
                 f.write(json.dumps(row, ensure_ascii=False) + "\n")
         raise SystemExit(0)
 raise SystemExit(1)
+PY
+}
+
+_ingress_select_best_agent() {
+  local queue_json="$1"
+  python3 - "$queue_json" "$SCRIPT_DIR/agents.yaml" <<'PY'
+import json, sys, os
+
+queue = json.loads(sys.argv[1])
+agents_yaml = sys.argv[2]
+
+def parse_agents_yaml(path):
+    if not os.path.exists(path):
+        return []
+    agents = []
+    current = None
+    in_scopes = False
+    with open(path, "r", encoding="utf-8") as f:
+        for raw in f:
+            line = raw.rstrip("\n")
+            stripped = line.strip()
+            if not stripped or stripped.startswith("#"):
+                continue
+            if stripped == "agents:":
+                continue
+            if stripped.startswith("- id:"):
+                if current:
+                    agents.append(current)
+                current = {"agent_id": stripped.split(":", 1)[1].strip(), "scopes": []}
+                in_scopes = False
+                continue
+            if current is None:
+                continue
+            if stripped.startswith("name:"):
+                current["name"] = stripped.split(":", 1)[1].strip()
+            elif stripped.startswith("model:"):
+                current["model"] = stripped.split(":", 1)[1].strip()
+            elif stripped.startswith("workspace:"):
+                current["workspace"] = stripped.split(":", 1)[1].strip()
+            elif stripped.startswith("scopes:"):
+                in_scopes = True
+            elif in_scopes and stripped.startswith("- "):
+                current["scopes"].append(stripped[2:].strip())
+            elif not line.startswith("      "):
+                in_scopes = False
+        if current:
+            agents.append(current)
+    return agents
+
+agents = parse_agents_yaml(agents_yaml)
+required_scopes = set(queue.get("scopes", []))
+message = (queue.get("message_text") or "").lower()
+task_types = set(queue.get("task_types", []))
+
+def workspace_bonus(text):
+    score = 0
+    if any(t in task_types for t in ("create_expense", "submit_approval")) and any(k in text for k in ("finance", "expense")):
+        score += 3
+    if any(t in task_types for t in ("create_crm_record", "send_crm_followup", "read_base")) and any(k in text for k in ("sales", "customer", "crm")):
+        score += 3
+    if any(t in task_types for t in ("create_document", "update_document", "write_wiki", "read_wiki", "create_drive_file")) and any(k in text for k in ("document", "wiki", "doc")):
+        score += 3
+    return score
+
+best = None
+best_score = -10**9
+for agent in agents:
+    aid = agent.get("agent_id", "")
+    if aid in ("", "main"):
+        continue
+    agent_scopes = set(agent.get("scopes", []))
+    coverage = len(required_scopes & agent_scopes)
+    missing = len(required_scopes - agent_scopes)
+    score = coverage * 10 - missing * 20
+    score += workspace_bonus((agent.get("workspace") or "").lower())
+    if aid in message:
+        score += 2
+    if score > best_score:
+        best_score = score
+        best = dict(agent)
+        best["reason"] = f"coverage={coverage}, missing={missing}, workspace_score={workspace_bonus((agent.get('workspace') or '').lower())}"
+
+if best and best_score >= 0:
+    print(json.dumps(best, ensure_ascii=False))
 PY
 }
 
