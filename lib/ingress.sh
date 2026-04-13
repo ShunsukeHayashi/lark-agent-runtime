@@ -16,6 +16,8 @@ cmd_ingress() {
     delegate) _ingress_delegate "$@" ;;
     context) _ingress_context "$@" ;;
     handoff) _ingress_handoff "$@" ;;
+    done)    _ingress_done "$@" ;;
+    fail)    _ingress_fail "$@" ;;
     help|--help|-h) _ingress_help ;;
     *)
       log_error "Unknown ingress action: $action"
@@ -38,6 +40,8 @@ ${BOLD}Commands:${RESET}
   ${CYAN}delegate${RESET}  Assign a queue item to the best specialist agent
   ${CYAN}context${RESET}   Build a retrieval bundle for a queue item
   ${CYAN}handoff${RESET}   Build a delegated handoff bundle for an assigned agent
+  ${CYAN}done${RESET}      Mark a queue item as completed
+  ${CYAN}fail${RESET}      Mark a queue item as failed
 
 ${BOLD}Examples:${RESET}
   larc ingress enqueue --text "Please route this expense to approval" --sender ou_xxx --source im
@@ -49,6 +53,8 @@ ${BOLD}Examples:${RESET}
   larc ingress delegate --queue-id 1234
   larc ingress context --queue-id 1234 --days 14
   larc ingress handoff --queue-id 1234 --days 14
+  larc ingress done --queue-id 1234 --note "Completed by crm-agent"
+  larc ingress fail --queue-id 1234 --note "Approval context was missing"
 
 EOF
 }
@@ -478,6 +484,40 @@ PY
   _ingress_render_bundle "handoff" "$queue_json" "$days"
 }
 
+_ingress_done() {
+  local queue_id=""
+  local note="Completed successfully."
+  local dry_run=false
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --queue-id) queue_id="$2"; shift 2 ;;
+      --note) note="$2"; shift 2 ;;
+      --dry-run) dry_run=true; shift ;;
+      *) log_warn "Unknown option: $1"; shift ;;
+    esac
+  done
+
+  [[ -z "$queue_id" ]] && { log_error "Usage: larc ingress done --queue-id <id> [--note <text>] [--dry-run]"; return 1; }
+  _ingress_complete "$queue_id" "done" "$note" "$dry_run"
+}
+
+_ingress_fail() {
+  local queue_id=""
+  local note="Execution failed."
+  local dry_run=false
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --queue-id) queue_id="$2"; shift 2 ;;
+      --note) note="$2"; shift 2 ;;
+      --dry-run) dry_run=true; shift ;;
+      *) log_warn "Unknown option: $1"; shift ;;
+    esac
+  done
+
+  [[ -z "$queue_id" ]] && { log_error "Usage: larc ingress fail --queue-id <id> [--note <text>] [--dry-run]"; return 1; }
+  _ingress_complete "$queue_id" "failed" "$note" "$dry_run"
+}
+
 _ingress_transition() {
   local queue_id="$1"
   local expected_status="$2"
@@ -532,6 +572,65 @@ PY
   fi
 
   log_ok "$transition_note"
+}
+
+_ingress_complete() {
+  local queue_id="$1"
+  local final_status="$2"
+  local final_note="$3"
+  local dry_run="${4:-false}"
+
+  local queue_json
+  queue_json=$(_ingress_get_local_queue_item "$queue_id")
+  [[ -z "$queue_json" ]] && { log_error "Queue item not found locally: $queue_id"; return 1; }
+
+  local current_status
+  current_status=$(python3 - "$queue_json" <<'PY'
+import json, sys
+d = json.loads(sys.argv[1])
+print(d.get("status", ""))
+PY
+)
+
+  case "$current_status" in
+    pending|pending_preview|delegated) ;;
+    *)
+      log_error "Queue item $queue_id is '$current_status'; completion expects pending, pending_preview, or delegated"
+      return 1
+      ;;
+  esac
+
+  local updated_json
+  updated_json=$(python3 - "$queue_json" "$final_status" "$final_note" <<'PY'
+import json, sys
+from datetime import datetime, timezone
+d = json.loads(sys.argv[1])
+d["status"] = sys.argv[2]
+d["execution_note"] = sys.argv[3]
+d["completed_at"] = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+d["updated_at"] = d["completed_at"]
+print(json.dumps(d, ensure_ascii=False))
+PY
+)
+
+  if [[ "$dry_run" == "true" ]]; then
+    python3 - "$updated_json" <<'PY'
+import json, sys
+d = json.loads(sys.argv[1])
+print("")
+print(f"  queue_id: {d['queue_id']}")
+print(f"  new_status: {d['status']}")
+print(f"  note: {d.get('execution_note', '-')}")
+print(f"  completed_at: {d.get('completed_at', '-')}")
+PY
+    return 0
+  fi
+
+  _ingress_replace_local_queue_item "$queue_id" "$updated_json"
+  if [[ -n "$LARC_BASE_APP_TOKEN" ]]; then
+    _ingress_write_base "$updated_json"
+  fi
+  log_ok "Queue item marked as $final_status"
 }
 
 _ingress_write_local() {

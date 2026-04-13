@@ -185,6 +185,8 @@ ${BOLD}Commands:${RESET}
   ${CYAN}ingress delegate${RESET}      Assign a pending queue item to the best registered specialist agent
   ${CYAN}ingress context${RESET}       Build an execution context bundle with related recent memory
   ${CYAN}ingress handoff${RESET}       Build an agent handoff bundle for a delegated queue item
+  ${CYAN}ingress done${RESET}          Mark a delegated or pending queue item as completed
+  ${CYAN}ingress fail${RESET}          Mark a delegated or pending queue item as failed
   ${CYAN}kg build${RESET}              Traverse Lark Wiki and index node graph into Base
   ${CYAN}kg query${RESET} "<concept>"  Keyword search over indexed graph; show matches + neighbors
   ${CYAN}kg show${RESET} <token>       Show node details and neighbors from local cache
@@ -207,6 +209,8 @@ ${BOLD}Examples:${RESET}
   larc ingress delegate --queue-id <id>
   larc ingress context --queue-id <id> --days 14
   larc ingress handoff --queue-id <id> --days 14
+  larc ingress done --queue-id <id> --note "Sent to manager and updated CRM"
+  larc ingress fail --queue-id <id> --note "Missing required contact scope"
 
 ${BOLD}Environment:${RESET}
   LARC_HOME              Config and cache directory (default: ~/.larc)
