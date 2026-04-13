@@ -1,0 +1,360 @@
+#!/usr/bin/env bash
+# lib/ingress.sh — Minimal bot ingress and queue ledger
+#
+# Purpose:
+#   Convert inbound Lark messages into normalized queued tasks.
+#   This is the first step toward an agentic runtime loop:
+#     message -> scope/gate inference -> queue ledger
+
+cmd_ingress() {
+  local action="${1:-help}"; shift || true
+  case "$action" in
+    enqueue) _ingress_enqueue "$@" ;;
+    list)    _ingress_list "$@" ;;
+    help|--help|-h) _ingress_help ;;
+    *)
+      log_error "Unknown ingress action: $action"
+      _ingress_help
+      return 1
+      ;;
+  esac
+}
+
+_ingress_help() {
+  cat <<EOF
+
+${BOLD}larc ingress${RESET} — Normalize inbound Lark events into queued tasks
+
+${BOLD}Commands:${RESET}
+  ${CYAN}enqueue${RESET}   Create a queue item from message text / stdin
+  ${CYAN}list${RESET}      List queued items from Base or local cache
+
+${BOLD}Examples:${RESET}
+  larc ingress enqueue --text "Please route this expense to approval" --sender ou_xxx --source im
+  echo "Create CRM record and send a follow-up message" | larc ingress enqueue --agent crm-agent
+  larc ingress enqueue --text "Upload the file to drive and update the wiki" --dry-run
+  larc ingress list --agent main
+
+EOF
+}
+
+_ingress_enqueue() {
+  local text=""
+  local agent_id="main"
+  local source="im"
+  local sender=""
+  local event_id=""
+  local dry_run=false
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --text) text="$2"; shift 2 ;;
+      --agent) agent_id="$2"; shift 2 ;;
+      --source) source="$2"; shift 2 ;;
+      --sender) sender="$2"; shift 2 ;;
+      --event-id) event_id="$2"; shift 2 ;;
+      --dry-run) dry_run=true; shift ;;
+      *)
+        log_warn "Unknown option: $1"
+        shift
+        ;;
+    esac
+  done
+
+  if [[ -z "$text" ]] && ! [[ -t 0 ]]; then
+    text=$(cat)
+  fi
+
+  [[ -z "$text" ]] && {
+    log_error "Usage: larc ingress enqueue --text \"...\" [--agent main] [--sender ou_xxx] [--source im] [--dry-run]"
+    return 1
+  }
+
+  local map_path gate_path
+  map_path="$SCRIPT_DIR/config/scope-map.json"
+  gate_path="$SCRIPT_DIR/config/gate-policy.json"
+  [[ ! -f "$map_path" ]] && { log_error "scope-map.json not found"; return 1; }
+  [[ ! -f "$gate_path" ]] && { log_error "gate-policy.json not found"; return 1; }
+
+  local summary_json
+  summary_json=$(python3 - "$map_path" "$gate_path" "$text" "$agent_id" "$source" "$sender" "$event_id" <<'PY'
+import json
+import re
+import sys
+import uuid
+from datetime import datetime, timezone
+
+map_path, gate_path, task_desc, agent_id, source, sender, event_id = sys.argv[1:8]
+task_desc_l = task_desc.lower()
+
+with open(map_path, "r", encoding="utf-8") as f:
+    scope_map = json.load(f)
+with open(gate_path, "r", encoding="utf-8") as f:
+    gate_policy = json.load(f)
+
+tasks = scope_map.get("tasks", {})
+gate_tasks = gate_policy.get("tasks", {})
+
+KEYWORD_MAP = {
+    r"\bdoc\b|document": ["read_document"],
+    r"create\s+\w*\s*doc|write\s+\w*\s*doc|new\s+doc": ["create_document"],
+    r"edit\s+\w*\s*doc|update\s+\w*\s*doc|modify\s+\w*\s*doc": ["update_document"],
+    r"wiki|knowledge\s*base|knowledge\s*hub": ["read_wiki"],
+    r"wiki.*(?:create|update|write|add|edit)|(?:create|update|write|add|edit).*wiki": ["write_wiki"],
+    r"update\s+wiki|write\s+to\s+wiki": ["write_wiki"],
+    r"upload\b|attach\s+\w*\s*file|create\s+file\b": ["create_drive_file"],
+    r"read\s+\w*\s*drive|list\s+file|file\s+list|browse\s+drive": ["read_drive"],
+    r"create\s+folder|manage\s+file|move\s+file|delete\s+file": ["manage_drive"],
+    r"\bbase\b|\bbitable\b": ["read_base"],
+    r"create\s+\w*\s*record|record\s+create|add\s+\w*\s*record|new\s+\w*\s*record|insert\s+\w*\s*record": ["create_base_record"],
+    r"update\s+(?:\w+\s+){0,3}record|edit\s+(?:\w+\s+){0,3}record|modify\s+(?:\w+\s+){0,3}record|patch\s+\w*\s*record": ["update_base_record"],
+    r"read\s+\w*\s*(?:record|table)|list\s+\w*\s*record": ["read_base"],
+    r"manage\s+\w*\s*(?:base|bitable|table)": ["manage_base"],
+    r"(?:create|add|new|log|insert|register)\s+(?:\w+\s+){0,3}(?:crm|customer|lead|deal|prospect|opportunity)\b": ["create_crm_record"],
+    r"(?:crm|lead|deal|prospect|opportunity)\s+(?:\w+\s+){0,3}(?:create|add|new)\b": ["create_crm_record"],
+    r"\bcrm\b|customer\s+record|lead\s+record|deal\s+record|\bpipeline\b|\bprospect\b|\bopportunity\b": ["read_base"],
+    r"(?=.*(?:create|add|new|log)\s+(?:\w+\s+){0,3}(?:crm|customer|lead|deal|prospect))(?=.*(?:send|message|notify))": ["send_crm_followup"],
+    r"send\s+\w*\s*message|send\s+\w*\s*notification|send\s+\w*\s*(?:chat|im)|message\s+send": ["send_message"],
+    r"follow.?up\s+message|send\s+follow.?up": ["send_message"],
+    r"notify\s+(?:the\s+)?\w+|send\s+\w*\s*alert": ["send_message"],
+    r"read\s+\w*\s*message|read\s+\w*\s*chat|chat\s+history|message\s+history": ["read_message"],
+    r"calendar|read\s+\w*\s*event|list\s+\w*\s*event": ["read_calendar"],
+    r"schedule\s+(?:a\s+)?(?:\S+\s+){0,3}(?:meeting|call|event|appointment)|create\s+\w*\s*(?:event|meeting|appointment)|book\s+\w*\s*(?:room|meeting|slot)": ["write_calendar"],
+    r"\bexpense\b|\breimbursement\b|expense\s+report|expense\s+claim|receipt\s+submission": ["create_expense"],
+    r"(?:submit|send|create|trigger|start)\s+\w*\s*approval|approval\s+flow|approval\s+request|route\s+\w+\s+to\s+approval": ["submit_approval"],
+    r"(?:approve|reject|process|handle)\s+\w*\s*approval|approval\s+task|approver|reject\s+task": ["act_approval_task"],
+    r"(?:check|read|get|view)\s+\w*\s*approval|approval\s+status|pending\s+approval": ["read_approval"],
+    r"contact|employee\s+info|user\s+info|directory|lookup\s+user|find\s+user|\bhr\b": ["read_contact"],
+    r"update\s+\w*\s*contact|manage\s+\w*\s*contact|add\s+\w*\s*employee": ["manage_contact"],
+    r"create\s+\w*\s*task|new\s+\w*\s*task|add\s+\w*\s*task|assign\s+\w*\s*task": ["write_task"],
+    r"(?<!approval\s)\btask\b|\btodo\b|to-do|checklist": ["read_task"],
+    r"attendance|check.?in|check.?out|timesheet|punch\s+in|punch\s+out|clock\s+in": ["read_attendance"],
+    r"minutes|miaoji|meeting\s+notes|transcript": ["read_minutes"],
+    r"video\s+meeting|vc\s+record|video\s+conference\s+record": ["read_vc"],
+    r"spreadsheet|sheet|excel|\bcsv\b": ["manage_sheets"],
+    r"slide|\bppt\b|presentation|deck": ["manage_slides"],
+}
+
+matched_tasks = set()
+for pattern, task_keys in KEYWORD_MAP.items():
+    if re.search(pattern, task_desc_l):
+        for tk in task_keys:
+            if tk in tasks:
+                matched_tasks.add(tk)
+
+all_scopes = sorted({scope for tk in matched_tasks for scope in tasks[tk]["scopes"]})
+identities = {tasks[tk]["identity"] for tk in matched_tasks}
+display_identities = set(identities)
+if "either" in display_identities and ("user" in display_identities or "bot" in display_identities):
+    display_identities.discard("either")
+if display_identities == {"user", "bot"}:
+    authority = "user or bot"
+elif len(display_identities) == 1:
+    authority = list(display_identities)[0]
+else:
+    authority = "either"
+
+gate_rank = {"none": 0, "preview": 1, "approval": 2}
+highest_gate = "none"
+highest_risk = "none"
+for tk in sorted(matched_tasks):
+    g = gate_tasks.get(tk, {})
+    gate = g.get("gate", "none")
+    risk = g.get("risk", "none")
+    if gate_rank.get(gate, 0) > gate_rank.get(highest_gate, 0):
+        highest_gate = gate
+        highest_risk = risk
+
+status = {
+    "none": "pending",
+    "preview": "pending_preview",
+    "approval": "blocked_approval",
+}.get(highest_gate, "pending")
+
+queue_id = str(uuid.uuid4())
+created_at = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+print(json.dumps({
+    "queue_id": queue_id,
+    "agent_id": agent_id,
+    "source": source or "im",
+    "sender": sender,
+    "event_id": event_id,
+    "message_text": task_desc,
+    "task_types": sorted(matched_tasks),
+    "scopes": all_scopes,
+    "authority": authority,
+    "gate": highest_gate,
+    "risk": highest_risk,
+    "status": status,
+    "created_at": created_at,
+}, ensure_ascii=False))
+PY
+)
+
+  [[ -z "$summary_json" ]] && { log_error "Failed to build ingress summary"; return 1; }
+
+  if [[ "$dry_run" == "true" ]]; then
+    python3 - "$summary_json" <<'PY'
+import json, sys
+d = json.loads(sys.argv[1])
+print("")
+print("  Queue item preview")
+print(f"    queue_id:   {d['queue_id']}")
+print(f"    agent_id:   {d['agent_id']}")
+print(f"    source:     {d['source']}")
+print(f"    sender:     {d.get('sender') or '-'}")
+print(f"    task_types: {', '.join(d['task_types']) if d['task_types'] else '(none matched)'}")
+print(f"    scopes:     {', '.join(d['scopes']) if d['scopes'] else '(none)'}")
+print(f"    authority:  {d['authority']}")
+print(f"    gate:       {d['gate']}")
+print(f"    status:     {d['status']}")
+PY
+    return 0
+  fi
+
+  _ingress_write_local "$agent_id" "$summary_json"
+
+  if [[ -n "$LARC_BASE_APP_TOKEN" ]]; then
+    _ingress_write_base "$summary_json"
+  else
+    log_warn "LARC_BASE_APP_TOKEN not set — recorded to local queue only"
+  fi
+
+  python3 - "$summary_json" <<'PY'
+import json, sys
+d = json.loads(sys.argv[1])
+print("")
+print(f"Queued: {d['queue_id']}")
+print(f"  status: {d['status']}")
+print(f"  gate:   {d['gate']}")
+print(f"  tasks:  {', '.join(d['task_types']) if d['task_types'] else '(none matched)'}")
+PY
+}
+
+_ingress_list() {
+  local agent_id="main"
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --agent) agent_id="$2"; shift 2 ;;
+      *) shift ;;
+    esac
+  done
+
+  log_head "Ingress queue (${agent_id})"
+
+  if [[ -n "$LARC_BASE_APP_TOKEN" ]]; then
+    local table_id
+    table_id=$(_get_or_create_queue_table)
+    lark-cli base +record-list \
+      --base-token "$LARC_BASE_APP_TOKEN" \
+      --table-id "$table_id" 2>/dev/null | python3 -c '
+import json, sys
+resp = json.load(sys.stdin)
+d = resp.get("data", resp)
+fields = d.get("fields", [])
+rows = d.get("data", [])
+target_agent = "'"${agent_id}"'"
+if not fields or not rows:
+    print("(no queue items)")
+    sys.exit(0)
+def idx(name):
+    try: return fields.index(name)
+    except ValueError: return None
+qi = idx("queue_id"); ai = idx("agent_id"); si = idx("status"); gi = idx("gate"); mi = idx("message_text")
+found = False
+for row in rows:
+    if ai is not None and ai < len(row) and str(row[ai]) == target_agent:
+        found = True
+        q = row[qi] if qi is not None and qi < len(row) else "-"
+        s = row[si] if si is not None and si < len(row) else "-"
+        g = row[gi] if gi is not None and gi < len(row) else "-"
+        m = row[mi] if mi is not None and mi < len(row) else "-"
+        print(f"{q}  [{s} / {g}]  {str(m)[:100]}")
+if not found:
+    print("(no queue items)")
+' || log_warn "Queue list failed; falling back to local cache"
+    return 0
+  fi
+
+  local queue_file="$LARC_CACHE/queue/${agent_id}.jsonl"
+  if [[ ! -f "$queue_file" ]]; then
+    echo "(no queue items)"
+    return 0
+  fi
+
+  python3 - "$queue_file" <<'PY'
+import json, sys
+path = sys.argv[1]
+found = False
+with open(path, "r", encoding="utf-8") as f:
+    for line in f:
+        line = line.strip()
+        if not line:
+            continue
+        found = True
+        d = json.loads(line)
+        print(f"{d.get('queue_id','-')}  [{d.get('status','-')} / {d.get('gate','-')}]  {str(d.get('message_text',''))[:100]}")
+if not found:
+    print("(no queue items)")
+PY
+}
+
+_ingress_write_local() {
+  local agent_id="$1"
+  local summary_json="$2"
+  local queue_dir="$LARC_CACHE/queue"
+  local queue_file="$queue_dir/${agent_id}.jsonl"
+  mkdir -p "$queue_dir"
+  printf '%s\n' "$summary_json" >> "$queue_file"
+  log_ok "Local queue updated: $queue_file"
+}
+
+_ingress_write_base() {
+  local summary_json="$1"
+  local table_id
+  table_id=$(_get_or_create_queue_table)
+
+  local base_json
+  base_json=$(python3 - "$summary_json" <<'PY'
+import json, sys
+d = json.loads(sys.argv[1])
+d["task_types"] = ", ".join(d.get("task_types", []))
+d["scopes"] = ", ".join(d.get("scopes", []))
+print(json.dumps(d, ensure_ascii=False))
+PY
+)
+
+  lark-cli base +record-upsert \
+    --base-token "$LARC_BASE_APP_TOKEN" \
+    --table-id "$table_id" \
+    --json "$base_json" \
+    >/dev/null 2>&1 && log_ok "Queue item recorded in Lark Base" || log_warn "Base queue write failed"
+}
+
+_get_or_create_queue_table() {
+  local table_id
+  table_id=$(lark-cli base +table-list \
+    --base-token "$LARC_BASE_APP_TOKEN" \
+    --jq '.data.tables[] | select(.name == "agent_queue") | .id' \
+    2>/dev/null | head -1 || echo "")
+
+  if [[ -z "$table_id" ]]; then
+    log_info "Creating agent_queue table..."
+    table_id=$(lark-cli base +table-create \
+      --base-token "$LARC_BASE_APP_TOKEN" \
+      --name "agent_queue" \
+      --jq '.table.table_id // .table_id' 2>/dev/null || echo "")
+    [[ -z "$table_id" ]] && { log_error "Queue table creation failed"; return 1; }
+    log_ok "agent_queue table created: $table_id"
+  fi
+
+  [[ -n "$table_id" ]] && {
+    for field_name in queue_id agent_id source sender event_id message_text task_types scopes authority gate risk status created_at; do
+      lark-cli base +field-create --base-token "$LARC_BASE_APP_TOKEN" --table-id "$table_id" \
+        --json "{\"name\":\"$field_name\",\"type\":\"text\"}" >/dev/null 2>&1 || true
+    done
+  }
+
+  echo "$table_id"
+}

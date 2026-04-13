@@ -1,6 +1,6 @@
 # LARC — Lark Agent Runtime
 
-> Permission-first runtime for Lark-native office-work agents
+> Permission-first runtime for AI agents that work inside Lark
 
 [![version](https://img.shields.io/badge/version-0.1.0-blue)](bin/larc)
 [![license](https://img.shields.io/badge/license-MIT-green)](#license)
@@ -15,7 +15,9 @@ Short name: `LARC`
 
 ## What is LARC?
 
-**LARC** brings OpenClaw-style agent operation into Lark-native office workflows.
+**LARC** is a permission-managed runtime for AI agents that work inside Lark.
+
+If Claude Code is part of the execution environment for coding agents, LARC is the execution environment for office-work agents inside Lark.
 
 The goal is not just "a CLI that talks to Lark." The goal is to treat Lark itself as the operating surface for agents:
 
@@ -40,6 +42,14 @@ LARC takes a `permission-first` approach:
 1. explain the likely scopes
 2. explain the authority model
 3. route the action through Lark-native surfaces
+
+In practical terms:
+
+1. a task arrives
+2. `larc auth suggest` explains what permissions are needed and whose authority should be used
+3. `larc approve gate` decides whether the action can run directly, needs preview, or must go through approval
+4. execution happens through Lark IM / Base / Drive / Wiki / Approval
+5. `larc memory` records what happened back into Lark
 
 ---
 
@@ -90,9 +100,17 @@ What is still experimental or future:
 - Knowledge graph link extraction from document content (currently hierarchy-based)
 - China-market go-to-market narrative refinement
 
+Important nuance:
+
+- LARC is already a working runtime surface for Lark-backed agent work
+- today, it is still primarily a supervised runtime used by an upper-layer agent such as Claude Code
+- the next milestone is an `Agentic LARC MVP` with bot ingress, queue/continuation, delegation, and searchable memory
+
 Key docs:
 
 - [PLAYBOOK.md](PLAYBOOK.md)
+- [docs/agentic-larc-mvp-2026-04-14.md](docs/agentic-larc-mvp-2026-04-14.md)
+- [docs/larc-vs-lark-cli-and-openclaw.md](docs/larc-vs-lark-cli-and-openclaw.md)
 - [docs/goal-aligned-playbook.md](docs/goal-aligned-playbook.md)
 - [docs/permission-model.md](docs/permission-model.md)
 - [docs/auth-suggest-cases.md](docs/auth-suggest-cases.md)

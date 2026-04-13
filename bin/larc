@@ -64,6 +64,7 @@ cmd_approve()   { source "$LIB_DIR/approve.sh";   cmd_approve "$@"; }
 cmd_agent()     { source "$LIB_DIR/agent.sh";     cmd_agent "$@"; }
 cmd_auth()      { source "$LIB_DIR/auth.sh";      cmd_auth "$@"; }
 cmd_kg()        { source "$LIB_DIR/knowledge-graph.sh"; cmd_kg "$@"; }
+cmd_ingress()   { source "$LIB_DIR/ingress.sh";   cmd_ingress "$@"; }
 
 cmd_init() {
   log_head "larc init — Initialize Lark Drive agent workspace"
@@ -176,6 +177,8 @@ ${BOLD}Commands:${RESET}
   ${CYAN}auth check${RESET}            Check current permission state (suggests login if gaps)
   ${CYAN}auth login${RESET}            Issue auth URL for specified scopes
   ${CYAN}approve gate${RESET} [type]   Check execution gate (none|preview|approval) for a task type
+  ${CYAN}ingress enqueue${RESET}       Normalize an inbound Lark message and enqueue it for execution
+  ${CYAN}ingress list${RESET}          List queued inbound tasks from Base/local cache
   ${CYAN}kg build${RESET}              Traverse Lark Wiki and index node graph into Base
   ${CYAN}kg query${RESET} "<concept>"  Keyword search over indexed graph; show matches + neighbors
   ${CYAN}kg show${RESET} <token>       Show node details and neighbors from local cache
@@ -190,6 +193,8 @@ ${BOLD}Examples:${RESET}
   larc agent register --id finance-bot --name "Finance Agent"
   larc approve scaffold-package --approval-code APPROVAL_CODE --output-dir ./approval-work
   larc approve list
+  larc ingress enqueue --text "Please route this expense to approval" --sender ou_xxx --source im
+  larc ingress list --agent main
 
 ${BOLD}Environment:${RESET}
   LARC_HOME              Config and cache directory (default: ~/.larc)
@@ -216,6 +221,7 @@ main() {
     approve)    shift; require_lark_cli; cmd_approve "$@" ;;
     agent)      shift; require_lark_cli; cmd_agent "$@" ;;
     auth)       shift; require_lark_cli; cmd_auth "$@" ;;
+    ingress)    shift; require_lark_cli; cmd_ingress "$@" ;;
     kg)         shift; require_lark_cli; cmd_kg "$@" ;;
     status)     shift; cmd_status "$@" ;;
     help|--help|-h) cmd_help ;;

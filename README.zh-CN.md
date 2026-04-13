@@ -1,6 +1,6 @@
 # LARC — Lark Agent Runtime
 
-> 面向 Lark（飞书）原生办公 Agent 的 permission-first runtime
+> 面向在 Lark 内工作的 AI Agent 的、以权限管理为核心的运行时环境
 
 [English](README.md) | 简体中文 | [日本語](README.ja.md)
 
@@ -11,7 +11,11 @@
 
 ## LARC 是什么
 
-**LARC** 不是一个“连接飞书 API 的普通 CLI”。它的目标是把 Lark 本身变成 Agent 的运行表面。
+**LARC** 是一个面向在 Lark 内工作的 AI Agent 的、以权限管理为核心的运行时环境。
+
+如果说 Claude Code 是编码 Agent 的一部分执行环境，那么 LARC 就是飞书内办公 Agent 的执行环境。
+
+它不是一个“连接飞书 API 的普通 CLI”。它的目标是把 Lark 本身变成 Agent 的运行表面。
 
 它尝试把 OpenClaw 风格的运行方式迁移到飞书原生能力上：
 
@@ -36,6 +40,14 @@ LARC 的切入点是 `permission-first`：
 - 先解释权限
 - 再解释 authority
 - 再把动作路由到飞书原生表面
+
+实际的执行链路是：
+
+1. 一个任务到来
+2. `larc auth suggest` 解释需要哪些权限、应该用谁的 authority
+3. `larc approve gate` 判断是直接执行、需要 preview、还是必须先走 approval
+4. 执行发生在飞书 IM / Base / Drive / Wiki / Approval 上
+5. `larc memory` 把执行结果记录回飞书
 
 ---
 
@@ -84,9 +96,17 @@ larc bootstrap
 - 基于文档内容的知识图谱链接提取（当前为层级结构）
 - 中国市场商业叙事完善
 
+重要补充：
+
+- LARC 已经是一个可运行的、面向飞书 Agent work 的 runtime surface
+- 但现阶段它仍然主要是供 Claude Code 等上层 Agent 使用的 supervised runtime
+- 下一阶段目标是 `Agentic LARC MVP`：加入 bot ingress、queue、continuation、delegation、searchable memory
+
 更多背景请看：
 
 - [PLAYBOOK.md](PLAYBOOK.md)
+- [docs/agentic-larc-mvp-2026-04-14.md](docs/agentic-larc-mvp-2026-04-14.md)
+- [docs/larc-vs-lark-cli-and-openclaw.md](docs/larc-vs-lark-cli-and-openclaw.md)
 - [docs/goal-aligned-playbook.md](docs/goal-aligned-playbook.md)
 - [docs/permission-model.md](docs/permission-model.md)
 - [docs/auth-suggest-cases.md](docs/auth-suggest-cases.md)

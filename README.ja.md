@@ -1,6 +1,6 @@
 # LARC — Lark Agent Runtime
 
-> Lark（飛書）ネイティブな一般業務エージェントのための permission-first runtime
+> Lark の中で仕事をする AI エージェントのための、権限管理付き実行環境
 
 [English](README.md) | [简体中文](README.zh-CN.md) | 日本語
 
@@ -11,7 +11,9 @@
 
 ## LARC とは
 
-**LARC** は、[OpenClaw](https://github.com/BerriAI/OpenClaw) スタイルのエージェント運用を、Lark 上の一般業務へ持ち込むためのランタイムです。
+**LARC** は、Lark の中で仕事をする AI エージェントのための、権限管理付きランタイムです。
+
+Claude Code がコーディングエージェントの実行環境の一部だとすれば、LARC は Lark の中で働く一般業務エージェントの実行環境です。
 
 狙いは「Lark に接続する CLI」を作ることではありません。狙いは、Lark 自体をエージェントの実行面にすることです。
 
@@ -32,6 +34,14 @@
 - ローカルファイル前提の設計が多く、業務ツール中心の運用に合いにくい
 
 LARC はこのギャップに対して、`permission-first` の設計で入ります。
+
+実際の流れは次の通りです。
+
+1. タスクが届く
+2. `larc auth suggest` が必要権限と authority を説明する
+3. `larc approve gate` が、そのまま実行できるか、preview が必要か、approval が必要かを決める
+4. 実行は Lark IM / Base / Drive / Wiki / Approval 上で行う
+5. `larc memory` が実行内容を Lark に記録する
 
 ---
 
@@ -80,9 +90,17 @@ larc bootstrap
 - ドキュメント本文からのリンク抽出（現在は階層構造ベース）
 - 中国市場向けのナレッジグラフ事例整備
 
+重要な補足：
+
+- LARC はすでに、Lark ベースの agent work を支える runtime surface としては動いています
+- ただし現時点では、Claude Code などの上位エージェントが使う supervised runtime です
+- 次の節目は、bot ingress / queue / continuation / delegation / searchable memory を持つ `Agentic LARC MVP` です
+
 詳しくは以下を参照してください。
 
 - [PLAYBOOK.md](PLAYBOOK.md)
+- [docs/agentic-larc-mvp-2026-04-14.md](docs/agentic-larc-mvp-2026-04-14.md)
+- [docs/larc-vs-lark-cli-and-openclaw.md](docs/larc-vs-lark-cli-and-openclaw.md)
 - [docs/goal-aligned-playbook.md](docs/goal-aligned-playbook.md)
 - [docs/permission-model.md](docs/permission-model.md)
 - [docs/auth-suggest-cases.md](docs/auth-suggest-cases.md)

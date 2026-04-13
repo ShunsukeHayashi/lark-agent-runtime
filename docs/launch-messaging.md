@@ -26,6 +26,10 @@ Use this idea consistently:
 
 **LARC is a permission-first runtime for Lark-native office-work agents.**
 
+Also acceptable when speaking more plainly:
+
+**LARC is a permission-managed execution environment for AI agents that work inside Lark.**
+
 Avoid framing it as:
 
 - a finished enterprise platform
