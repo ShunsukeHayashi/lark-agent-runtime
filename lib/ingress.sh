@@ -12,6 +12,7 @@ cmd_ingress() {
     enqueue) _ingress_enqueue "$@" ;;
     list)    _ingress_list "$@" ;;
     next)    _ingress_next "$@" ;;
+    run-once) _ingress_run_once "$@" ;;
     approve) _ingress_approve "$@" ;;
     resume)  _ingress_resume "$@" ;;
     delegate) _ingress_delegate "$@" ;;
@@ -37,6 +38,7 @@ ${BOLD}Commands:${RESET}
   ${CYAN}enqueue${RESET}   Create a queue item from message text / stdin
   ${CYAN}list${RESET}      List queued items from Base or local cache
   ${CYAN}next${RESET}      Pull the next actionable queue item for an agent
+  ${CYAN}run-once${RESET}  Claim the next actionable queue item for an agent
   ${CYAN}approve${RESET}   Mark a blocked approval item as approved
   ${CYAN}resume${RESET}    Move an approved item back to pending
   ${CYAN}delegate${RESET}  Assign a queue item to the best specialist agent
@@ -51,6 +53,7 @@ ${BOLD}Examples:${RESET}
   larc ingress enqueue --text "Upload the file to drive and update the wiki" --dry-run
   larc ingress list --agent main
   larc ingress next --agent crm-agent --days 14
+  larc ingress run-once --agent crm-agent --days 14 --dry-run
   larc ingress approve --queue-id 1234
   larc ingress resume --queue-id 1234
   larc ingress delegate --queue-id 1234
@@ -364,6 +367,51 @@ PY
   fi
 }
 
+_ingress_run_once() {
+  local agent_id="main"
+  local days="14"
+  local dry_run=false
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --agent) agent_id="$2"; shift 2 ;;
+      --days) days="$2"; shift 2 ;;
+      --dry-run) dry_run=true; shift ;;
+      *) log_warn "Unknown option: $1"; shift ;;
+    esac
+  done
+
+  local queue_json
+  queue_json=$(_ingress_find_next_local_queue_item "$agent_id")
+  if [[ -z "$queue_json" ]]; then
+    echo "(no actionable queue item for $agent_id)"
+    return 0
+  fi
+
+  local claimed_json
+  claimed_json=$(_ingress_claim_queue_item "$queue_json" "$agent_id")
+
+  if [[ "$dry_run" == "true" ]]; then
+    log_info "Dry-run: next actionable item for $agent_id"
+    _ingress_render_bundle "run-once" "$claimed_json" "$days"
+    return 0
+  fi
+
+  local queue_id
+  queue_id=$(python3 - "$claimed_json" <<'PY'
+import json, sys
+d = json.loads(sys.argv[1])
+print(d.get("queue_id", ""))
+PY
+)
+  _ingress_replace_local_queue_item "$queue_id" "$claimed_json"
+  if [[ -n "$LARC_BASE_APP_TOKEN" ]]; then
+    _ingress_write_base "$claimed_json"
+  fi
+
+  log_ok "Claimed queue item $queue_id for $agent_id"
+  _ingress_render_bundle "run-once" "$claimed_json" "$days"
+}
+
 _ingress_approve() {
   local queue_id=""
   local dry_run=false
@@ -629,7 +677,7 @@ PY
 )
 
   case "$current_status" in
-    pending|pending_preview|delegated) ;;
+    pending|pending_preview|delegated|in_progress) ;;
     *)
       log_error "Queue item $queue_id is '$current_status'; completion expects pending, pending_preview, or delegated"
       return 1
@@ -794,6 +842,23 @@ for name in os.listdir(queue_dir):
 items.sort(key=lambda d: parse_ts(d.get("created_at")))
 if items:
     print(json.dumps(items[0], ensure_ascii=False))
+PY
+}
+
+_ingress_claim_queue_item() {
+  local queue_json="$1"
+  local worker_agent_id="$2"
+  python3 - "$queue_json" "$worker_agent_id" <<'PY'
+import json, sys
+from datetime import datetime, timezone
+
+d = json.loads(sys.argv[1])
+d["worker_agent_id"] = sys.argv[2]
+d["status"] = "in_progress"
+started_at = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+d["started_at"] = started_at
+d["updated_at"] = started_at
+print(json.dumps(d, ensure_ascii=False))
 PY
 }
 
@@ -995,6 +1060,21 @@ if mode == "handoff":
     print(f"  message: {message_text}")
     print(f"  delegation_reason: {queue.get('delegation_reason') or '-'}")
     print(f"  retrieval_tokens: {', '.join(sorted(token_set)) if token_set else '(none)'}")
+elif mode == "run-once":
+    print("")
+    print("Worker execution bundle")
+    print(f"  queue_id: {queue.get('queue_id')}")
+    print(f"  worker_agent_id: {queue.get('worker_agent_id') or effective_agent}")
+    print(f"  effective_agent: {effective_agent}")
+    print(f"  status: {queue.get('status')}")
+    print(f"  gate: {queue.get('gate')}")
+    print(f"  authority: {queue.get('authority')}")
+    print(f"  next_action: {next_action(queue)}")
+    print(f"  task_types: {', '.join(task_types) if task_types else '(none)'}")
+    print(f"  scopes: {', '.join(scopes) if scopes else '(none)'}")
+    print(f"  message: {message_text}")
+    print(f"  retrieval_tokens: {', '.join(sorted(token_set)) if token_set else '(none)'}")
+    print(f"  started_at: {queue.get('started_at') or '-'}")
 else:
     print("")
     print("Execution context bundle")
