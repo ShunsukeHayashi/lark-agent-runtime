@@ -182,6 +182,7 @@ ${BOLD}Commands:${RESET}
   ${CYAN}ingress list${RESET}          List queued inbound tasks from Base/local cache
   ${CYAN}ingress next${RESET}          Pull the next actionable queue item for an agent
   ${CYAN}ingress run-once${RESET}      Claim the next actionable queue item for an agent
+  ${CYAN}ingress execute-stub${RESET}  Show a placeholder execution plan for an in-progress item
   ${CYAN}ingress approve${RESET}       Mark a blocked queue item as approved
   ${CYAN}ingress resume${RESET}        Resume an approved queue item into pending state
   ${CYAN}ingress delegate${RESET}      Assign a pending queue item to the best registered specialist agent
@@ -208,6 +209,7 @@ ${BOLD}Examples:${RESET}
   larc ingress list --agent main
   larc ingress next --agent crm-agent --days 14
   larc ingress run-once --agent crm-agent --days 14 --dry-run
+  larc ingress execute-stub --queue-id <id>
   larc ingress approve --queue-id <id>
   larc ingress resume --queue-id <id>
   larc ingress delegate --queue-id <id>

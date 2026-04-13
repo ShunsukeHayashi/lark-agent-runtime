@@ -13,6 +13,7 @@ cmd_ingress() {
     list)    _ingress_list "$@" ;;
     next)    _ingress_next "$@" ;;
     run-once) _ingress_run_once "$@" ;;
+    execute-stub) _ingress_execute_stub "$@" ;;
     approve) _ingress_approve "$@" ;;
     resume)  _ingress_resume "$@" ;;
     delegate) _ingress_delegate "$@" ;;
@@ -39,6 +40,7 @@ ${BOLD}Commands:${RESET}
   ${CYAN}list${RESET}      List queued items from Base or local cache
   ${CYAN}next${RESET}      Pull the next actionable queue item for an agent
   ${CYAN}run-once${RESET}  Claim the next actionable queue item for an agent
+  ${CYAN}execute-stub${RESET} Show a placeholder execution plan for an in-progress item
   ${CYAN}approve${RESET}   Mark a blocked approval item as approved
   ${CYAN}resume${RESET}    Move an approved item back to pending
   ${CYAN}delegate${RESET}  Assign a queue item to the best specialist agent
@@ -54,6 +56,7 @@ ${BOLD}Examples:${RESET}
   larc ingress list --agent main
   larc ingress next --agent crm-agent --days 14
   larc ingress run-once --agent crm-agent --days 14 --dry-run
+  larc ingress execute-stub --queue-id 1234
   larc ingress approve --queue-id 1234
   larc ingress resume --queue-id 1234
   larc ingress delegate --queue-id 1234
@@ -410,6 +413,84 @@ PY
 
   log_ok "Claimed queue item $queue_id for $agent_id"
   _ingress_render_bundle "run-once" "$claimed_json" "$days"
+}
+
+_ingress_execute_stub() {
+  local queue_id=""
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --queue-id) queue_id="$2"; shift 2 ;;
+      *) log_warn "Unknown option: $1"; shift ;;
+    esac
+  done
+
+  [[ -z "$queue_id" ]] && { log_error "Usage: larc ingress execute-stub --queue-id <id>"; return 1; }
+
+  local queue_json
+  queue_json=$(_ingress_get_local_queue_item "$queue_id")
+  [[ -z "$queue_json" ]] && { log_error "Queue item not found locally: $queue_id"; return 1; }
+
+  local current_status
+  current_status=$(python3 - "$queue_json" <<'PY'
+import json, sys
+d = json.loads(sys.argv[1])
+print(d.get("status", ""))
+PY
+)
+  if [[ "$current_status" != "in_progress" ]]; then
+    log_error "Queue item $queue_id is '$current_status'; execute-stub expects in_progress"
+    return 1
+  fi
+
+  python3 - "$queue_json" <<'PY'
+import json, sys
+
+queue = json.loads(sys.argv[1])
+task_types = queue.get("task_types", [])
+
+TASK_PLANS = {
+    "create_crm_record": "Create or upsert the CRM/Base record for the target customer or lead.",
+    "send_crm_followup": "Prepare a follow-up outbound message after the CRM record is updated.",
+    "send_message": "Send the prepared chat notification through Lark IM.",
+    "create_expense": "Prepare the expense payload and collect receipts or supporting details.",
+    "submit_approval": "Create the approval instance or route the prepared record into approval.",
+    "read_base": "Read the relevant Base rows required to complete the task.",
+    "update_base_record": "Patch the target Base record with the new task outcome.",
+    "create_document": "Draft the new document content in the target workspace.",
+    "update_document": "Apply the requested edits to the existing document.",
+    "write_wiki": "Update the target wiki page or knowledge node with the final content.",
+    "write_calendar": "Create or update the meeting/event entry in Calendar.",
+}
+
+finish_hint = []
+for task_type in task_types:
+    if task_type in {"create_crm_record", "update_base_record"}:
+        finish_hint.append("Updated Base/CRM record")
+    elif task_type in {"send_message", "send_crm_followup"}:
+        finish_hint.append("Sent outbound message")
+    elif task_type in {"create_expense", "submit_approval"}:
+        finish_hint.append("Prepared expense/approval payload")
+    elif task_type in {"create_document", "update_document", "write_wiki"}:
+        finish_hint.append("Updated document content")
+    elif task_type == "write_calendar":
+        finish_hint.append("Scheduled calendar event")
+
+print("")
+print("Execution stub plan")
+print(f"  queue_id: {queue.get('queue_id')}")
+print(f"  worker_agent_id: {queue.get('worker_agent_id') or queue.get('assigned_agent_id') or queue.get('agent_id')}")
+print(f"  message: {queue.get('message_text')}")
+print(f"  gate: {queue.get('gate')}")
+print(f"  authority: {queue.get('authority')}")
+print("  planned_steps:")
+if not task_types:
+    print("    - No concrete task type was inferred; fall back to manual triage.")
+else:
+    for task_type in task_types:
+        plan = TASK_PLANS.get(task_type, "Handle this task type with a manual or future specialized executor.")
+        print(f"    - {task_type}: {plan}")
+print(f"  suggested_finish_note: {'; '.join(dict.fromkeys(finish_hint)) if finish_hint else 'Completed placeholder execution path'}")
+PY
 }
 
 _ingress_approve() {
