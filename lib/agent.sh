@@ -46,22 +46,37 @@ _agent_list() {
   table_id=$(_get_or_create_agents_table)
 
   echo ""
-  printf "%-20s %-30s %-15s %-20s\n" "ID" "Name" "Model" "Workspace"
-  printf "%-20s %-30s %-15s %-20s\n" "----" "----" "-----" "------------"
+  printf "%-20s %-25s %-20s %-35s\n" "ID" "Name" "Model" "Scopes"
+  printf "%-20s %-25s %-20s %-35s\n" "----" "----" "-----" "------"
 
-  lark-cli base +record-list \
+  local raw_json
+  raw_json=$(lark-cli base +record-list \
     --base-token "$LARC_BASE_APP_TOKEN" \
-    --table-id "$table_id" \
-    --jq '.items[]' 2>/dev/null | python3 -c "
+    --table-id "$table_id" 2>/dev/null || echo "{}")
+
+  echo "$raw_json" | python3 -c "
 import sys, json
-for line in sys.stdin:
-    line = line.strip()
-    if not line: continue
-    try:
-        r = json.loads(line)
-        f = r.get('fields', {})
-        print(f'{f.get(\"agent_id\",\"-\"):<20} {f.get(\"name\",\"-\"):<30} {f.get(\"model\",\"-\"):<15} {f.get(\"workspace\",\"-\"):<20}')
-    except: pass
+data = json.load(sys.stdin)
+inner = data.get('data', data)
+fields = inner.get('fields', [])
+rows = inner.get('data', [])
+if not fields or not rows:
+    print('(no agents registered)')
+    sys.exit(0)
+def idx(name):
+    try: return fields.index(name)
+    except ValueError: return None
+ai = idx('agent_id'); ni = idx('name'); mi = idx('model'); si = idx('scopes')
+# Keep only the last (most recent) record per agent_id
+latest = {}
+for row in rows:
+    def get(i): return str(row[i]) if i is not None and i < len(row) and row[i] else ''
+    aid = get(ai)
+    if aid:
+        latest[aid] = row
+for aid, row in latest.items():
+    def get(i): return str(row[i]) if i is not None and i < len(row) and row[i] else '-'
+    print(f'{aid:<20} {get(ni):<25} {get(mi):<20} {get(si):<35}')
 " 2>/dev/null || log_warn "No agents registered"
 }
 
@@ -80,7 +95,7 @@ _agent_list_local() {
 _agent_register() {
   log_head "Register agent"
 
-  local agent_id="" name="" model="" workspace="" chat_id=""
+  local agent_id="" name="" model="" workspace="" chat_id="" scopes=""
 
   while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -89,6 +104,7 @@ _agent_register() {
       --model) model="$2"; shift 2 ;;
       --workspace) workspace="$2"; shift 2 ;;
       --chat|--chat-id) chat_id="$2"; shift 2 ;;
+      --scopes) scopes="$2"; shift 2 ;;
       *)
         log_warn "Unknown option: $1"
         shift
@@ -96,14 +112,18 @@ _agent_register() {
     esac
   done
 
-  [[ -z "$agent_id" ]] && read -r -p "Agent ID (e.g., office-assistant): " agent_id
-  [[ -z "$name" ]] && read -r -p "Display name (e.g., Office Assistant): " name
-  [[ -z "$model" ]] && read -r -p "Model (e.g., claude-sonnet-4-6) [Enter for default]: " model
+  # Only prompt interactively when stdin is a terminal
+  if [[ -t 0 ]]; then
+    [[ -z "$agent_id" ]] && read -r -p "Agent ID (e.g., office-assistant): " agent_id
+    [[ -z "$name" ]] && read -r -p "Display name (e.g., Office Assistant): " name
+    [[ -z "$model" ]] && read -r -p "Model (e.g., claude-sonnet-4-6) [Enter for default]: " model
+    [[ -z "$workspace" ]] && read -r -p "Workspace description (e.g., back-office tasks): " workspace
+    [[ -z "$chat_id" ]] && read -r -p "Notification chat_id (Lark IM, optional): " chat_id
+  fi
   model="${model:-claude-sonnet-4-6}"
-  [[ -z "$workspace" ]] && read -r -p "Workspace description (e.g., back-office tasks): " workspace
-  [[ -z "$chat_id" ]] && read -r -p "Notification chat_id (Lark IM): " chat_id
 
   [[ -z "$agent_id" ]] && { log_error "agent_id is required"; return 1; }
+  [[ -z "$name" ]] && { log_error "name is required"; return 1; }
 
   # Create agent workspace folder in Drive
   log_info "Creating workspace folder in Lark Drive..."
@@ -118,24 +138,49 @@ _agent_register() {
     log_warn "Drive folder creation skipped"
   fi
 
-  # Register agent record in Base
+  # Register agent record in Base (update if exists, else create)
   if [[ -n "$LARC_BASE_APP_TOKEN" ]]; then
     local table_id
     table_id=$(_get_or_create_agents_table)
 
-    lark-cli base +record-upsert \
+    local record_json
+    record_json=$(printf '{
+      "agent_id": "%s",
+      "name": "%s",
+      "model": "%s",
+      "workspace": "%s",
+      "chat_id": "%s",
+      "drive_folder": "%s",
+      "scopes": "%s",
+      "status": "active",
+      "registered_at": "%s"
+    }' "$agent_id" "$name" "$model" "$workspace" "$chat_id" "$folder_token" "$scopes" "$(date -u +%Y-%m-%dT%H:%M:%SZ)")
+
+    # Find existing record_id for this agent_id
+    local existing_record_id
+    existing_record_id=$(lark-cli base +record-list \
       --base-token "$LARC_BASE_APP_TOKEN" \
-      --table-id "$table_id" \
-      --json "{
-        \"agent_id\": \"${agent_id}\",
-        \"name\": \"${name}\",
-        \"model\": \"${model}\",
-        \"workspace\": \"${workspace}\",
-        \"chat_id\": \"${chat_id}\",
-        \"drive_folder\": \"${folder_token}\",
-        \"status\": \"active\",
-        \"registered_at\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"
-      }" &>/dev/null && log_ok "Agent registered in Lark Base"
+      --table-id "$table_id" 2>/dev/null | python3 -c "
+import sys, json
+data = json.load(sys.stdin)
+inner = data.get('data', data)
+fields = inner.get('fields', [])
+rows = inner.get('data', [])
+record_ids = inner.get('record_id_list', [])
+try:
+    ai = fields.index('agent_id')
+except ValueError:
+    sys.exit(0)
+for i, row in enumerate(rows):
+    if ai < len(row) and str(row[ai]) == '${agent_id}' and i < len(record_ids):
+        print(record_ids[i])
+        break
+" 2>/dev/null | tail -1 || echo "")
+
+    local upsert_args=(--base-token "$LARC_BASE_APP_TOKEN" --table-id "$table_id" --json "$record_json")
+    [[ -n "$existing_record_id" ]] && upsert_args+=(--record-id "$existing_record_id")
+
+    lark-cli base +record-upsert "${upsert_args[@]}" &>/dev/null && log_ok "Agent registered in Lark Base"
   fi
 
   # Initialize local workspace
@@ -208,9 +253,23 @@ _agent_remove() {
     table_id=$(_get_or_create_agents_table)
     record_id=$(lark-cli base +record-list \
       --base-token "$LARC_BASE_APP_TOKEN" \
-      --table-id "$table_id" \
-      --jq ".items[] | select(.fields.agent_id == \"${agent_id}\") | .record_id" \
-      2>/dev/null | head -1 || echo "")
+      --table-id "$table_id" 2>/dev/null | python3 -c "
+import sys, json
+data = json.load(sys.stdin)
+inner = data.get('data', data)
+fields = inner.get('fields', [])
+rows = inner.get('data', [])
+try:
+    ai = fields.index('agent_id')
+    ri = fields.index('record_id') if 'record_id' in fields else None
+except ValueError:
+    sys.exit(0)
+for row in rows:
+    if ai < len(row) and str(row[ai]) == '${agent_id}':
+        if ri is not None and ri < len(row):
+            print(row[ri])
+        break
+" 2>/dev/null | head -1 || echo "")
 
     [[ -n "$record_id" ]] && {
       lark-cli base +record-delete \
@@ -227,7 +286,7 @@ _get_or_create_agents_table() {
   local table_id
   table_id=$(lark-cli base +table-list \
     --base-token "$LARC_BASE_APP_TOKEN" \
-    --jq '.items[] | select(.name == "agents_registry") | .table_id' \
+    --jq '.data.tables[] | select(.name == "agents_registry") | .id' \
     2>/dev/null | head -1 || echo "")
 
   if [[ -z "$table_id" ]]; then
@@ -236,23 +295,16 @@ _get_or_create_agents_table() {
       --base-token "$LARC_BASE_APP_TOKEN" \
       --name "agents_registry" \
       --jq '.table.table_id // .table_id' 2>/dev/null || echo "")
-
-    [[ -n "$table_id" ]] && {
-      lark-cli base +field-create --base-token "$LARC_BASE_APP_TOKEN" --table-id "$table_id" --json '{"name":"agent_id","type":"text"}' >/dev/null 2>&1 || true
-      lark-cli base +field-create --base-token "$LARC_BASE_APP_TOKEN" --table-id "$table_id" --json '{"name":"name","type":"text"}' >/dev/null 2>&1 || true
-      lark-cli base +field-create --base-token "$LARC_BASE_APP_TOKEN" --table-id "$table_id" --json '{"name":"model","type":"text"}' >/dev/null 2>&1 || true
-      lark-cli base +field-create --base-token "$LARC_BASE_APP_TOKEN" --table-id "$table_id" --json '{"name":"workspace","type":"text"}' >/dev/null 2>&1 || true
-      lark-cli base +field-create --base-token "$LARC_BASE_APP_TOKEN" --table-id "$table_id" --json '{"name":"chat_id","type":"text"}' >/dev/null 2>&1 || true
-      lark-cli base +field-create --base-token "$LARC_BASE_APP_TOKEN" --table-id "$table_id" --json '{"name":"drive_folder","type":"text"}' >/dev/null 2>&1 || true
-      lark-cli base +field-create --base-token "$LARC_BASE_APP_TOKEN" --table-id "$table_id" --json '{"name":"base_token","type":"text"}' >/dev/null 2>&1 || true
-      lark-cli base +field-create --base-token "$LARC_BASE_APP_TOKEN" --table-id "$table_id" --json '{"name":"status","type":"text"}' >/dev/null 2>&1 || true
-      lark-cli base +field-create --base-token "$LARC_BASE_APP_TOKEN" --table-id "$table_id" --json '{"name":"profile","type":"text"}' >/dev/null 2>&1 || true
-      lark-cli base +field-create --base-token "$LARC_BASE_APP_TOKEN" --table-id "$table_id" --json '{"name":"registered_at","type":"text"}' >/dev/null 2>&1 || true
-      lark-cli base +field-create --base-token "$LARC_BASE_APP_TOKEN" --table-id "$table_id" --json '{"name":"last_active_at","type":"text"}' >/dev/null 2>&1 || true
-    }
-
     [[ -z "$table_id" ]] && { log_error "Table creation failed"; return 1; }
     log_ok "agents_registry table created: $table_id"
   fi
+
+  # Ensure custom fields exist (idempotent — lark-cli ignores duplicates)
+  [[ -n "$table_id" ]] && {
+    for field_name in agent_id name model workspace chat_id drive_folder base_token scopes status profile registered_at last_active_at; do
+      lark-cli base +field-create --base-token "$LARC_BASE_APP_TOKEN" --table-id "$table_id" \
+        --json "{\"name\":\"$field_name\",\"type\":\"text\"}" >/dev/null 2>&1 || true
+    done
+  }
   echo "$table_id"
 }

@@ -68,25 +68,30 @@ larc bootstrap
 
 ## 当前状态
 
-这个项目仍然处于 incubation 阶段，但已经有了清晰进展：
+五个基础阶段已完成，并在真实的飞书租户中实时验证：
 
-- bootstrap / memory / send / task 的基础链路已建立
-- `auth suggest` 已有初始实现和回归案例
-- approval 模型已经做过 spike
-- 正在把 OpenClaw 风格 disclosure chain 迁移到飞书表面
+| 阶段 | 已验证内容 |
+|---|---|
+| A — 运行时 | `bootstrap`、`memory`、`send`、`task`、`agent` 全部对接真实飞书 API |
+| B — 权限智能 | `auth suggest` 对 8 个复合办公任务推断最小权限，包含权限主体说明 |
+| C — 智能体管理 | 4 个智能体注册至飞书多维表格；支持 YAML 批量注册；每个智能体存储权限范围 |
+| D — 审批与执行控制 | 门控策略（32 种任务类型 × none/preview/approval）；`larc approve gate` 命令 |
+| E — 知识图谱 | 知识空间 BFS 遍历；37 个节点已索引；关键词查询返回匹配节点及相邻节点 |
+
+尚在实验或规划中：
+- MergeGate 集成（受控执行审查）
+- 完整 OpenClaw CLI 兼容层
+- 基于文档内容的知识图谱链接提取（当前为层级结构）
+- 中国市场商业叙事完善
 
 更多背景请看：
 
 - [PLAYBOOK.md](PLAYBOOK.md)
 - [docs/goal-aligned-playbook.md](docs/goal-aligned-playbook.md)
 - [docs/permission-model.md](docs/permission-model.md)
-- [docs/open-source-trilingual-plan.md](docs/open-source-trilingual-plan.md)
+- [docs/auth-suggest-cases.md](docs/auth-suggest-cases.md)
 - [CONTRIBUTING.md](CONTRIBUTING.md)
 - [docs/terminology-glossary.zh-CN.md](docs/terminology-glossary.zh-CN.md)
-- [docs/release-checklist.md](docs/release-checklist.md)
-- [docs/release-readiness-2026-04-14.md](docs/release-readiness-2026-04-14.md)
-- [docs/public-release-bundle-2026-04-14.md](docs/public-release-bundle-2026-04-14.md)
-- [docs/bundle-a-readiness-2026-04-14.md](docs/bundle-a-readiness-2026-04-14.md)
 
 ---
 

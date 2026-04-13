@@ -1,0 +1,57 @@
+{
+  "_comment": "Execution gate policy — maps task types to risk level and required gate before execution.",
+  "_version": "0.1.0",
+  "_updated": "2026-04-14",
+
+  "risk_levels": {
+    "none":   "Read-only or fully reversible. No gate needed.",
+    "low":    "Creates or modifies data, but easily undone. Warn but allow.",
+    "medium": "Visible to others or hard to reverse. Require preview confirmation.",
+    "high":   "Irreversible, triggers authority chain, or affects money/approvals. Require approval gate."
+  },
+
+  "gates": {
+    "none":     "Proceed immediately. No confirmation required.",
+    "preview":  "Show the agent what will happen before executing. Require explicit --confirm flag.",
+    "approval": "Submit a Lark Approval instance. Execution must wait for approver action."
+  },
+
+  "tasks": {
+    "read_document":    { "risk": "none",   "gate": "none",     "reason": "Read-only document access." },
+    "read_wiki":        { "risk": "none",   "gate": "none",     "reason": "Read-only wiki access." },
+    "read_drive":       { "risk": "none",   "gate": "none",     "reason": "Read-only Drive access." },
+    "read_base":        { "risk": "none",   "gate": "none",     "reason": "Read-only Base access." },
+    "read_calendar":    { "risk": "none",   "gate": "none",     "reason": "Read-only calendar access." },
+    "read_contact":     { "risk": "none",   "gate": "none",     "reason": "Read-only contact directory access." },
+    "read_approval":    { "risk": "none",   "gate": "none",     "reason": "Read-only approval query." },
+    "read_task":        { "risk": "none",   "gate": "none",     "reason": "Read-only task query." },
+    "read_attendance":  { "risk": "none",   "gate": "none",     "reason": "Read-only attendance data." },
+    "read_minutes":     { "risk": "none",   "gate": "none",     "reason": "Read-only meeting minutes." },
+    "read_vc":          { "risk": "none",   "gate": "none",     "reason": "Read-only video conference data." },
+    "read_message":     { "risk": "none",   "gate": "none",     "reason": "Read-only IM message access." },
+
+    "create_document":  { "risk": "low",    "gate": "none",     "reason": "Document creation is reversible (can be deleted)." },
+    "update_document":  { "risk": "low",    "gate": "none",     "reason": "Document edits are version-controlled and reversible." },
+    "write_wiki":       { "risk": "low",    "gate": "none",     "reason": "Wiki changes are versioned; rollback is available." },
+    "create_base_record": { "risk": "low",  "gate": "none",     "reason": "Base record creation is soft-deletable." },
+    "update_base_record": { "risk": "low",  "gate": "none",     "reason": "Base record updates can be reverted." },
+    "write_task":       { "risk": "low",    "gate": "none",     "reason": "Task updates are reversible." },
+    "write_calendar":   { "risk": "low",    "gate": "none",     "reason": "Calendar events can be deleted after creation." },
+
+    "send_message":     { "risk": "medium", "gate": "preview",  "reason": "IM messages are immediately visible to recipients and cannot be unsent in all contexts." },
+    "create_drive_file": { "risk": "medium","gate": "preview",  "reason": "File creation creates tenant-visible content; preview ensures correct target and permissions." },
+    "manage_wiki":      { "risk": "medium", "gate": "preview",  "reason": "Structural wiki changes (moves, deletes) affect shared knowledge space." },
+    "manage_drive":     { "risk": "medium", "gate": "preview",  "reason": "Drive management (moves, permission changes) affects shared file access." },
+    "manage_sheets":    { "risk": "medium", "gate": "preview",  "reason": "Spreadsheet changes may affect downstream calculations or reports." },
+    "manage_slides":    { "risk": "medium", "gate": "preview",  "reason": "Presentation edits may be used in live meetings." },
+    "manage_contact":   { "risk": "medium", "gate": "preview",  "reason": "Contact directory changes affect identity resolution across the tenant." },
+
+    "create_crm_record": { "risk": "medium","gate": "preview",  "reason": "CRM record creation creates a sales data record; wrong data is hard to clean up at scale." },
+    "send_crm_followup": { "risk": "medium","gate": "preview",  "reason": "CRM follow-up messages are external-facing; preview content and recipient before sending." },
+
+    "create_expense":   { "risk": "high",   "gate": "approval", "reason": "Expense submission triggers a financial approval chain. Must not proceed without manager authorization." },
+    "submit_approval":  { "risk": "high",   "gate": "approval", "reason": "Approval submission is irreversible once submitted; approver must act to cancel." },
+    "act_approval_task": { "risk": "high",  "gate": "approval", "reason": "Approving or rejecting an approval task affects downstream workflows and is audited.", "note": "Agent must only act on tasks explicitly delegated to it." },
+    "manage_base":      { "risk": "high",   "gate": "approval", "reason": "Base structural changes (schema edits, table deletes) can destroy production data." }
+  }
+}

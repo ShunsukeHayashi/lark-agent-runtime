@@ -1,0 +1,42 @@
+agents:
+  - id: main
+    name: Main Agent
+    model: claude-sonnet-4-6
+    workspace: general back-office tasks
+    scopes:
+      - docs:doc:readonly
+      - im:message:send_as_bot
+      - base:record:readonly
+      - drive:file:readonly
+
+  - id: expense-processor
+    name: Expense Processor
+    model: claude-haiku-4-5
+    workspace: finance and expense workflows
+    scopes:
+      - base:record:created
+      - approval:instance:write
+      - im:message:send_as_bot
+
+  - id: crm-agent
+    name: CRM Agent
+    model: claude-sonnet-4-6
+    workspace: sales and customer records
+    scopes:
+      - base:record:created
+      - base:record:readonly
+      - bitable:app
+      - contact:user.base:readonly
+      - calendar:calendar
+
+  - id: doc-agent
+    name: Document Agent
+    model: claude-sonnet-4-6
+    workspace: document and wiki management
+    scopes:
+      - docs:doc:readonly
+      - docs:doc
+      - wiki:wiki:readonly
+      - wiki:wiki
+      - drive:file:create
+      - drive:file:readonly

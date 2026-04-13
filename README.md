@@ -48,10 +48,12 @@ LARC takes a `permission-first` approach:
 | Capability | What it does |
 |---|---|
 | `larc bootstrap` | Loads `SOUL.md → USER.md → MEMORY.md → HEARTBEAT.md` from Lark Drive |
-| `larc auth suggest` | Infers scopes and authority from a natural-language task |
+| `larc auth suggest` | Infers minimum scopes and authority type from a natural-language task description |
+| `larc approve gate` | Checks execution gate policy (none / preview / approval) before running a task |
+| `larc agent register` | Registers an agent in Lark Base with declared scopes; supports YAML batch registration |
+| `larc kg build` / `larc kg query` | Indexes Lark Wiki node graph and answers concept queries with neighbor context |
 | `larc memory` | Syncs daily memory with Lark Base |
 | `larc send` / `larc task` | Provides basic execution paths for IM and task operations |
-| Approval support | Models approval creation, approval task action, and execution gates |
 | Claude Code skills | Ships Lark-oriented skills in `.claude/skills/` |
 
 ---
@@ -72,30 +74,30 @@ larc bootstrap
 
 ## Current status
 
-This project is still in incubation, but the following pieces are already moving:
+The five foundational phases are complete and live-verified against a real Lark tenant:
 
-- bootstrap / memory / send / task basics
-- initial `auth suggest` implementation with regression cases
-- approval model spike
-- OpenClaw-style disclosure-chain reenactment on Lark surfaces
+| Phase | What was proven |
+|---|---|
+| A — Runtime | `bootstrap`, `memory`, `send`, `task`, `agent` all working against live Lark APIs |
+| B — Permission Intelligence | `auth suggest` infers minimum scopes for 8 compound office tasks; authority explanation included |
+| C — Agent Operating Model | 4-agent registry in Lark Base; YAML batch registration; scopes stored per agent |
+| D — Approval & Execution Control | Gate policy (32 task types × none/preview/approval); `larc approve gate` command |
+| E — Knowledge Graph | Wiki BFS traversal; 37-node graph indexed; keyword query returns matches with neighbor context |
 
-Key planning and design docs:
+What is still experimental or future:
+- MergeGate integration for controlled execution review
+- Full OpenClaw CLI compatibility layer
+- Knowledge graph link extraction from document content (currently hierarchy-based)
+- China-market go-to-market narrative refinement
+
+Key docs:
 
 - [PLAYBOOK.md](PLAYBOOK.md)
 - [docs/goal-aligned-playbook.md](docs/goal-aligned-playbook.md)
 - [docs/permission-model.md](docs/permission-model.md)
-- [docs/open-source-trilingual-plan.md](docs/open-source-trilingual-plan.md)
 - [docs/auth-suggest-cases.md](docs/auth-suggest-cases.md)
-- [CONTRIBUTING.md](CONTRIBUTING.md)
-- [CHANGELOG.md](CHANGELOG.md)
 - [docs/terminology-glossary.md](docs/terminology-glossary.md)
-- [docs/release-checklist.md](docs/release-checklist.md)
-- [docs/release-readiness-2026-04-14.md](docs/release-readiness-2026-04-14.md)
-- [docs/public-release-bundle-2026-04-14.md](docs/public-release-bundle-2026-04-14.md)
-- [docs/bundle-a-readiness-2026-04-14.md](docs/bundle-a-readiness-2026-04-14.md)
-- [docs/bundle-a-manifest-2026-04-14.md](docs/bundle-a-manifest-2026-04-14.md)
-- [docs/launch-messaging.md](docs/launch-messaging.md)
-- [docs/repo-publish-kit.md](docs/repo-publish-kit.md)
+- [CONTRIBUTING.md](CONTRIBUTING.md)
 
 ---
 
@@ -103,37 +105,42 @@ Key planning and design docs:
 
 ```text
 bin/
-  larc
+  larc                         # Main CLI entrypoint
 lib/
-  bootstrap.sh
-  memory.sh
-  send.sh
-  agent.sh
-  task.sh
-  approve.sh
-  heartbeat.sh
-  auth.sh
+  bootstrap.sh                 # Disclosure-chain loading from Lark Drive
+  memory.sh                    # Daily memory sync ↔ Lark Base
+  send.sh                      # IM message sending
+  agent.sh                     # Agent registration and management
+  task.sh                      # Lark Project task operations
+  approve.sh                   # Approval flow + execution gate check
+  heartbeat.sh                 # System state logging
+  auth.sh                      # Scope inference and authorization
+  knowledge-graph.sh           # Wiki node graph build and query
 config/
-  scope-map.json
+  scope-map.json               # 32 task types × required scopes × authority type
+  gate-policy.json             # 32 task types × risk level × execution gate
+agents.yaml                    # Example multi-agent batch registration
 docs/
   goal-aligned-playbook.md
   permission-model.md
-  open-source-trilingual-plan.md
+  auth-suggest-cases.md        # 8 verified regression cases
+  terminology-glossary.md      # (also .zh-CN.md, .ja.md)
 scripts/
   setup-workspace.sh
-  auth-suggest-check.sh
+  register-agents.sh           # YAML batch agent registration
+  auth-suggest-check.sh        # Regression check for all 8 scope inference cases
 .claude/skills/
-  lark-*/
+  lark-*/                      # 24 Claude Code skills (Lark-oriented)
 ```
 
 ---
 
 ## Roadmap focus
 
-- strengthen permission intelligence and minimum-scope inference
-- improve Lark-native disclosure-chain realism
-- connect approval to safer execution control
-- prepare the repo for trilingual open-source release
+- MergeGate integration for controlled execution review gates
+- Full OpenClaw CLI compatibility layer
+- Knowledge graph link extraction from document content
+- Trilingual open-source release (English / Chinese / Japanese)
 
 ---
 

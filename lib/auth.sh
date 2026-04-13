@@ -90,9 +90,11 @@ _auth_suggest() {
 import sys
 import json
 import re
+import os
 
 map_path = sys.argv[1]
 task_desc = sys.argv[2].lower()
+scope_map_dir = os.path.dirname(os.path.realpath(map_path))
 
 with open(map_path, "r", encoding="utf-8") as f:
     scope_map = json.load(f)
@@ -101,46 +103,86 @@ tasks = scope_map.get("tasks", {})
 profiles = scope_map.get("profiles", {})
 
 # Keyword → task key mapping
+# Rules:
+# - Patterns are matched against lowercased task_desc
+# - Order matters: more specific patterns first within a category
+# - Bidirectional verbs: both "create record" and "record create" must match
+# - Compound tasks: "crm record + send message" should trigger both base AND im scopes
 KEYWORD_MAP = {
-    # Documents
-    r"document|doc|read.*doc": ["read_document"],
-    r"create.*doc|write.*doc|new.*doc": ["create_document"],
-    r"edit.*doc|update.*doc|modify.*doc": ["update_document"],
-    # Wiki
-    r"wiki|knowledge base|knowledge hub": ["read_wiki", "write_wiki"],
-    r"wiki.*create|wiki.*update|wiki.*write": ["write_wiki"],
-    # Drive
-    r"drive|upload.*file|create.*file": ["create_drive_file"],
-    r"read.*drive|list.*file|file.*list": ["read_drive"],
-    r"create.*folder|manage.*file": ["manage_drive"],
-    # Base/Bitable
-    r"base|bitable|record.*create|table.*create": ["create_base_record"],
-    r"read.*base|read.*record|read.*table": ["read_base"],
-    r"manage.*base|manage.*bitable": ["manage_base"],
-    # Messages
-    r"send.*message|send.*notification|im.*send|message.*send": ["send_message"],
-    r"read.*message|read.*chat|chat.*history": ["read_message"],
-    # Calendar
-    r"calendar|schedule|event|meeting.*schedule": ["read_calendar"],
-    r"create.*calendar|create.*event|create.*schedule": ["write_calendar"],
-    # Expense / Approval
-    r"expense|reimbursement": ["create_expense"],
-    r"approval|approve|submit.*flow|trigger.*flow": ["submit_approval"],
-    r"read.*approval|check.*approval|approval.*status": ["read_approval"],
-    # Contact
-    r"contact|user.*info|employee.*info|directory|hr": ["read_contact"],
-    # Task
-    r"task|todo|to-do": ["read_task", "write_task"],
-    r"create.*task|new.*task": ["write_task"],
-    # Attendance
-    r"attendance|check.?in|check.?out|timesheet": ["read_attendance"],
-    # Minutes
-    r"minutes|miaoji|meeting.*notes": ["read_minutes"],
-    r"meeting.*record|vc|video.*meeting": ["read_vc"],
-    # Sheets
-    r"sheet|spreadsheet|excel|csv": ["manage_sheets"],
-    # Slides
-    r"slide|ppt|presentation": ["manage_slides"],
+    # ── Documents ──────────────────────────────────────────────────────
+    r"\bdoc\b|document": ["read_document"],
+    r"create\s+\w*\s*doc|write\s+\w*\s*doc|new\s+doc": ["create_document"],
+    r"edit\s+\w*\s*doc|update\s+\w*\s*doc|modify\s+\w*\s*doc": ["update_document"],
+
+    # ── Wiki ───────────────────────────────────────────────────────────
+    r"wiki|knowledge\s*base|knowledge\s*hub": ["read_wiki"],
+    r"wiki.*(?:create|update|write|add|edit)|(?:create|update|write|add|edit).*wiki": ["write_wiki"],
+    r"update\s+wiki|write\s+to\s+wiki": ["write_wiki"],
+
+    # ── Drive ──────────────────────────────────────────────────────────
+    # "upload X file", "upload file", "upload to drive", "attach file"
+    r"upload\b|attach\s+\w*\s*file|create\s+file\b": ["create_drive_file"],
+    r"read\s+\w*\s*drive|list\s+file|file\s+list|browse\s+drive": ["read_drive"],
+    r"create\s+folder|manage\s+file|move\s+file|delete\s+file": ["manage_drive"],
+
+    # ── Base / Bitable (fixed: both word orders) ────────────────────────
+    r"\bbase\b|\bbitable\b": ["read_base"],
+    # "create record", "create a record", "create crm record", "record create"
+    r"create\s+\w*\s*record|record\s+create|add\s+\w*\s*record|new\s+\w*\s*record|insert\s+\w*\s*record": ["create_base_record"],
+    # "update record", "edit record", "modify record"
+    r"update\s+(?:\w+\s+){0,3}record|edit\s+(?:\w+\s+){0,3}record|modify\s+(?:\w+\s+){0,3}record|patch\s+\w*\s*record": ["update_base_record"],
+    r"read\s+\w*\s*(?:record|table)|list\s+\w*\s*record": ["read_base"],
+    r"manage\s+\w*\s*(?:base|bitable|table)": ["manage_base"],
+
+    # ── CRM ────────────────────────────────────────────────────────────
+    # create verb + CRM entity → create_crm_record
+    r"(?:create|add|new|log|insert|register)\s+(?:\w+\s+){0,3}(?:crm|customer|lead|deal|prospect|opportunity)\b": ["create_crm_record"],
+    r"(?:crm|lead|deal|prospect|opportunity)\s+(?:\w+\s+){0,3}(?:create|add|new)\b": ["create_crm_record"],
+    # CRM entity mention without an explicit write verb should default to read, not update
+    r"\bcrm\b|customer\s+record|lead\s+record|deal\s+record|\bpipeline\b|\bprospect\b|\bopportunity\b": ["read_base"],
+    # CRM create + explicit send/notify intent → dedicated compound task
+    r"(?=.*(?:create|add|new|log)\s+(?:\w+\s+){0,3}(?:crm|customer|lead|deal|prospect))(?=.*(?:send|message|notify))": ["send_crm_followup"],
+
+    # ── Messages / IM ──────────────────────────────────────────────────
+    r"send\s+\w*\s*message|send\s+\w*\s*notification|send\s+\w*\s*(?:chat|im)|message\s+send": ["send_message"],
+    r"follow.?up\s+message|send\s+follow.?up": ["send_message"],
+    # "notify X" where X is any person/group
+    r"notify\s+(?:the\s+)?\w+|send\s+\w*\s*alert": ["send_message"],
+    r"read\s+\w*\s*message|read\s+\w*\s*chat|chat\s+history|message\s+history": ["read_message"],
+
+    # ── Calendar ───────────────────────────────────────────────────────
+    r"calendar|read\s+\w*\s*event|list\s+\w*\s*event": ["read_calendar"],
+    # "schedule a meeting", "schedule a follow-up meeting", "book a meeting"
+    r"schedule\s+(?:a\s+)?(?:\S+\s+){0,3}(?:meeting|call|event|appointment)|create\s+\w*\s*(?:event|meeting|appointment)|book\s+\w*\s*(?:room|meeting|slot)": ["write_calendar"],
+
+    # ── Expense / Approval ─────────────────────────────────────────────
+    # bare "expense" or "reimbursement" in any context → create_expense
+    r"\bexpense\b|\breimbursement\b|expense\s+report|expense\s+claim|receipt\s+submission": ["create_expense"],
+    # "route X to approval", "submit approval", "approval flow" → submit_approval
+    r"(?:submit|send|create|trigger|start)\s+\w*\s*approval|approval\s+flow|approval\s+request|route\s+\w+\s+to\s+approval": ["submit_approval"],
+    r"(?:approve|reject|process|handle)\s+\w*\s*approval|approval\s+task|approver|reject\s+task": ["act_approval_task"],
+    r"(?:check|read|get|view)\s+\w*\s*approval|approval\s+status|pending\s+approval": ["read_approval"],
+
+    # ── Contact / Directory ────────────────────────────────────────────
+    r"contact|employee\s+info|user\s+info|directory|lookup\s+user|find\s+user|\bhr\b": ["read_contact"],
+    r"update\s+\w*\s*contact|manage\s+\w*\s*contact|add\s+\w*\s*employee": ["manage_contact"],
+
+    # ── Task / Todo ────────────────────────────────────────────────────
+    r"create\s+\w*\s*task|new\s+\w*\s*task|add\s+\w*\s*task|assign\s+\w*\s*task": ["write_task"],
+    r"(?<!approval\s)\btask\b|\btodo\b|to-do|checklist": ["read_task"],
+
+    # ── Attendance ─────────────────────────────────────────────────────
+    r"attendance|check.?in|check.?out|timesheet|punch\s+in|punch\s+out|clock\s+in": ["read_attendance"],
+
+    # ── Minutes / VC ───────────────────────────────────────────────────
+    r"minutes|miaoji|meeting\s+notes|transcript": ["read_minutes"],
+    r"video\s+meeting|vc\s+record|video\s+conference\s+record": ["read_vc"],
+
+    # ── Sheets ─────────────────────────────────────────────────────────
+    r"spreadsheet|sheet|excel|\bcsv\b": ["manage_sheets"],
+
+    # ── Slides ─────────────────────────────────────────────────────────
+    r"slide|\bppt\b|presentation|deck": ["manage_slides"],
 }
 
 matched_tasks = set()
@@ -166,6 +208,17 @@ for tk in sorted(matched_tasks):
         all_scopes[s] = tk
     all_identities.add(t["identity"])
 
+display_identities = set(all_identities)
+if "either" in display_identities and ("user" in display_identities or "bot" in display_identities):
+    display_identities.discard("either")
+identity_label = ", ".join(sorted(display_identities))
+if display_identities == {"user", "bot"}:
+    identity_label = "user or bot"
+elif not identity_label:
+    identity_label = "either"
+
+authority_notes = scope_map.get("authority_notes", {})
+
 print(f"\n  Detected tasks:")
 for tk in sorted(matched_tasks):
     t = tasks[tk]
@@ -175,7 +228,14 @@ print(f"\n  Required scopes ({len(all_scopes)}):")
 for scope, from_task in sorted(all_scopes.items()):
     print(f"    {scope}  (← {from_task})")
 
-print(f"\n  Recommended identity: {', '.join(sorted(all_identities))}")
+# Authority explanation
+effective_identity = "either" if display_identities == {"user", "bot"} else list(display_identities)[0] if len(display_identities) == 1 else "either"
+note = authority_notes.get(effective_identity, {})
+print(f"\n  Authority: {note.get('label', identity_label)}")
+if note.get("when"):
+    print(f"    Why: {note['when']}")
+if note.get("provision"):
+    print(f"    How to provision: {note['provision']}")
 
 scope_str = " ".join(sorted(all_scopes.keys()))
 print(f"\n  To issue auth URL:")
@@ -188,6 +248,29 @@ for pname, pdata in profiles.items():
     needed = set(all_scopes.keys())
     if needed.issubset(p_scopes):
         print(f"    larc auth login --profile {pname}  # {pdata['description']}")
+
+# Execution gates
+gate_policy_path = os.path.join(scope_map_dir, "gate-policy.json")
+if os.path.exists(gate_policy_path):
+    with open(gate_policy_path) as gf:
+        gate_policy = json.load(gf)
+    gate_tasks = gate_policy.get("tasks", {})
+    gates_needed = []
+    for tk in sorted(matched_tasks):
+        g = gate_tasks.get(tk, {})
+        risk = g.get("risk", "none")
+        gate = g.get("gate", "none")
+        if gate != "none":
+            gates_needed.append((tk, risk, gate))
+    if gates_needed:
+        colors = {"preview": "\033[33m", "approval": "\033[31m"}
+        RESET = "\033[0m"
+        BOLD = "\033[1m"
+        print(f"\n  {BOLD}Execution gates required:{RESET}")
+        for tk, risk, gate in gates_needed:
+            gc = colors.get(gate, "")
+            print(f"    {tk:<28} → {gc}{gate}{RESET}  (risk: {risk})")
+        print(f"\n    Run: larc approve gate <task_type>  for next-step guidance")
 PYEOF
 
   local exit_code=$?

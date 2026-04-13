@@ -1,7 +1,7 @@
 {
   "_comment": "タスク種別 → 必要 Lark スコープのマッピング定義。identity は user / bot / either のいずれか。",
-  "_version": "0.1.0",
-  "_updated": "2026-04-13",
+  "_version": "0.2.0",
+  "_updated": "2026-04-14",
 
   "tasks": {
     "read_document": {
@@ -65,14 +65,29 @@
       "description": "Bitable/Base レコードの読み取り"
     },
     "create_base_record": {
-      "scopes": ["base:record:created"],
+      "scopes": ["base:record:created", "bitable:app"],
       "identity": "user",
       "description": "Bitable/Base への新規レコード作成"
+    },
+    "update_base_record": {
+      "scopes": ["bitable:app", "bitable:record"],
+      "identity": "user",
+      "description": "Bitable/Base レコードの更新・編集"
     },
     "manage_base": {
       "scopes": ["bitable:app", "bitable:table", "bitable:record"],
       "identity": "user",
       "description": "Bitable アプリ・テーブル・レコードの全管理"
+    },
+    "create_crm_record": {
+      "scopes": ["base:record:created", "bitable:app", "contact:user.base:readonly"],
+      "identity": "user",
+      "description": "CRMレコード（顧客・案件・リード）の新規作成。Lark Base が CRM として機能する場合のスコープセット"
+    },
+    "send_crm_followup": {
+      "scopes": ["base:record:created", "bitable:app", "contact:user.base:readonly", "im:message:send_as_bot"],
+      "identity": "either",
+      "description": "CRMレコード作成 + フォローアップメッセージ送信。CRM記録と対人コミュニケーションを組み合わせる典型的な営業オペレーション"
     },
     "read_calendar": {
       "scopes": ["calendar:calendar:readonly"],
@@ -85,14 +100,19 @@
       "description": "カレンダーイベントの作成・更新・削除"
     },
     "create_expense": {
-      "scopes": ["base:record:created", "approval:approval:write"],
+      "scopes": ["base:record:created", "approval:instance:write"],
       "identity": "user",
       "description": "経費申請レコードの作成と承認フローの起動"
     },
     "submit_approval": {
-      "scopes": ["approval:approval:write"],
+      "scopes": ["approval:instance:write"],
       "identity": "user",
       "description": "承認フローへのインスタンス作成・提出"
+    },
+    "act_approval_task": {
+      "scopes": ["approval:task:write"],
+      "identity": "user",
+      "description": "承認タスクの承認・却下・処理"
     },
     "read_approval": {
       "scopes": ["approval:approval:readonly"],
@@ -146,6 +166,27 @@
     }
   },
 
+  "authority_notes": {
+    "user": {
+      "label": "user (user_access_token)",
+      "when": "The action must be performed as a real, named person. Lark attributes the action to that user for audit trail, quota, and permission purposes.",
+      "examples": ["reading docs you own", "creating calendar events", "editing wiki pages", "filing expense reports"],
+      "provision": "User must authorize the app via OAuth. Token is scoped to one user."
+    },
+    "bot": {
+      "label": "bot (tenant_access_token)",
+      "when": "The action is system-initiated on behalf of the tenant, not a specific person. Typically used for sending programmatic notifications, scheduling background reads, or posting to group chats.",
+      "examples": ["sending IM notifications", "posting to a group chat", "batch record reads for reporting"],
+      "provision": "App must be added to the target chat or space. No individual user authorization required."
+    },
+    "either": {
+      "label": "either (user or bot depending on context)",
+      "when": "This compound task spans actions that naturally belong to different authority types. Typically: the record creation or document edit is user-identity, while the IM notification is bot-identity.",
+      "examples": ["CRM record + follow-up message", "expense creation + approval submission + manager notification"],
+      "provision": "Agent should split the task: execute record/doc actions with user token, send notifications with bot token. Or use a single tenant token if the Lark app has been granted both surface permissions."
+    }
+  },
+
   "profiles": {
     "readonly": {
       "description": "読み取り専用プロファイル — データ閲覧・分析用途",
@@ -192,6 +233,8 @@
         "im:message:send_as_bot",
         "calendar:calendar",
         "approval:approval:write",
+        "approval:instance:write",
+        "approval:task:write",
         "approval:approval:readonly",
         "contact:user.base",
         "contact:department.base",
@@ -210,6 +253,8 @@
         "drive:drive:readonly",
         "im:message:send_as_bot",
         "approval:approval:write",
+        "approval:instance:write",
+        "approval:task:write",
         "approval:approval:readonly",
         "task:task"
       ]

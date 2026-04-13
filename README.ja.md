@@ -64,25 +64,30 @@ larc bootstrap
 
 ## 現在の状態
 
-このプロジェクトはまだ incubation 段階です。ただし、次の部分はすでに前進しています。
+5つの基盤フェーズが完了し、実際の Lark テナントで動作確認済みです。
 
-- bootstrap / memory / send / task の基本経路
-- `auth suggest` の初期実装と回帰ケース
-- approval モデルのスパイク
-- OpenClaw 的 disclosure chain を Lark 上で再現する方向性
+| フェーズ | 証明された内容 |
+|---|---|
+| A — ランタイム | `bootstrap`・`memory`・`send`・`task`・`agent` がすべて実際の Lark API と連動 |
+| B — 権限インテリジェンス | `auth suggest` が 8種の複合業務タスクで最小権限を推論・権限主体を説明 |
+| C — エージェント管理 | 4エージェントを Lark Base レジストリに登録；YAML バッチ登録対応；スコープ保存 |
+| D — 承認と実行制御 | ゲートポリシー（32 タスク種別 × none/preview/approval）；`larc approve gate` |
+| E — ナレッジグラフ | Wiki BFS 走査；37 ノードをインデックス化；keyword query で隣接ノードまで返す |
+
+現在も実験中または今後の予定：
+- MergeGate 統合（実行審査ゲート）
+- OpenClaw CLI 完全互換レイヤー
+- ドキュメント本文からのリンク抽出（現在は階層構造ベース）
+- 中国市場向けのナレッジグラフ事例整備
 
 詳しくは以下を参照してください。
 
 - [PLAYBOOK.md](PLAYBOOK.md)
 - [docs/goal-aligned-playbook.md](docs/goal-aligned-playbook.md)
 - [docs/permission-model.md](docs/permission-model.md)
-- [docs/open-source-trilingual-plan.md](docs/open-source-trilingual-plan.md)
+- [docs/auth-suggest-cases.md](docs/auth-suggest-cases.md)
 - [CONTRIBUTING.md](CONTRIBUTING.md)
 - [docs/terminology-glossary.ja.md](docs/terminology-glossary.ja.md)
-- [docs/release-checklist.md](docs/release-checklist.md)
-- [docs/release-readiness-2026-04-14.md](docs/release-readiness-2026-04-14.md)
-- [docs/public-release-bundle-2026-04-14.md](docs/public-release-bundle-2026-04-14.md)
-- [docs/bundle-a-readiness-2026-04-14.md](docs/bundle-a-readiness-2026-04-14.md)
 
 ---
 

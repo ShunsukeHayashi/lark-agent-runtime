@@ -12,6 +12,7 @@ cmd_approve() {
     preview) _approve_preview "$@" ;;
     create|start|submit) _approve_create "$@" ;;
     upload-file|upload) _approve_upload_file "$@" ;;
+    gate|check-gate) _approve_gate "$@" ;;
     help|--help|-h) _approve_help ;;
     *)
       # Keep backward compatibility with old `larc approve <doc_url>` calls.
@@ -27,30 +28,121 @@ cmd_approve() {
 _approve_help() {
   cat <<EOF
 
-${BOLD}larc approve${RESET} — 承認タスク操作
+${BOLD}larc approve${RESET} — Approval flow and execution gate control
 
-${BOLD}コマンド:${RESET}
-  ${CYAN}list${RESET} / ${CYAN}inbox${RESET}     現在の承認待ちタスクを一覧表示
-  ${CYAN}definition${RESET} <approval_code>      承認定義と form / node_list を確認
-  ${CYAN}scaffold-form${RESET}                   承認定義から form.json の雛形を生成
-  ${CYAN}scaffold-payload${RESET}                承認定義から extra.json の雛形を生成
-  ${CYAN}scaffold-package${RESET}                承認セット一式をディレクトリへ生成
-  ${CYAN}preview${RESET}                         起票前の承認フローを raw API で preview
-  ${CYAN}create${RESET}                          新規承認起票を raw API で実行
-  ${CYAN}upload-file${RESET}                     添付 / 画像を approval file API へ upload
+${BOLD}Commands:${RESET}
+  ${CYAN}gate${RESET} [task_type]            Check execution gate for a task type (lists all if omitted)
+  ${CYAN}gate${RESET} <task_type> --quiet    Machine-readable: prints gate name only (none|preview|approval)
+  ${CYAN}list${RESET} / ${CYAN}inbox${RESET}               List current pending approval tasks
+  ${CYAN}definition${RESET} <approval_code>  Fetch approval definition with form / node_list
+  ${CYAN}scaffold-form${RESET}               Generate form.json template from approval definition
+  ${CYAN}scaffold-payload${RESET}            Generate extra.json template from approval definition
+  ${CYAN}scaffold-package${RESET}            Generate full approval package into a directory
+  ${CYAN}preview${RESET}                     Preview an approval instance via raw API (no submission)
+  ${CYAN}create${RESET}                      Submit a new approval instance via raw API
+  ${CYAN}upload-file${RESET}                 Upload an attachment/image to the approval file API
 
-${BOLD}例:${RESET}
+${BOLD}Examples:${RESET}
+  larc approve gate
+  larc approve gate create_expense
+  larc approve gate send_message --quiet
   larc approve list
   larc approve definition APPROVAL_CODE
-  larc approve scaffold-form --definition-file approval-definition.json --output form.json
-  larc approve scaffold-payload --definition-file approval-definition.json --output extra.json
-  larc approve scaffold-package --definition-file approval-definition.json --output-dir ./approval-work
+  larc approve scaffold-package --approval-code APPROVAL_CODE --output-dir ./approval-work
   larc approve preview --approval-code APPROVAL_CODE --user-id USER_ID --form-file form.json --dry-run
   larc approve create --approval-code APPROVAL_CODE --user-id USER_ID --form-file form.json --payload-file extra.json --dry-run
   larc approve upload-file --path ./receipt.pdf --type attachment --dry-run
-  cat docs/approval-spike.md
+
+${BOLD}Gate policy:${RESET} config/gate-policy.json
+  none     — proceed immediately
+  preview  — show what will happen, require explicit confirmation
+  approval — submit Lark Approval instance; wait for approver action
 
 EOF
+}
+
+_approve_gate() {
+  local task_type="${1:-}"
+  local quiet=false
+  shift || true
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --quiet|-q) quiet=true; shift ;;
+      *) shift ;;
+    esac
+  done
+
+  local gate_policy="$SCRIPT_DIR/config/gate-policy.json"
+  [[ ! -f "$gate_policy" ]] && { log_error "gate-policy.json not found: $gate_policy"; return 1; }
+
+  if [[ -z "$task_type" ]]; then
+    # List all gates
+    python3 - "$gate_policy" <<'PY'
+import json, sys
+policy = json.load(open(sys.argv[1]))
+tasks = policy.get("tasks", {})
+risk_order = {"high": 0, "medium": 1, "low": 2, "none": 3}
+sorted_tasks = sorted(tasks.items(), key=lambda kv: risk_order.get(kv[1].get("risk","none"), 4))
+print(f"\n  {'Task type':<25} {'Risk':<8} {'Gate':<10}  Reason")
+print(f"  {'─'*25} {'─'*8} {'─'*10}  {'─'*40}")
+for name, t in sorted_tasks:
+    print(f"  {name:<25} {t.get('risk','?'):<8} {t.get('gate','?'):<10}  {t.get('reason','')}")
+PY
+    return 0
+  fi
+
+  python3 - "$gate_policy" "$task_type" "$quiet" <<'PY'
+import json, sys
+
+policy = json.load(open(sys.argv[1]))
+task_type = sys.argv[2]
+quiet = sys.argv[3] == "true"
+
+tasks = policy.get("tasks", {})
+gates = policy.get("gates", {})
+risk_levels = policy.get("risk_levels", {})
+
+if task_type not in tasks:
+    print(f"[gate] unknown task type: {task_type}")
+    sys.exit(1)
+
+t = tasks[task_type]
+risk  = t.get("risk", "unknown")
+gate  = t.get("gate", "none")
+reason = t.get("reason", "")
+note   = t.get("note", "")
+
+gate_desc = gates.get(gate, "")
+
+if quiet:
+    # Machine-readable: just print the gate name
+    print(gate)
+    sys.exit(0)
+
+colors = {"none": "\033[32m", "preview": "\033[33m", "approval": "\033[31m"}
+risk_colors = {"none": "\033[90m", "low": "\033[32m", "medium": "\033[33m", "high": "\033[31m"}
+RESET = "\033[0m"
+BOLD = "\033[1m"
+
+rc = risk_colors.get(risk, "")
+gc = colors.get(gate, "")
+
+print(f"\n  {BOLD}Task:{RESET}   {task_type}")
+print(f"  {BOLD}Risk:{RESET}   {rc}{risk}{RESET}  — {risk_levels.get(risk, '')}")
+print(f"  {BOLD}Gate:{RESET}   {gc}{gate}{RESET}  — {gate_desc}")
+print(f"  {BOLD}Reason:{RESET} {reason}")
+if note:
+    print(f"  {BOLD}Note:{RESET}   {note}")
+
+if gate == "preview":
+    print(f"\n  {BOLD}Next:{RESET} Add --dry-run to preview, then rerun with --confirm to execute.")
+elif gate == "approval":
+    print(f"\n  {BOLD}Next:{RESET} larc approve create --approval-code $LARC_APPROVAL_CODE --user-id $USER_ID ...")
+    print(f"         Wait for approver action before executing the task.")
+PY
+
+  local exit_code=$?
+  return $exit_code
 }
 
 _approve_list() {

@@ -12,3 +12,10 @@ config.env
 
 # Node
 node_modules/
+
+# Private internal assets — contain company-specific identifiers
+crm-assets/ppal-*.md
+crm-assets/ppal-*.ts
+crm-assets/miyabi-*.md
+crm-assets/miyabi-*.ts
+crm-assets/legacy-backoffice-CLAUDE.md

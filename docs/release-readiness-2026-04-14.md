@@ -1,17 +1,16 @@
 # LARC Release Readiness Assessment
 
 > Snapshot assessment for initial open-source release readiness as of 2026-04-14.
+> Updated after Phases A–E completion and release hygiene sweep.
 
 ---
 
 ## Overall Verdict
 
-Current verdict: `HOLD`
+Previous verdict: `HOLD` → Updated verdict: `CLOSE`
 
-The repository is close to an initial public opening, but it is not yet ready to switch from private to public.
-
-The strongest reason is not product direction.
-The strongest reason is repository hygiene: the public first cut has not yet been fully bundled and stabilized as a single release candidate.
+All five implementation phases are complete and live-verified against a real Lark tenant.
+The remaining blocker is a single commit to freeze the 0.1.0 file set.
 
 ---
 
@@ -19,14 +18,15 @@ The strongest reason is repository hygiene: the public first cut has not yet bee
 
 | Area | Status | Notes |
 |---|---|---|
-| Product story | `GO` | Trilingual README entry exists and communicates the wedge clearly |
-| Naming and brand hygiene | `GO` | Third-party product naming was neutralized in public-facing docs and legacy assets |
-| License presence | `GO` | `LICENSE` now exists and matches the MIT label in README |
-| Secret and tenant hygiene | `HOLD` | No obvious committed `.env`, but a final grep-based sweep should be re-run right before release |
-| Trilingual documentation | `GO` | README, CONTRIBUTING, and glossary now exist in English, Chinese, and Japanese |
-| Permission credibility | `GO` | `auth suggest` regression checks passed for representative compound cases |
-| Repo cleanliness | `NOT READY` | Working tree still contains many unbundled changes and parallel work artifacts |
-| Public release packaging | `NOT READY` | The exact set of files for version `0.1.0` has not yet been frozen |
+| Product story | `GO` | Trilingual README updated to reflect Phases A–E; distinguishes proven vs. experimental |
+| Naming and brand hygiene | `GO` | `crm-assets/ppal-*` and `miyabi-*` excluded via `.gitignore`; no external brand naming in public docs |
+| License presence | `GO` | `LICENSE` exists and matches the MIT label in README |
+| Secret and tenant hygiene | `HOLD` | Grep sweep clean; `oc_1234567890abcdef` in lark-doc is a placeholder. Re-run sweep on final commit. |
+| Trilingual documentation | `GO` | README, CONTRIBUTING, glossary in English, Chinese, and Japanese — all updated to Phase E state |
+| Permission credibility | `GO` | 8 regression cases passing; authority explanation in CLI output; gate policy in `config/gate-policy.json` |
+| Implementation completeness | `GO` | Phases A–E complete: runtime / permission intelligence / agents / approval gates / knowledge graph |
+| Repo cleanliness | `HOLD` | New files untracked (gate-policy.json, knowledge-graph.sh, agents.yaml). One commit needed to freeze 0.1.0. |
+| Public release packaging | `HOLD` | File set is now determined; commit + tag is the remaining action. |
 
 ---
 

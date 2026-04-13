@@ -19,7 +19,7 @@ LARC_VERSION="0.1.0"
 LARC_HOME="${LARC_HOME:-$HOME/.larc}"
 LARC_CACHE="$LARC_HOME/cache"
 LARC_CONFIG="$LARC_HOME/config.env"
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
 LIB_DIR="$SCRIPT_DIR/lib"
 
 # Color definitions
@@ -63,6 +63,7 @@ cmd_task()      { source "$LIB_DIR/task.sh";      cmd_task "$@"; }
 cmd_approve()   { source "$LIB_DIR/approve.sh";   cmd_approve "$@"; }
 cmd_agent()     { source "$LIB_DIR/agent.sh";     cmd_agent "$@"; }
 cmd_auth()      { source "$LIB_DIR/auth.sh";      cmd_auth "$@"; }
+cmd_kg()        { source "$LIB_DIR/knowledge-graph.sh"; cmd_kg "$@"; }
 
 cmd_init() {
   log_head "larc init — Initialize Lark Drive agent workspace"
@@ -174,6 +175,10 @@ ${BOLD}Commands:${RESET}
   ${CYAN}auth suggest${RESET} "<text>" Infer required scopes from task description
   ${CYAN}auth check${RESET}            Check current permission state (suggests login if gaps)
   ${CYAN}auth login${RESET}            Issue auth URL for specified scopes
+  ${CYAN}approve gate${RESET} [type]   Check execution gate (none|preview|approval) for a task type
+  ${CYAN}kg build${RESET}              Traverse Lark Wiki and index node graph into Base
+  ${CYAN}kg query${RESET} "<concept>"  Keyword search over indexed graph; show matches + neighbors
+  ${CYAN}kg show${RESET} <token>       Show node details and neighbors from local cache
   ${CYAN}status${RESET}                Show connection state and config
 
 ${BOLD}Examples:${RESET}
@@ -211,6 +216,7 @@ main() {
     approve)    shift; require_lark_cli; cmd_approve "$@" ;;
     agent)      shift; require_lark_cli; cmd_agent "$@" ;;
     auth)       shift; require_lark_cli; cmd_auth "$@" ;;
+    kg)         shift; require_lark_cli; cmd_kg "$@" ;;
     status)     shift; cmd_status "$@" ;;
     help|--help|-h) cmd_help ;;
     *)
