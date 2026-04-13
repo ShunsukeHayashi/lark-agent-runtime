@@ -179,6 +179,8 @@ ${BOLD}Commands:${RESET}
   ${CYAN}approve gate${RESET} [type]   Check execution gate (none|preview|approval) for a task type
   ${CYAN}ingress enqueue${RESET}       Normalize an inbound Lark message and enqueue it for execution
   ${CYAN}ingress list${RESET}          List queued inbound tasks from Base/local cache
+  ${CYAN}ingress approve${RESET}       Mark a blocked queue item as approved
+  ${CYAN}ingress resume${RESET}        Resume an approved queue item into pending state
   ${CYAN}kg build${RESET}              Traverse Lark Wiki and index node graph into Base
   ${CYAN}kg query${RESET} "<concept>"  Keyword search over indexed graph; show matches + neighbors
   ${CYAN}kg show${RESET} <token>       Show node details and neighbors from local cache
@@ -195,6 +197,8 @@ ${BOLD}Examples:${RESET}
   larc approve list
   larc ingress enqueue --text "Please route this expense to approval" --sender ou_xxx --source im
   larc ingress list --agent main
+  larc ingress approve --queue-id <id>
+  larc ingress resume --queue-id <id>
 
 ${BOLD}Environment:${RESET}
   LARC_HOME              Config and cache directory (default: ~/.larc)

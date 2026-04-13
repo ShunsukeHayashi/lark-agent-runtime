@@ -11,6 +11,8 @@ cmd_ingress() {
   case "$action" in
     enqueue) _ingress_enqueue "$@" ;;
     list)    _ingress_list "$@" ;;
+    approve) _ingress_approve "$@" ;;
+    resume)  _ingress_resume "$@" ;;
     help|--help|-h) _ingress_help ;;
     *)
       log_error "Unknown ingress action: $action"
@@ -28,12 +30,16 @@ ${BOLD}larc ingress${RESET} — Normalize inbound Lark events into queued tasks
 ${BOLD}Commands:${RESET}
   ${CYAN}enqueue${RESET}   Create a queue item from message text / stdin
   ${CYAN}list${RESET}      List queued items from Base or local cache
+  ${CYAN}approve${RESET}   Mark a blocked approval item as approved
+  ${CYAN}resume${RESET}    Move an approved item back to pending
 
 ${BOLD}Examples:${RESET}
   larc ingress enqueue --text "Please route this expense to approval" --sender ou_xxx --source im
   echo "Create CRM record and send a follow-up message" | larc ingress enqueue --agent crm-agent
   larc ingress enqueue --text "Upload the file to drive and update the wiki" --dry-run
   larc ingress list --agent main
+  larc ingress approve --queue-id 1234
+  larc ingress resume --queue-id 1234
 
 EOF
 }
@@ -246,7 +252,8 @@ _ingress_list() {
   if [[ -n "$LARC_BASE_APP_TOKEN" ]]; then
     local table_id
     table_id=$(_get_or_create_queue_table)
-    lark-cli base +record-list \
+    local base_output
+    base_output=$(lark-cli base +record-list \
       --base-token "$LARC_BASE_APP_TOKEN" \
       --table-id "$table_id" 2>/dev/null | python3 -c '
 import json, sys
@@ -256,7 +263,7 @@ fields = d.get("fields", [])
 rows = d.get("data", [])
 target_agent = "'"${agent_id}"'"
 if not fields or not rows:
-    print("(no queue items)")
+    print("")
     sys.exit(0)
 def idx(name):
     try: return fields.index(name)
@@ -272,9 +279,13 @@ for row in rows:
         m = row[mi] if mi is not None and mi < len(row) else "-"
         print(f"{q}  [{s} / {g}]  {str(m)[:100]}")
 if not found:
-    print("(no queue items)")
-' || log_warn "Queue list failed; falling back to local cache"
-    return 0
+    print("")
+' || true)
+    if [[ -n "${base_output//$'\n'/}" ]]; then
+      printf '%s\n' "$base_output"
+      return 0
+    fi
+    log_warn "No queue rows returned from Base — falling back to local queue"
   fi
 
   local queue_file="$LARC_CACHE/queue/${agent_id}.jsonl"
@@ -300,6 +311,92 @@ if not found:
 PY
 }
 
+_ingress_approve() {
+  local queue_id=""
+  local dry_run=false
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --queue-id) queue_id="$2"; shift 2 ;;
+      --dry-run) dry_run=true; shift ;;
+      *) log_warn "Unknown option: $1"; shift ;;
+    esac
+  done
+
+  [[ -z "$queue_id" ]] && { log_error "Usage: larc ingress approve --queue-id <id> [--dry-run]"; return 1; }
+  _ingress_transition "$queue_id" "blocked_approval" "approved" "Approval recorded; ready to resume execution." "$dry_run"
+}
+
+_ingress_resume() {
+  local queue_id=""
+  local dry_run=false
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --queue-id) queue_id="$2"; shift 2 ;;
+      --dry-run) dry_run=true; shift ;;
+      *) log_warn "Unknown option: $1"; shift ;;
+    esac
+  done
+
+  [[ -z "$queue_id" ]] && { log_error "Usage: larc ingress resume --queue-id <id> [--dry-run]"; return 1; }
+  _ingress_transition "$queue_id" "approved" "pending" "Queue item resumed after approval." "$dry_run"
+}
+
+_ingress_transition() {
+  local queue_id="$1"
+  local expected_status="$2"
+  local new_status="$3"
+  local transition_note="$4"
+  local dry_run="${5:-false}"
+
+  local queue_json
+  queue_json=$(_ingress_get_local_queue_item "$queue_id")
+  [[ -z "$queue_json" ]] && { log_error "Queue item not found locally: $queue_id"; return 1; }
+
+  local current_status
+  current_status=$(python3 - "$queue_json" <<'PY'
+import json, sys
+d = json.loads(sys.argv[1])
+print(d.get("status", ""))
+PY
+)
+
+  if [[ "$current_status" != "$expected_status" ]]; then
+    log_error "Queue item $queue_id is '$current_status', expected '$expected_status'"
+    return 1
+  fi
+
+  local updated_json
+  updated_json=$(python3 - "$queue_json" "$new_status" "$transition_note" <<'PY'
+import json, sys
+from datetime import datetime, timezone
+d = json.loads(sys.argv[1])
+d["status"] = sys.argv[2]
+d["last_transition_note"] = sys.argv[3]
+d["updated_at"] = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+print(json.dumps(d, ensure_ascii=False))
+PY
+)
+
+  if [[ "$dry_run" == "true" ]]; then
+    python3 - "$updated_json" <<'PY'
+import json, sys
+d = json.loads(sys.argv[1])
+print("")
+print(f"  queue_id: {d['queue_id']}")
+print(f"  new_status: {d['status']}")
+print(f"  note: {d.get('last_transition_note', '-')}")
+PY
+    return 0
+  fi
+
+  _ingress_replace_local_queue_item "$queue_id" "$updated_json"
+  if [[ -n "$LARC_BASE_APP_TOKEN" ]]; then
+    _ingress_write_base "$updated_json"
+  fi
+
+  log_ok "$transition_note"
+}
+
 _ingress_write_local() {
   local agent_id="$1"
   local summary_json="$2"
@@ -308,6 +405,69 @@ _ingress_write_local() {
   mkdir -p "$queue_dir"
   printf '%s\n' "$summary_json" >> "$queue_file"
   log_ok "Local queue updated: $queue_file"
+}
+
+_ingress_get_local_queue_item() {
+  local queue_id="$1"
+  local queue_dir="$LARC_CACHE/queue"
+  local found=""
+  if [[ ! -d "$queue_dir" ]]; then
+    return 0
+  fi
+
+  found=$(python3 - "$queue_dir" "$queue_id" <<'PY'
+import json, os, sys
+queue_dir, queue_id = sys.argv[1], sys.argv[2]
+for name in os.listdir(queue_dir):
+    if not name.endswith(".jsonl"):
+        continue
+    path = os.path.join(queue_dir, name)
+    with open(path, "r", encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            d = json.loads(line)
+            if d.get("queue_id") == queue_id:
+                print(json.dumps(d, ensure_ascii=False))
+                raise SystemExit(0)
+PY
+)
+  printf '%s' "$found"
+}
+
+_ingress_replace_local_queue_item() {
+  local queue_id="$1"
+  local updated_json="$2"
+  local queue_dir="$LARC_CACHE/queue"
+  python3 - "$queue_dir" "$queue_id" "$updated_json" <<'PY'
+import json, os, sys
+queue_dir, queue_id, updated_raw = sys.argv[1:4]
+updated = json.loads(updated_raw)
+for name in os.listdir(queue_dir):
+    if not name.endswith(".jsonl"):
+        continue
+    path = os.path.join(queue_dir, name)
+    rows = []
+    changed = False
+    with open(path, "r", encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            d = json.loads(line)
+            if d.get("queue_id") == queue_id:
+                rows.append(updated)
+                changed = True
+            else:
+                rows.append(d)
+    if changed:
+        with open(path, "w", encoding="utf-8") as f:
+            for row in rows:
+                f.write(json.dumps(row, ensure_ascii=False) + "\n")
+        raise SystemExit(0)
+raise SystemExit(1)
+PY
 }
 
 _ingress_write_base() {
