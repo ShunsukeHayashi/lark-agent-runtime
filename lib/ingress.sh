@@ -622,6 +622,14 @@ PY
     return 0
   fi
 
+  local skipped_count
+  skipped_count=$(python3 - "$plan_json" <<'PY'
+import json, sys
+plan = json.loads(sys.argv[1])
+print(sum(1 for step in plan["steps"] if step["mode"] == "skip"))
+PY
+)
+
   local worker_agent
   worker_agent=$(python3 - "$plan_json" <<'PY'
 import json, sys
@@ -653,7 +661,16 @@ PY
   local finish_note
   finish_note=$(printf '%s; ' "${execution_notes[@]}")
   finish_note="${finish_note%; }"
-  _ingress_complete "$queue_id" "done" "${finish_note:-Completed safe adapter execution}" "false"
+  local final_status="done"
+  if [[ "$skipped_count" != "0" ]]; then
+    final_status="partial"
+    if [[ -n "$finish_note" ]]; then
+      finish_note="${finish_note}; Manual follow-up still required"
+    else
+      finish_note="Manual follow-up still required"
+    fi
+  fi
+  _ingress_complete "$queue_id" "$final_status" "${finish_note:-Completed safe adapter execution}" "false"
 }
 
 _ingress_approve() {
@@ -921,7 +938,7 @@ PY
 )
 
   case "$current_status" in
-    pending|pending_preview|delegated|in_progress) ;;
+    pending|pending_preview|delegated|in_progress|partial) ;;
     *)
       log_error "Queue item $queue_id is '$current_status'; completion expects pending, pending_preview, or delegated"
       return 1
@@ -1283,6 +1300,8 @@ matches = sorted(matches, key=lambda x: (-x["score"], x["date"]))[:5]
 def next_action(queue):
     gate = queue.get("gate")
     status = queue.get("status")
+    if status == "partial":
+        return "manual_followup_required"
     if gate == "approval" and status in {"blocked_approval", "approved"}:
         return "approval_still_needed"
     if gate == "preview" or status == "pending_preview":
