@@ -180,7 +180,7 @@ ${BOLD}Commands:${RESET}
   ${CYAN}approve gate${RESET} [type]   Check execution gate (none|preview|approval) for a task type
   ${CYAN}ingress enqueue${RESET}       Normalize an inbound Lark message and enqueue it for execution
   ${CYAN}ingress list${RESET}          List queued inbound tasks from Base/local cache
-  ${CYAN}ingress openclaw${RESET}      Build the next-step bundle for an OpenClaw agent
+  ${CYAN}ingress openclaw${RESET}      Build or dispatch the next-step bundle for an OpenClaw agent
   ${CYAN}ingress next${RESET}          Pull the next actionable queue item for an agent
   ${CYAN}ingress run-once${RESET}      Claim the next actionable queue item for an agent
   ${CYAN}ingress execute-stub${RESET}  Show a placeholder execution plan for an in-progress item
@@ -211,6 +211,8 @@ ${BOLD}Examples:${RESET}
   larc ingress enqueue --text "Please route this expense to approval" --sender ou_xxx --source im
   larc ingress list --agent main
   larc ingress openclaw --agent main --days 14
+  larc ingress openclaw --queue-id <id> --execute
+  larc ingress openclaw --queue-id <id> --gateway --execute
   larc ingress next --agent crm-agent --days 14
   larc ingress run-once --agent crm-agent --days 14 --dry-run
   larc ingress execute-stub --queue-id <id>

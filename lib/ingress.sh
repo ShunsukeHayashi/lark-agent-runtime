@@ -41,7 +41,12 @@ ${BOLD}larc ingress${RESET} — Normalize inbound Lark events into queued tasks
 ${BOLD}Commands:${RESET}
   ${CYAN}enqueue${RESET}   Create a queue item from message text / stdin
   ${CYAN}list${RESET}      List queued items from Base or local cache
-  ${CYAN}openclaw${RESET}  Build the next-step bundle for an OpenClaw agent
+  ${CYAN}openclaw${RESET}  Build or dispatch the next-step bundle for an OpenClaw agent
+                 --agent <id>       Target agent for bundle lookup (default: main)
+                 --queue-id <id>    Force a specific queue item
+                 --days <N>         Retrieval window for context commands (default: 14)
+                 --execute          Dispatch directly via openclaw agent
+                 --gateway          Use gateway mode instead of --local embedded mode
   ${CYAN}next${RESET}      Pull the next actionable queue item for an agent
   ${CYAN}run-once${RESET}  Claim the next actionable queue item for an agent
   ${CYAN}execute-stub${RESET} Show a placeholder execution plan for an in-progress item
@@ -61,6 +66,8 @@ ${BOLD}Examples:${RESET}
   larc ingress enqueue --text "Upload the file to drive and update the wiki" --dry-run
   larc ingress list --agent main
   larc ingress openclaw --agent main --days 14
+  larc ingress openclaw --queue-id 1234 --execute
+  larc ingress openclaw --queue-id 1234 --gateway --execute
   larc ingress next --agent crm-agent --days 14
   larc ingress run-once --agent crm-agent --days 14 --dry-run
   larc ingress execute-stub --queue-id 1234
@@ -383,11 +390,15 @@ _ingress_openclaw() {
   local agent_id="main"
   local queue_id=""
   local days="14"
+  local execute=false
+  local local_mode=true
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --agent) agent_id="$2"; shift 2 ;;
       --queue-id) queue_id="$2"; shift 2 ;;
       --days) days="$2"; shift 2 ;;
+      --execute) execute=true; shift ;;
+      --gateway) local_mode=false; shift ;;
       *) log_warn "Unknown option: $1"; shift ;;
     esac
   done
@@ -404,7 +415,43 @@ _ingress_openclaw() {
     fi
   fi
 
-  _ingress_render_bundle "openclaw" "$queue_json" "$days"
+  local payload_json
+  payload_json=$(_ingress_build_openclaw_payload "$queue_json" "$days" "$local_mode")
+
+  _ingress_render_bundle "openclaw" "$queue_json" "$days" "$payload_json"
+
+  if [[ "$execute" != "true" ]]; then
+    return 0
+  fi
+
+  local target_agent prompt dispatch_mode
+  target_agent=$(python3 - "$payload_json" <<'PY'
+import json, sys
+d = json.loads(sys.argv[1])
+print(d.get("target_agent", "main"))
+PY
+)
+  prompt=$(python3 - "$payload_json" <<'PY'
+import json, sys
+d = json.loads(sys.argv[1])
+print(d.get("prompt", ""))
+PY
+)
+  dispatch_mode=$(python3 - "$payload_json" <<'PY'
+import json, sys
+d = json.loads(sys.argv[1])
+print("local" if d.get("local_mode", True) else "gateway")
+PY
+)
+
+  [[ -z "$prompt" ]] && { log_error "OpenClaw prompt is empty"; return 1; }
+
+  log_info "Dispatching queue item to OpenClaw agent: $target_agent ($dispatch_mode)"
+  if [[ "$dispatch_mode" == "local" ]]; then
+    openclaw agent --agent "$target_agent" --local --json --message "$prompt"
+  else
+    openclaw agent --agent "$target_agent" --json --message "$prompt"
+  fi
 }
 
 _ingress_run_once() {
@@ -1312,10 +1359,102 @@ if best and best_score >= 0:
 PY
 }
 
+_ingress_build_openclaw_payload() {
+  local queue_json="$1"
+  local days="$2"
+  local local_mode="${3:-true}"
+
+  python3 - "$queue_json" "$days" "$local_mode" <<'PY'
+import json, shlex, sys
+
+queue = json.loads(sys.argv[1])
+days = int(sys.argv[2])
+local_mode = sys.argv[3] == "true"
+queue_id = queue.get("queue_id", "")
+target_agent = queue.get("worker_agent_id") or queue.get("assigned_agent_id") or queue.get("agent_id") or "main"
+status = queue.get("status", "")
+gate = queue.get("gate", "")
+authority = queue.get("authority", "")
+task_types = queue.get("task_types", [])
+scopes = queue.get("scopes", [])
+message = queue.get("message_text", "")
+next_action = "ready_for_execution"
+if status == "partial":
+    next_action = "manual_followup_required"
+elif gate == "approval" and status not in {"done", "failed"}:
+    next_action = "approval_or_controlled_execution_required"
+elif gate == "preview" and status not in {"done", "failed"}:
+    next_action = "preview_required"
+elif status == "pending_preview":
+    next_action = "preview_required"
+
+operator_steps = [
+    f"1. Read queue item {queue_id}.",
+    "2. Use the official openclaw-lark plugin for atomic Feishu operations.",
+    "3. Use LARC commands for governed workflow actions such as context, handoff, approve/resume, and done/fail.",
+]
+if status in {"pending", "pending_preview"}:
+    operator_steps.append(f"4. Start with: larc ingress context --queue-id {queue_id} --days {days}")
+    operator_steps.append(f"5. If a specialist is needed, run: larc ingress delegate --queue-id {queue_id}")
+elif status == "delegated":
+    operator_steps.append(f"4. Start with: larc ingress handoff --queue-id {queue_id} --days {days}")
+elif status == "in_progress":
+    operator_steps.append(f"4. Start with: larc ingress execute-stub --queue-id {queue_id}")
+    operator_steps.append(f"5. Then review: larc ingress execute-apply --queue-id {queue_id} --dry-run")
+elif status == "partial":
+    operator_steps.append(f"4. Start with: larc ingress followup --queue-id {queue_id} --days {days}")
+elif status == "blocked_approval":
+    operator_steps.append(f"4. This item is blocked. Resume only through: larc ingress approve --queue-id {queue_id} && larc ingress resume --queue-id {queue_id}")
+
+prompt_lines = [
+    "You are the OpenClaw agent responsible for the next governed action in LARC.",
+    "",
+    "Queue item:",
+    f"- queue_id: {queue_id}",
+    f"- target_agent: {target_agent}",
+    f"- status: {status}",
+    f"- gate: {gate}",
+    f"- authority: {authority}",
+    f"- next_action: {next_action}",
+    f"- task_types: {', '.join(task_types) if task_types else '(none)'}",
+    f"- scopes: {', '.join(scopes) if scopes else '(none)'}",
+    f"- message: {message}",
+    "",
+    "Execution rules:",
+    "- Prefer official openclaw-lark tools for Feishu/Lark operations.",
+    "- Use LARC commands for permission, gate, queue, and lifecycle updates.",
+    "- Do not bypass approval requirements.",
+    "",
+    "Recommended operator flow:",
+    *operator_steps,
+]
+prompt = "\n".join(prompt_lines)
+
+cmd = [
+    "openclaw", "agent",
+    "--agent", target_agent,
+    "--json",
+]
+if local_mode:
+    cmd.append("--local")
+cmd.extend(["--message", prompt])
+command_str = " ".join(shlex.quote(part) for part in cmd)
+
+print(json.dumps({
+    "target_agent": target_agent,
+    "prompt": prompt,
+    "command": command_str,
+    "local_mode": local_mode,
+    "next_action": next_action,
+}, ensure_ascii=False))
+PY
+}
+
 _ingress_render_bundle() {
   local mode="$1"
   local queue_json="$2"
   local days="$3"
+  local extra_json="${4:-}"
 
   [[ -z "$LARC_BASE_APP_TOKEN" ]] && {
     log_error "LARC_BASE_APP_TOKEN is not set"
@@ -1331,7 +1470,7 @@ _ingress_render_bundle() {
     --table-id "$memory_table_id" \
     2>/dev/null || echo "{}")
 
-  python3 - "$mode" "$queue_json" "$raw_memory" "$days" <<'PY'
+  python3 - "$mode" "$queue_json" "$raw_memory" "$days" "$extra_json" <<'PY'
 import json, re, sys
 from datetime import datetime, timedelta, timezone
 
@@ -1449,6 +1588,7 @@ elif mode == "openclaw":
     queue_id = queue.get("queue_id")
     status = queue.get("status")
     target_agent = queue.get("worker_agent_id") or queue.get("assigned_agent_id") or effective_agent
+    extra = json.loads(sys.argv[5]) if len(sys.argv) > 5 and sys.argv[5] else {}
     commands = []
     if status in {"pending", "pending_preview"}:
         commands = [
@@ -1495,6 +1635,8 @@ elif mode == "openclaw":
     print(f"  scopes: {', '.join(scopes) if scopes else '(none)'}")
     print(f"  message: {message_text}")
     print(f"  retrieval_tokens: {', '.join(sorted(token_set)) if token_set else '(none)'}")
+    if extra:
+        print(f"  openclaw_command: {extra.get('command')}")
     print("  recommended_commands:")
     for cmd in commands:
         print(f"    - {cmd}")
