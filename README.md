@@ -103,6 +103,7 @@ What is now live in the Agentic LARC MVP surface:
 - worker loop: `next`, `run-once`, `execute-stub`, `execute-apply`
 - outcome states: `done`, `failed`, `partial`, `followup`
 - supervised pilot: PPAL marketing flow has been exercised through queueing, OpenClaw dispatch, Base read, IM send, `partial`, `followup`, `done`, and Base mirror write-back
+- operator runbook: [PPAL marketing supervised runbook](docs/ppal-marketing-supervised-runbook-2026-04-14.md)
 
 What is still experimental or future:
 - IM webhook / bot-triggered ingress from inside Lark itself (optional path, not the primary architecture)

@@ -45,3 +45,8 @@ Dispatch through the Gateway:
 bin/larc ingress openclaw --queue-id <queue-id> --gateway --execute
 ```
 
+## Supervised runbook
+
+For the concrete PPAL marketing operator flow, see:
+
+- [PPAL Marketing Supervised Runbook](./ppal-marketing-supervised-runbook-2026-04-14.md)
