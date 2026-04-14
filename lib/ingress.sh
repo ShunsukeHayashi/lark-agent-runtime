@@ -429,7 +429,7 @@ _ingress_openclaw() {
     return 0
   fi
 
-  local target_agent prompt dispatch_mode
+  local target_agent prompt dispatch_mode session_id
   target_agent=$(python3 - "$payload_json" <<'PY'
 import json, sys
 d = json.loads(sys.argv[1])
@@ -448,14 +448,21 @@ d = json.loads(sys.argv[1])
 print("local" if d.get("local_mode", True) else "gateway")
 PY
 )
+  session_id=$(python3 - "$payload_json" <<'PY'
+import json, sys
+d = json.loads(sys.argv[1])
+print(d.get("session_id", ""))
+PY
+)
 
   [[ -z "$prompt" ]] && { log_error "OpenClaw prompt is empty"; return 1; }
+  [[ -z "$session_id" ]] && { log_error "OpenClaw session_id is empty"; return 1; }
 
   log_info "Dispatching queue item to OpenClaw agent: $target_agent ($dispatch_mode)"
   if [[ "$dispatch_mode" == "local" ]]; then
-    openclaw agent --agent "$target_agent" --local --json --message "$prompt"
+    openclaw agent --agent "$target_agent" --session-id "$session_id" --local --json --message "$prompt"
   else
-    openclaw agent --agent "$target_agent" --json --message "$prompt"
+    openclaw agent --agent "$target_agent" --session-id "$session_id" --json --message "$prompt"
   fi
 }
 
@@ -1757,6 +1764,7 @@ def extract_normalized_fields(scenario_id, text):
 
 scenario_id = detect_scenario(task_types)
 normalized_fields = extract_normalized_fields(scenario_id, message)
+session_id = f"larc-{target_agent}-{queue_id}"
 next_action = "ready_for_execution"
 if status == "partial":
     next_action = "manual_followup_required"
@@ -1833,6 +1841,7 @@ prompt = "\n".join(prompt_lines)
 cmd = [
     "openclaw", "agent",
     "--agent", target_agent,
+    "--session-id", session_id,
     "--json",
 ]
 if local_mode:
@@ -1842,6 +1851,7 @@ command_str = " ".join(shlex.quote(part) for part in cmd)
 
 print(json.dumps({
     "target_agent": target_agent,
+    "session_id": session_id,
     "prompt": prompt,
     "command": command_str,
     "local_mode": local_mode,
@@ -2041,6 +2051,8 @@ elif mode == "openclaw":
     if extra:
         if extra.get("scenario_id"):
             print(f"  scenario_id: {extra.get('scenario_id')}")
+        if extra.get("session_id"):
+            print(f"  openclaw_session_id: {extra.get('session_id')}")
         normalized_fields = extra.get("normalized_fields") or {}
         if normalized_fields:
             print(f"  normalized_fields: {json.dumps(normalized_fields, ensure_ascii=False)}")
