@@ -24,6 +24,7 @@ cmd_ingress() {
     handoff) _ingress_handoff "$@" ;;
     done)    _ingress_done "$@" ;;
     fail)    _ingress_fail "$@" ;;
+    verify)  _ingress_verify "$@" ;;
     help|--help|-h) _ingress_help ;;
     *)
       log_error "Unknown ingress action: $action"
@@ -59,6 +60,7 @@ ${BOLD}Commands:${RESET}
   ${CYAN}handoff${RESET}   Build a delegated handoff bundle for an assigned agent
   ${CYAN}done${RESET}      Mark a queue item as completed
   ${CYAN}fail${RESET}      Mark a queue item as failed
+  ${CYAN}verify${RESET}    End-to-end pipeline verification: enqueue → Base write → audit log
 
 ${BOLD}Examples:${RESET}
   larc ingress enqueue --text "Please route this expense to approval" --sender ou_xxx --source im
@@ -179,6 +181,7 @@ KEYWORD_MAP = {
     r"update\s+\w*\s*contact|manage\s+\w*\s*contact|add\s+\w*\s*employee": ["manage_contact"],
     r"create\s+\w*\s*task|new\s+\w*\s*task|add\s+\w*\s*task|assign\s+\w*\s*task": ["write_task"],
     r"(?<!approval\s)\btask\b|\btodo\b|to-do|checklist": ["read_task"],
+    r"ocr|receipt|領収書|レシート|scan\s+image|read\s+image|extract\s+text|画像.*テキスト|テキスト.*画像": ["ocr_image"],
     r"attendance|check.?in|check.?out|timesheet|punch\s+in|punch\s+out|clock\s+in": ["read_attendance"],
     r"minutes|miaoji|meeting\s+notes|transcript": ["read_minutes"],
     r"video\s+meeting|vc\s+record|video\s+conference\s+record": ["read_vc"],
@@ -268,6 +271,7 @@ PY
 
   if [[ -n "$LARC_BASE_APP_TOKEN" ]]; then
     _ingress_write_base "$summary_json"
+    _ingress_write_audit_log "$summary_json" "enqueued"
   else
     log_warn "LARC_BASE_APP_TOKEN not set — recorded to local queue only"
   fi
@@ -361,10 +365,12 @@ if not found:
 _ingress_next() {
   local agent_id="main"
   local days="14"
+  local raw_json=false
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --agent) agent_id="$2"; shift 2 ;;
       --days) days="$2"; shift 2 ;;
+      --raw-json) raw_json=true; shift ;;
       *) log_warn "Unknown option: $1"; shift ;;
     esac
   done
@@ -372,7 +378,13 @@ _ingress_next() {
   local queue_json
   queue_json=$(_ingress_find_next_local_queue_item "$agent_id")
   if [[ -z "$queue_json" ]]; then
-    echo "(no actionable queue item for $agent_id)"
+    [[ "$raw_json" == "true" ]] || echo "(no actionable queue item for $agent_id)"
+    return 0
+  fi
+
+  # Raw JSON output for programmatic consumers (e.g. worker.sh)
+  if [[ "$raw_json" == "true" ]]; then
+    echo "$queue_json"
     return 0
   fi
 
@@ -535,6 +547,7 @@ PY
   _ingress_replace_local_queue_item "$queue_id" "$claimed_json"
   if [[ -n "$LARC_BASE_APP_TOKEN" ]]; then
     _ingress_write_base "$claimed_json"
+    _ingress_write_audit_log "$claimed_json" "in_progress"
   fi
 
   log_ok "Claimed queue item $queue_id for $agent_id"
@@ -1473,6 +1486,7 @@ PY
   _ingress_replace_local_queue_item "$queue_id" "$updated_json"
   if [[ -n "$LARC_BASE_APP_TOKEN" ]]; then
     _ingress_write_base "$updated_json"
+    _ingress_write_audit_log "$updated_json" "$new_status"
   fi
 
   log_ok "$transition_note"
@@ -1535,6 +1549,105 @@ PY
     _ingress_write_base "$updated_json"
   fi
   log_ok "Queue item marked as $final_status"
+
+  # Post-completion hooks (non-blocking — failures are logged, not fatal)
+  _ingress_post_complete "$updated_json" "$final_status" || true
+}
+
+# ── Post-completion hooks ────────────────────────────────────────────────────
+
+_ingress_post_complete() {
+  local completed_json="$1"
+  local final_status="$2"
+
+  # 1. Write audit record to agent_logs in Lark Base
+  _ingress_write_audit_log "$completed_json" "$final_status"
+
+  # 2. Send IM notification if LARC_IM_CHAT_ID is set
+  _ingress_notify_completion "$completed_json" "$final_status"
+}
+
+_ingress_write_audit_log() {
+  local completed_json="$1"
+  local final_status="$2"
+
+  [[ -z "${LARC_BASE_APP_TOKEN:-}" ]] && return 0
+
+  # Get agent_logs table id (pinned via env > process cache > lookup+create)
+  local table_id="${LARC_LOG_TABLE_ID:-${_LARC_AUDIT_TABLE_ID:-}}"
+  if [[ -z "$table_id" ]]; then
+    table_id=$(_get_or_create_logs_table)
+  fi
+  [[ -z "$table_id" ]] && return 0
+  export _LARC_AUDIT_TABLE_ID="$table_id"
+
+  local audit_record
+  audit_record=$(python3 - "$completed_json" "$final_status" <<'PY'
+import json, sys
+from datetime import datetime, timezone
+d = json.loads(sys.argv[1])
+status = sys.argv[2]
+row = {
+    "log_at":        datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+    "agent_id":      d.get("worker_agent_id") or d.get("agent_id", ""),
+    "queue_id":      d.get("queue_id", ""),
+    "source":        d.get("source", ""),
+    "sender":        d.get("sender", ""),
+    "task_types":    ", ".join(d.get("task_types", [])),
+    "gate":          d.get("gate", ""),
+    "status":        status,
+    "execution_note": d.get("execution_note", ""),
+    "started_at":    d.get("started_at", ""),
+    "completed_at":  d.get("completed_at", ""),
+    "message_text":  (d.get("message_text") or "")[:200],
+}
+print(json.dumps(row, ensure_ascii=False))
+PY
+)
+
+  lark-cli base +record-upsert \
+    --base-token "$LARC_BASE_APP_TOKEN" \
+    --table-id "$table_id" \
+    --json "$audit_record" \
+    >/dev/null 2>&1 && log_ok "Audit log written to agent_logs" || log_warn "Audit log write failed"
+}
+
+_ingress_notify_completion() {
+  local completed_json="$1"
+  local final_status="$2"
+
+  local chat_id="${LARC_IM_CHAT_ID:-}"
+  [[ -z "$chat_id" ]] && return 0
+
+  # Check if send.sh is loaded
+  type cmd_send &>/dev/null || {
+    [[ -f "${LIB_DIR:-}/send.sh" ]] && source "${LIB_DIR}/send.sh" 2>/dev/null || return 0
+  }
+
+  local msg
+  msg=$(python3 - "$completed_json" "$final_status" <<'PY'
+import json, sys
+d = json.loads(sys.argv[1])
+status = sys.argv[2]
+icon = "✅" if status == "done" else "❌" if status == "failed" else "⚠️"
+qid  = d.get("queue_id", "")[:8]
+note = d.get("execution_note", "") or ""
+text = (d.get("message_text") or "")[:80]
+agent = d.get("worker_agent_id") or d.get("agent_id", "")
+lines = [
+    f"{icon} [{agent}] {status.upper()}",
+    f"  Task: {text}",
+]
+if note:
+    lines.append(f"  Note: {note[:120]}")
+lines.append(f"  ID: {qid}...")
+print("\n".join(lines))
+PY
+)
+
+  larc send --chat "$chat_id" "$msg" >/dev/null 2>&1 \
+    && log_ok "Completion notification sent to IM" \
+    || log_warn "IM notification failed (chat_id: $chat_id)"
 }
 
 _ingress_write_local() {
@@ -2218,6 +2331,110 @@ else:
 PY
 }
 
+_ingress_verify() {
+  log_head "LARC Ingress Pipeline Verification"
+
+  local ok=0
+  local fail=0
+
+  # --- 1. Config check ---
+  echo ""
+  log_info "[1/5] Config"
+  if [[ -n "${LARC_BASE_APP_TOKEN:-}" ]]; then
+    log_ok "LARC_BASE_APP_TOKEN is set: ${LARC_BASE_APP_TOKEN:0:8}..."; ((ok++)) || true
+  else
+    log_error "LARC_BASE_APP_TOKEN is NOT set — queue and log writes will be skipped"; ((fail++)) || true
+  fi
+
+  if [[ -n "${LARC_QUEUE_TABLE_ID:-}" ]]; then
+    log_ok "LARC_QUEUE_TABLE_ID pinned: $LARC_QUEUE_TABLE_ID"; ((ok++)) || true
+  else
+    log_warn "LARC_QUEUE_TABLE_ID not pinned — will resolve by name each call"
+  fi
+
+  if [[ -n "${LARC_LOG_TABLE_ID:-}" ]]; then
+    log_ok "LARC_LOG_TABLE_ID pinned: $LARC_LOG_TABLE_ID"; ((ok++)) || true
+  else
+    log_warn "LARC_LOG_TABLE_ID not pinned — will resolve by name each call"
+  fi
+
+  # --- 2. Queue table ---
+  echo ""
+  log_info "[2/5] agent_queue table"
+  if [[ -n "${LARC_BASE_APP_TOKEN:-}" ]]; then
+    local queue_table_id
+    queue_table_id=$(_get_or_create_queue_table 2>&1)
+    if [[ -n "$queue_table_id" ]]; then
+      log_ok "agent_queue table resolved: $queue_table_id"; ((ok++)) || true
+    else
+      log_error "agent_queue table resolution failed"; ((fail++)) || true
+    fi
+  else
+    log_warn "Skipped (no LARC_BASE_APP_TOKEN)"
+  fi
+
+  # --- 3. Logs table ---
+  echo ""
+  log_info "[3/5] agent_logs table"
+  if [[ -n "${LARC_BASE_APP_TOKEN:-}" ]]; then
+    local logs_table_id
+    logs_table_id=$(_get_or_create_logs_table 2>&1)
+    if [[ -n "$logs_table_id" ]]; then
+      log_ok "agent_logs table resolved: $logs_table_id"; ((ok++)) || true
+    else
+      log_error "agent_logs table resolution failed"; ((fail++)) || true
+    fi
+  else
+    log_warn "Skipped (no LARC_BASE_APP_TOKEN)"
+  fi
+
+  # --- 4. Enqueue a test item (dry-run) ---
+  echo ""
+  log_info "[4/5] Enqueue (dry-run)"
+  local dry_output
+  dry_output=$(larc ingress enqueue --text "verify: OCR receipt test" --source verify --dry-run 2>&1)
+  if echo "$dry_output" | grep -q "queue_id\|Queued"; then
+    log_ok "Enqueue dry-run produced queue_id"; ((ok++)) || true
+  else
+    log_error "Enqueue dry-run produced no queue_id"; ((fail++)) || true
+    echo "$dry_output"
+  fi
+
+  # --- 5. Live enqueue + Base write check ---
+  echo ""
+  log_info "[5/5] Live enqueue → Base write"
+  if [[ -n "${LARC_BASE_APP_TOKEN:-}" ]]; then
+    local live_output
+    live_output=$(larc ingress enqueue --text "verify: pipeline check $(date +%s)" --source verify 2>&1)
+    if echo "$live_output" | grep -q "Queue item recorded\|Queued"; then
+      log_ok "Live enqueue → Base write succeeded"; ((ok++)) || true
+    else
+      log_error "Live enqueue → Base write may have failed"; ((fail++)) || true
+      echo "$live_output"
+    fi
+  else
+    log_warn "Skipped (no LARC_BASE_APP_TOKEN)"
+  fi
+
+  # --- Summary ---
+  echo ""
+  if [[ $fail -eq 0 ]]; then
+    log_ok "All checks passed ($ok ok, $fail failed)"
+  else
+    log_warn "Verification complete: $ok ok, $fail failed — fix issues above"
+  fi
+
+  # --- Pin recommendations ---
+  echo ""
+  log_info "To pin table IDs and prevent wrong-Base selection, add to ~/.larc/config.env:"
+  if [[ -n "${queue_table_id:-}" ]]; then
+    echo "  LARC_QUEUE_TABLE_ID=\"$queue_table_id\""
+  fi
+  if [[ -n "${logs_table_id:-}" ]]; then
+    echo "  LARC_LOG_TABLE_ID=\"$logs_table_id\""
+  fi
+}
+
 _ingress_write_base() {
   local summary_json="$1"
   local table_id
@@ -2241,6 +2458,12 @@ PY
 }
 
 _get_or_create_queue_table() {
+  # Honor pinned table ID from env (prevents wrong-Base selection)
+  if [[ -n "${LARC_QUEUE_TABLE_ID:-}" ]]; then
+    echo "$LARC_QUEUE_TABLE_ID"
+    return 0
+  fi
+
   local table_id
   table_id=$(lark-cli base +table-list \
     --base-token "$LARC_BASE_APP_TOKEN" \
@@ -2261,6 +2484,39 @@ _get_or_create_queue_table() {
     for field_name in \
       queue_id agent_id source sender event_id message_text task_types scopes authority gate risk status created_at \
       assigned_agent_id worker_agent_id started_at updated_at execution_note completed_at; do
+      lark-cli base +field-create --base-token "$LARC_BASE_APP_TOKEN" --table-id "$table_id" \
+        --json "{\"name\":\"$field_name\",\"type\":\"text\"}" >/dev/null 2>&1 || true
+    done
+  }
+
+  echo "$table_id"
+}
+
+_get_or_create_logs_table() {
+  # Honor pinned table ID from env (prevents wrong-Base selection)
+  if [[ -n "${LARC_LOG_TABLE_ID:-}" ]]; then
+    echo "$LARC_LOG_TABLE_ID"
+    return 0
+  fi
+
+  local table_id
+  table_id=$(lark-cli base +table-list \
+    --base-token "$LARC_BASE_APP_TOKEN" \
+    --jq '.data.tables[] | select(.name == "agent_logs") | .id' \
+    2>/dev/null | head -1 || echo "")
+
+  if [[ -z "$table_id" ]]; then
+    log_info "Creating agent_logs table..."
+    table_id=$(lark-cli base +table-create \
+      --base-token "$LARC_BASE_APP_TOKEN" \
+      --name "agent_logs" \
+      --jq '.table.table_id // .table_id' 2>/dev/null || echo "")
+    [[ -z "$table_id" ]] && { log_warn "agent_logs table creation failed"; return 1; }
+    log_ok "agent_logs table created: $table_id"
+  fi
+
+  [[ -n "$table_id" ]] && {
+    for field_name in log_at agent_id queue_id source sender task_types gate status execution_note started_at completed_at message_text; do
       lark-cli base +field-create --base-token "$LARC_BASE_APP_TOKEN" --table-id "$table_id" \
         --json "{\"name\":\"$field_name\",\"type\":\"text\"}" >/dev/null 2>&1 || true
     done
