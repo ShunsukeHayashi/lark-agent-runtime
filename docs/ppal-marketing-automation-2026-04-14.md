@@ -22,6 +22,7 @@ The purpose is to normalize those user-facing words into the governed Lark runti
 - `default_hotlist_view_id`: `vewvyNaZRz`
 - `default_all_users_view_id`: `vew1AT1P1m`
 - `ssot_doc_url`: `https://www.larksuite.com/docx/BhN3d92LrohAokxqh2WjWEmRphh`
+- `output_folder_token`: `LARC_DRIVE_FOLDER_TOKEN` (auto-injected from runtime config)
 
 ## What LARC Does
 
@@ -95,18 +96,19 @@ The current OpenClaw-first path has been verified up to the official plugin boun
   - the PPAL Base token
   - default table IDs
   - the SSOT doc URL
+  - the default Drive output folder token from runtime config
   - the `SFA/MA/Notion/Slack -> Base/Docs/IM` normalization
 
-### Current Live Blocker
+### Current Pilot Status
 
-The OpenClaw execution reached the official `openclaw-lark` plugin, but live execution is currently blocked by missing plugin permission:
+The former `application:application:self_manage` plugin permission blocker is resolved.
 
-- `application:application:self_manage`
+The supervised pilot path is now live-verified through:
 
-Observed effect:
+- queue creation
+- OpenClaw dispatch
+- official `openclaw-lark` plugin reads and outbound IM send
+- `partial -> followup -> done`
+- Base mirror write-back to `agent_queue`
 
-- the plugin can start
-- the plugin can attempt Feishu tools
-- the plugin fails when it tries to inspect its own application configuration
-
-So the runtime design is working, and the current blocker is now a plugin permission issue rather than a LARC orchestration issue.
+This means PPAL marketing automation is now usable as a supervised pilot, with the default Drive output folder injected automatically from runtime config.

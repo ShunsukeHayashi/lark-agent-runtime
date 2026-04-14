@@ -568,10 +568,11 @@ PY
     return 1
   fi
 
-  python3 - "$queue_json" <<'PY'
+  python3 - "$queue_json" "${LARC_DRIVE_FOLDER_TOKEN:-}" <<'PY'
 import json, re, sys
 
 queue = json.loads(sys.argv[1])
+drive_folder_token = sys.argv[2]
 task_types = queue.get("task_types", [])
 message = queue.get("message_text") or ""
 
@@ -645,6 +646,8 @@ def extract_fields(scenario_id, text):
         fields["source_table_id"] = "tbli5hWHQKH8AQxb"
         fields["default_view_id"] = "vewvyNaZRz" if re.search(r"hot|follow.?up|priority|urgent", lower) else "vew1AT1P1m"
         fields["ssot_doc_url"] = "https://www.larksuite.com/docx/BhN3d92LrohAokxqh2WjWEmRphh"
+        fields["output_folder_token"] = drive_folder_token
+        fields["output_folder_strategy"] = "larc_workspace_default" if fields["output_folder_token"] else ""
         systems = []
         if "sfa" in lower:
             systems.append("sfa->ppal_base")
@@ -822,10 +825,11 @@ PY
   fi
 
   local plan_json
-  plan_json=$(python3 - "$queue_json" <<'PY'
+  plan_json=$(python3 - "$queue_json" "${LARC_DRIVE_FOLDER_TOKEN:-}" <<'PY'
 import json, re, sys
 
 queue = json.loads(sys.argv[1])
+drive_folder_token = sys.argv[2]
 agent = queue.get("worker_agent_id") or queue.get("assigned_agent_id") or queue.get("agent_id") or "main"
 message = (queue.get("message_text") or "").replace('"', "'")
 task_types = queue.get("task_types", [])
@@ -873,6 +877,8 @@ def extract_fields(scenario_id, text):
         fields["source_table_id"] = "tbli5hWHQKH8AQxb"
         fields["default_view_id"] = "vewvyNaZRz" if re.search(r"hot|follow.?up|priority|urgent", lower) else "vew1AT1P1m"
         fields["ssot_doc_url"] = "https://www.larksuite.com/docx/BhN3d92LrohAokxqh2WjWEmRphh"
+        fields["output_folder_token"] = drive_folder_token
+        fields["output_folder_strategy"] = "larc_workspace_default" if fields["output_folder_token"] else ""
         systems = []
         if "sfa" in lower:
             systems.append("sfa->ppal_base")
@@ -1724,12 +1730,13 @@ _ingress_build_openclaw_payload() {
   local days="$2"
   local local_mode="${3:-true}"
 
-  python3 - "$queue_json" "$days" "$local_mode" <<'PY'
+  python3 - "$queue_json" "$days" "$local_mode" "${LARC_DRIVE_FOLDER_TOKEN:-}" <<'PY'
 import json, re, shlex, sys
 
 queue = json.loads(sys.argv[1])
 days = int(sys.argv[2])
 local_mode = sys.argv[3] == "true"
+drive_folder_token = sys.argv[4]
 queue_id = queue.get("queue_id", "")
 target_agent = queue.get("worker_agent_id") or queue.get("assigned_agent_id") or queue.get("agent_id") or "main"
 status = queue.get("status", "")
@@ -1789,6 +1796,8 @@ def extract_normalized_fields(scenario_id, text):
         "source_table_id": "tbli5hWHQKH8AQxb",
         "default_view_id": "vewvyNaZRz" if re.search(r"hot|follow.?up|priority|urgent", lower) else "vew1AT1P1m",
         "ssot_doc_url": "https://www.larksuite.com/docx/BhN3d92LrohAokxqh2WjWEmRphh",
+        "output_folder_token": drive_folder_token,
+        "output_folder_strategy": "larc_workspace_default" if drive_folder_token else "",
         "normalization": normalization or ["PPAL Base", "Lark Docs/Wiki", "Lark IM"],
     }
 
@@ -1851,6 +1860,8 @@ if normalized_fields:
         f"- source_table_id: {normalized_fields.get('source_table_id', '')}",
         f"- default_view_id: {normalized_fields.get('default_view_id', '')}",
         f"- ssot_doc_url: {normalized_fields.get('ssot_doc_url', '')}",
+        f"- output_folder_token: {normalized_fields.get('output_folder_token', '')}",
+        f"- output_folder_strategy: {normalized_fields.get('output_folder_strategy', '')}",
         f"- normalization: {', '.join(normalized_fields.get('normalization', []))}",
     ])
 prompt_lines.extend([
