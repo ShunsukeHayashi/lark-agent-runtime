@@ -102,6 +102,7 @@ What is now live in the Agentic LARC MVP surface:
 - retrieval and handoff: `context`, `handoff`, `memory search`
 - worker loop: `next`, `run-once`, `execute-stub`, `execute-apply`
 - outcome states: `done`, `failed`, `partial`, `followup`
+- supervised pilot: PPAL marketing flow has been exercised through queueing, OpenClaw dispatch, Base read, IM send, `partial`, `followup`, `done`, and Base mirror write-back
 
 What is still experimental or future:
 - IM webhook / bot-triggered ingress from inside Lark itself (optional path, not the primary architecture)
@@ -115,6 +116,7 @@ Important nuance:
 - LARC is already a working runtime surface for Lark-backed agent work
 - today, it is best used as a supervised runtime under an upper-layer agent such as OpenClaw or Claude Code
 - the primary path is `OpenClaw Agent -> official openclaw-lark plugin + LARC`
+- supervised usage is now real, not conceptual: the PPAL marketing case has already been run end-to-end under operator supervision
 - IM/webhook bot ingress is an optional future entrypoint, not the required core path
 
 Key docs:

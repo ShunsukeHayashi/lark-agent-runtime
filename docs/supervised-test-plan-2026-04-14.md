@@ -136,9 +136,12 @@ As of this document:
 - OpenClaw bridge exists
 - official tool hints exist
 - safe adapter execution is still partial
+- one supervised pilot is already closed end-to-end for the PPAL marketing case
+- the PPAL case has been proven through `enqueue -> openclaw -> in_progress -> execute-apply -> partial -> followup -> done`
+- the `agent_queue` Base mirror now records the final lifecycle state again
 
 This means:
 
 - supervised tests can start now
-- fully reliable scenario closure still depends on scenario-specific adapter work
-
+- at least one real office-work scenario is already usable under operator supervision
+- fully reliable scenario closure for broader task types still depends on scenario-specific adapter work

@@ -404,6 +404,8 @@ larc auth suggest "経費申請を作成して承認を求める"
 - [x] `execute-stub` で task type ごとの placeholder 実行計画を生成
 - [x] `execute-apply` で安全な adapter のみ限定実行
 - [x] `followup` で `partial` item を回収
+- [x] supervised pilot で PPAL marketing case を `in_progress -> partial -> followup -> done` まで live 確認
+- [x] queue lifecycle の Base mirror を復旧し、`agent_queue` に最終状態を書き戻せる
 - [ ] task type ごとの本実行 adapter を拡張
 - [ ] worker の常駐ループ化
 
@@ -415,6 +417,7 @@ larc auth suggest "経費申請を作成して承認を求める"
 - [x] worker が task を pull / claim / stub-execute できる
 - [x] `partial` follow-up を別レーンで見られる
 - [x] OpenClaw agent が queue item の次アクション bundle を取得できる
+- [x] supervised pilot として 1 つの live scenario が end-to-end で閉じる
 - [ ] IM webhook 経由で Lark 内から自動起動する（optional）
 - [ ] 完了後に memory と audit trail が自動で残る
 
