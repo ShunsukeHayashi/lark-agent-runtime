@@ -2169,7 +2169,9 @@ _get_or_create_queue_table() {
   fi
 
   [[ -n "$table_id" ]] && {
-    for field_name in queue_id agent_id source sender event_id message_text task_types scopes authority gate risk status created_at; do
+    for field_name in \
+      queue_id agent_id source sender event_id message_text task_types scopes authority gate risk status created_at \
+      assigned_agent_id worker_agent_id started_at updated_at execution_note completed_at; do
       lark-cli base +field-create --base-token "$LARC_BASE_APP_TOKEN" --table-id "$table_id" \
         --json "{\"name\":\"$field_name\",\"type\":\"text\"}" >/dev/null 2>&1 || true
     done
