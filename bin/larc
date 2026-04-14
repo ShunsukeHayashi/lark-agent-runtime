@@ -215,6 +215,7 @@ ${BOLD}Examples:${RESET}
   larc ingress openclaw --queue-id <id> --gateway --execute
   larc ingress next --agent crm-agent --days 14
   larc ingress run-once --agent crm-agent --days 14 --dry-run
+  larc ingress run-once --queue-id <id> --agent main
   larc ingress execute-stub --queue-id <id>
   larc ingress execute-apply --queue-id <id> --dry-run
   larc ingress followup --agent crm-agent

@@ -470,17 +470,47 @@ _ingress_run_once() {
   local agent_id="main"
   local days="14"
   local dry_run=false
+  local queue_id=""
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --agent) agent_id="$2"; shift 2 ;;
       --days) days="$2"; shift 2 ;;
+      --queue-id) queue_id="$2"; shift 2 ;;
       --dry-run) dry_run=true; shift ;;
       *) log_warn "Unknown option: $1"; shift ;;
     esac
   done
 
   local queue_json
-  queue_json=$(_ingress_find_next_local_queue_item "$agent_id")
+  if [[ -n "$queue_id" ]]; then
+    queue_json=$(_ingress_get_local_queue_item "$queue_id")
+    [[ -z "$queue_json" ]] && { log_error "Queue item not found locally: $queue_id"; return 1; }
+    local current_status effective_agent
+    current_status=$(python3 - "$queue_json" <<'PY'
+import json, sys
+d = json.loads(sys.argv[1])
+print(d.get("status", ""))
+PY
+)
+    effective_agent=$(python3 - "$queue_json" "$agent_id" <<'PY'
+import json, sys
+d = json.loads(sys.argv[1])
+requested = sys.argv[2]
+current = d.get("assigned_agent_id") or d.get("worker_agent_id") or d.get("agent_id") or "main"
+print(current if requested == "main" else requested)
+PY
+)
+    case "$current_status" in
+      pending|pending_preview|delegated) ;;
+      *)
+        log_error "Queue item $queue_id is '$current_status'; run-once expects pending, pending_preview, or delegated"
+        return 1
+        ;;
+    esac
+    agent_id="$effective_agent"
+  else
+    queue_json=$(_ingress_find_next_local_queue_item "$agent_id")
+  fi
   if [[ -z "$queue_json" ]]; then
     echo "(no actionable queue item for $agent_id)"
     return 0
