@@ -527,7 +527,7 @@ PY
   fi
 
   python3 - "$queue_json" <<'PY'
-import json, sys
+import json, re, sys
 
 queue = json.loads(sys.argv[1])
 task_types = queue.get("task_types", [])
@@ -575,6 +575,68 @@ TASK_OPENCLAW_TOOLS = {
     "write_calendar": ["feishu_calendar_event"],
 }
 
+def detect_scenario(task_types):
+    task_set = set(task_types)
+    if {"create_crm_record", "send_crm_followup", "send_message"} & task_set:
+        return "crm_followup"
+    if "create_expense" in task_set or "submit_approval" in task_set:
+        return "expense_approval"
+    if "update_document" in task_set or "write_wiki" in task_set:
+        return "document_update"
+    return "generic"
+
+def extract_fields(scenario_id, text):
+    fields = {}
+    missing = []
+    blocked = []
+    partial = []
+    ask_user = ""
+
+    if scenario_id == "crm_followup":
+        m = re.search(r"\bfor\s+([A-Za-z0-9._-][A-Za-z0-9._ -]{1,60})", text, re.I)
+        q = re.search(r"['\"]([^'\"]{2,80})['\"]", text)
+        customer_key = (m.group(1).strip() if m else (q.group(1).strip() if q else ""))
+        fields["customer_key"] = customer_key
+        fields["followup_message"] = text.strip() if re.search(r"follow.?up|send|message|notify", text, re.I) else ""
+        if not fields["customer_key"]:
+            missing.append("customer_key")
+            blocked.append("customer_key")
+            ask_user = "Please identify the target customer or lead before creating the CRM record."
+        if not fields["followup_message"]:
+            missing.append("followup_message")
+            partial.append("followup_message")
+            ask_user = ask_user or "Please provide the follow-up message content."
+    elif scenario_id == "expense_approval":
+        amount = re.search(r"\b(\d[\d,]*(?:\.\d+)?)\b", text)
+        date = re.search(r"\b(20\d{2}-\d{2}-\d{2})\b", text)
+        purpose = re.search(r"\bfor\s+(.+)$", text, re.I)
+        fields["amount"] = amount.group(1) if amount else ""
+        fields["expense_date"] = date.group(1) if date else ""
+        fields["purpose"] = purpose.group(1).strip() if purpose else ""
+        fields["expense_type"] = "expense" if re.search(r"expense|receipt|travel|meal|taxi", text, re.I) else ""
+        for key in ("amount", "expense_type", "expense_date", "purpose"):
+            if not fields.get(key):
+                missing.append(key)
+                blocked.append(key)
+        if blocked:
+            ask_user = "Please provide amount, expense type, date, and business purpose before approval."
+    elif scenario_id == "document_update":
+        ref = re.search(r"(https?://\S+|doc[cno][a-zA-Z0-9_-]+|wiki[a-zA-Z0-9_-]+)", text)
+        fields["document_ref"] = ref.group(1) if ref else ""
+        fields["edit_instruction"] = text.strip()
+        if not fields["document_ref"]:
+            missing.append("document_ref")
+            blocked.append("document_ref")
+            ask_user = "Please provide the target document or wiki reference."
+        if not fields["edit_instruction"]:
+            missing.append("edit_instruction")
+            partial.append("edit_instruction")
+            ask_user = ask_user or "Please provide the edit instruction for the target document."
+
+    return fields, missing, blocked, partial, ask_user
+
+scenario_id = detect_scenario(task_types)
+fields, missing_fields, blocked_fields, partial_fields, ask_user_prompt = extract_fields(scenario_id, message)
 finish_hint = []
 adapter_cmds = []
 tool_hints = []
@@ -606,6 +668,11 @@ print(f"  worker_agent_id: {queue.get('worker_agent_id') or queue.get('assigned_
 print(f"  message: {queue.get('message_text')}")
 print(f"  gate: {queue.get('gate')}")
 print(f"  authority: {queue.get('authority')}")
+print(f"  scenario_id: {scenario_id}")
+print(f"  missing_fields: {', '.join(missing_fields) if missing_fields else '(none)'}")
+print(f"  blocked_fields: {', '.join(blocked_fields) if blocked_fields else '(none)'}")
+if ask_user_prompt:
+    print(f"  ask_user_prompt: {ask_user_prompt}")
 print("  planned_steps:")
 if not task_types:
     print("    - No concrete task type was inferred; fall back to manual triage.")
@@ -660,7 +727,7 @@ PY
 
   local plan_json
   plan_json=$(python3 - "$queue_json" <<'PY'
-import json, sys
+import json, re, sys
 
 queue = json.loads(sys.argv[1])
 agent = queue.get("worker_agent_id") or queue.get("assigned_agent_id") or queue.get("agent_id") or "main"
@@ -681,6 +748,67 @@ TASK_OPENCLAW_TOOLS = {
     "write_wiki": ["feishu_search_doc_wiki", "feishu_update_doc"],
     "write_calendar": ["feishu_calendar_event"],
 }
+
+def detect_scenario(task_types):
+    task_set = set(task_types)
+    if {"create_crm_record", "send_crm_followup", "send_message"} & task_set:
+        return "crm_followup"
+    if "create_expense" in task_set or "submit_approval" in task_set:
+        return "expense_approval"
+    if "update_document" in task_set or "write_wiki" in task_set:
+        return "document_update"
+    return "generic"
+
+def extract_fields(scenario_id, text):
+    fields = {}
+    missing = []
+    blocked = []
+    partial = []
+    ask_user = ""
+
+    if scenario_id == "crm_followup":
+        m = re.search(r"\bfor\s+([A-Za-z0-9._-][A-Za-z0-9._ -]{1,60})", text, re.I)
+        q = re.search(r"['\"]([^'\"]{2,80})['\"]", text)
+        fields["customer_key"] = (m.group(1).strip() if m else (q.group(1).strip() if q else ""))
+        fields["followup_message"] = text.strip() if re.search(r"follow.?up|send|message|notify", text, re.I) else ""
+        if not fields["customer_key"]:
+            missing.append("customer_key")
+            blocked.append("customer_key")
+            ask_user = "Please identify the target customer or lead before creating the CRM record."
+        if not fields["followup_message"]:
+            missing.append("followup_message")
+            partial.append("followup_message")
+            ask_user = ask_user or "Please provide the follow-up message content."
+    elif scenario_id == "expense_approval":
+        amount = re.search(r"\b(\d[\d,]*(?:\.\d+)?)\b", text)
+        date = re.search(r"\b(20\d{2}-\d{2}-\d{2})\b", text)
+        purpose = re.search(r"\bfor\s+(.+)$", text, re.I)
+        fields["amount"] = amount.group(1) if amount else ""
+        fields["expense_date"] = date.group(1) if date else ""
+        fields["purpose"] = purpose.group(1).strip() if purpose else ""
+        fields["expense_type"] = "expense" if re.search(r"expense|receipt|travel|meal|taxi", text, re.I) else ""
+        for key in ("amount", "expense_type", "expense_date", "purpose"):
+            if not fields.get(key):
+                missing.append(key)
+                blocked.append(key)
+        if blocked:
+            ask_user = "Please provide amount, expense type, date, and business purpose before approval."
+    elif scenario_id == "document_update":
+        ref = re.search(r"(https?://\S+|doc[cno][a-zA-Z0-9_-]+|wiki[a-zA-Z0-9_-]+)", text)
+        fields["document_ref"] = ref.group(1) if ref else ""
+        fields["edit_instruction"] = text.strip()
+        if not fields["document_ref"]:
+            missing.append("document_ref")
+            blocked.append("document_ref")
+            ask_user = "Please provide the target document or wiki reference."
+        if not fields["edit_instruction"]:
+            missing.append("edit_instruction")
+            partial.append("edit_instruction")
+            ask_user = ask_user or "Please provide the edit instruction for the target document."
+    return fields, missing, blocked, partial, ask_user
+
+scenario_id = detect_scenario(task_types)
+fields, missing_fields, blocked_fields, partial_fields, ask_user_prompt = extract_fields(scenario_id, message)
 
 for task_type in task_types:
     if task_type == "send_crm_followup":
@@ -707,7 +835,22 @@ for task_type in task_types:
             "tool_hints": TASK_OPENCLAW_TOOLS.get(task_type, [])
         })
 
-print(json.dumps({"agent": agent, "steps": results}, ensure_ascii=False))
+if blocked_fields:
+    for step in results:
+        if step["task_type"] in task_types:
+            step["mode"] = "blocked"
+            step["note"] = f"Missing required fields: {', '.join(blocked_fields)}"
+
+print(json.dumps({
+    "agent": agent,
+    "scenario_id": scenario_id,
+    "required_fields": sorted(fields.keys()),
+    "missing_fields": missing_fields,
+    "blocked_fields": blocked_fields,
+    "partial_fields": partial_fields,
+    "ask_user_prompt": ask_user_prompt,
+    "steps": results
+}, ensure_ascii=False))
 PY
 )
 
@@ -717,10 +860,17 @@ plan = json.loads(sys.argv[1])
 print("")
 print("Execute apply plan")
 print(f"  agent: {plan['agent']}")
+print(f"  scenario_id: {plan.get('scenario_id', 'generic')}")
+print(f"  missing_fields: {', '.join(plan.get('missing_fields', [])) if plan.get('missing_fields') else '(none)'}")
+if plan.get("ask_user_prompt"):
+    print(f"  ask_user_prompt: {plan['ask_user_prompt']}")
 for step in plan["steps"]:
     if step["mode"] == "run":
         hints = ", ".join(step.get("tool_hints", [])) or "-"
         print(f"  - run: {step['task_type']} -> {step['message']} [tools: {hints}]")
+    elif step["mode"] == "blocked":
+        hints = ", ".join(step.get("tool_hints", [])) or "-"
+        print(f"  - blocked: {step['task_type']} -> {step['note']} [tools: {hints}]")
     else:
         hints = ", ".join(step.get("tool_hints", [])) or "-"
         print(f"  - skip: {step['task_type']} -> {step['note']} [tools: {hints}]")
@@ -728,6 +878,24 @@ PY
 
   if [[ "$dry_run" == "true" ]]; then
     return 0
+  fi
+
+  local blocked_fields
+  blocked_fields=$(python3 - "$plan_json" <<'PY'
+import json, sys
+plan = json.loads(sys.argv[1])
+print(",".join(plan.get("blocked_fields", [])))
+PY
+)
+  if [[ -n "$blocked_fields" ]]; then
+    log_error "Queue item $queue_id is blocked by missing required fields: $blocked_fields"
+    python3 - "$plan_json" <<'PY'
+import json, sys
+plan = json.loads(sys.argv[1])
+if plan.get("ask_user_prompt"):
+    print(plan["ask_user_prompt"])
+PY
+    return 1
   fi
 
   local send_messages

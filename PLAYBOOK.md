@@ -347,6 +347,13 @@ larc auth suggest "経費申請を作成して承認を求める"
 **補足**:
 - Lark IM / webhook bot ingress は便利な追加入口だが、現時点では primary path ではない
 - 先に固めるべきなのは OpenClaw-first の supervised / semi-agentic runtime
+- supervised test の first scope は 3 scenarios のみ:
+  - CRM follow-up
+  - expense approval
+  - document update
+- planning docs:
+  - `docs/supervised-test-plan-2026-04-14.md`
+  - `docs/adapter-schema-2026-04-14.md`
 
 ### 5A: OpenClaw-first ingress
 **担当**: Agent-Loop  
