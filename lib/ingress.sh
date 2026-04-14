@@ -679,10 +679,16 @@ def extract_fields(scenario_id, text):
                 break
         fields["segment_hint"] = segment
         fields["destination_target"] = "sales_team" if re.search(r"sales\s+team|slack|notify", lower) else ""
+        title_suffix = segment.replace(" ", "-") if segment else "general"
+        fields["document_title"] = f"PPAL Campaign Brief - {title_suffix.title()} - {queue.get('queue_id', '')[:8]}"
         if not fields["campaign_goal"]:
             missing.append("campaign_goal")
             blocked.append("campaign_goal")
             ask_user = "Please define the PPAL marketing goal first, for example which lead segment to target and what outcome to drive."
+        if not fields["output_folder_token"]:
+            missing.append("output_folder_token")
+            blocked.append("output_folder_token")
+            ask_user = ask_user or "The default LARC Drive folder is not configured. Set LARC_DRIVE_FOLDER_TOKEN before running this PPAL marketing flow."
         if not fields["segment_hint"]:
             missing.append("segment_hint")
             partial.append("segment_hint")
@@ -967,10 +973,29 @@ scenario_id = detect_scenario(task_types)
 fields, missing_fields, blocked_fields, partial_fields, ask_user_prompt = extract_fields(scenario_id, message)
 
 for task_type in task_types:
-    if task_type == "send_crm_followup":
+    if task_type == "create_document":
         results.append({
             "task_type": task_type,
             "mode": "run",
+            "dispatch": "openclaw",
+            "message": (
+                "Using the official openclaw-lark plugin, create a new Lark document "
+                f"titled '{fields.get('document_title', 'PPAL Campaign Brief')}' "
+                f"in Drive folder {fields.get('output_folder_token', '')}. "
+                f"Use this request as the working brief: {message}. "
+                f"Use PPAL Base token {fields.get('base_token', '')}, default view {fields.get('default_view_id', '')}, "
+                f"and SSOT doc {fields.get('ssot_doc_url', '')} as context. "
+                "Return the created document URL or token in the response."
+            ),
+            "note": "Requested campaign brief creation via OpenClaw",
+            "tool_hints": TASK_OPENCLAW_TOOLS.get(task_type, []),
+            "session_id": f"larc-step-{queue.get('queue_id', '')}-create-document"
+        })
+    elif task_type == "send_crm_followup":
+        results.append({
+            "task_type": task_type,
+            "mode": "run",
+            "dispatch": "lark_send",
             "message": f"Follow-up prepared from queue {queue.get('queue_id')}",
             "note": "Sent CRM follow-up placeholder",
             "tool_hints": TASK_OPENCLAW_TOOLS.get(task_type, [])
@@ -979,6 +1004,7 @@ for task_type in task_types:
         results.append({
             "task_type": task_type,
             "mode": "run",
+            "dispatch": "lark_send",
             "message": message,
             "note": "Sent outbound message",
             "tool_hints": TASK_OPENCLAW_TOOLS.get(task_type, [])
@@ -1023,7 +1049,8 @@ if plan.get("ask_user_prompt"):
 for step in plan["steps"]:
     if step["mode"] == "run":
         hints = ", ".join(step.get("tool_hints", [])) or "-"
-        print(f"  - run: {step['task_type']} -> {step['message']} [tools: {hints}]")
+        dispatch = step.get("dispatch", "lark_send")
+        print(f"  - run: {step['task_type']} -> {step['message']} [dispatch: {dispatch}] [tools: {hints}]")
     elif step["mode"] == "blocked":
         hints = ", ".join(step.get("tool_hints", [])) or "-"
         print(f"  - blocked: {step['task_type']} -> {step['note']} [tools: {hints}]")
@@ -1054,8 +1081,8 @@ PY
     return 1
   fi
 
-  local send_messages
-  send_messages=$(python3 - "$plan_json" <<'PY'
+  local run_steps
+  run_steps=$(python3 - "$plan_json" <<'PY'
 import json, sys
 plan = json.loads(sys.argv[1])
 for step in plan["steps"]:
@@ -1064,7 +1091,7 @@ for step in plan["steps"]:
 PY
 )
 
-  if [[ -z "$send_messages" ]]; then
+  if [[ -z "$run_steps" ]]; then
     log_warn "No safe adapters to execute for queue item $queue_id"
     return 0
   fi
@@ -1083,12 +1110,12 @@ import json, sys
 plan = json.loads(sys.argv[1])
 print(plan["agent"])
 PY
-)
+  )
 
   local execution_notes=()
   while IFS= read -r step_json; do
     [[ -z "$step_json" ]] && continue
-    local step_message step_note
+    local step_message step_note step_dispatch step_session_id
     step_message=$(python3 - "$step_json" <<'PY'
 import json, sys
 step = json.loads(sys.argv[1])
@@ -1101,9 +1128,25 @@ step = json.loads(sys.argv[1])
 print(step.get("note", ""))
 PY
 )
-    cmd_send --agent "$worker_agent" "$step_message"
+    step_dispatch=$(python3 - "$step_json" <<'PY'
+import json, sys
+step = json.loads(sys.argv[1])
+print(step.get("dispatch", "lark_send"))
+PY
+)
+    if [[ "$step_dispatch" == "openclaw" ]]; then
+      step_session_id=$(python3 - "$step_json" <<'PY'
+import json, sys
+step = json.loads(sys.argv[1])
+print(step.get("session_id", ""))
+PY
+)
+      openclaw agent --agent "$worker_agent" --session-id "${step_session_id:-larc-step-$queue_id}" --json --local --message "$step_message" >/dev/null
+    else
+      cmd_send --agent "$worker_agent" "$step_message"
+    fi
     execution_notes+=("$step_note")
-  done <<< "$send_messages"
+  done <<< "$run_steps"
 
   local finish_note
   finish_note=$(printf '%s; ' "${execution_notes[@]}")
