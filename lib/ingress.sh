@@ -991,6 +991,38 @@ for task_type in task_types:
             "tool_hints": TASK_OPENCLAW_TOOLS.get(task_type, []),
             "session_id": f"larc-step-{queue.get('queue_id', '')}-create-document"
         })
+    elif task_type == "read_base":
+        results.append({
+            "task_type": task_type,
+            "mode": "run",
+            "dispatch": "openclaw",
+            "message": (
+                "Using the official openclaw-lark plugin, read the PPAL Base context "
+                f"from app {fields.get('base_token', '')}, prioritizing view {fields.get('default_view_id', '')}, "
+                f"user table {fields.get('user_table_id', '')}, cv table {fields.get('cv_table_id', '')}, "
+                f"metrics table {fields.get('metrics_table_id', '')}, and source table {fields.get('source_table_id', '')}. "
+                f"Focus on the campaign goal '{fields.get('campaign_goal', '')}' and segment '{fields.get('segment_hint', '')}'. "
+                "Return only the key lead/funnel facts needed for the next document and message step."
+            ),
+            "note": "Requested PPAL Base context retrieval via OpenClaw",
+            "tool_hints": TASK_OPENCLAW_TOOLS.get(task_type, []),
+            "session_id": f"larc-step-{queue.get('queue_id', '')}-read-base"
+        })
+    elif task_type == "read_document":
+        results.append({
+            "task_type": task_type,
+            "mode": "run",
+            "dispatch": "openclaw",
+            "message": (
+                "Using the official openclaw-lark plugin, read the current SSOT document "
+                f"{fields.get('ssot_doc_url', '')} for PPAL marketing operations. "
+                f"Use it to support the campaign goal '{fields.get('campaign_goal', '')}'. "
+                "Return only the sections that matter for the next campaign brief."
+            ),
+            "note": "Requested SSOT document retrieval via OpenClaw",
+            "tool_hints": TASK_OPENCLAW_TOOLS.get(task_type, []),
+            "session_id": f"larc-step-{queue.get('queue_id', '')}-read-document"
+        })
     elif task_type == "send_crm_followup":
         results.append({
             "task_type": task_type,
