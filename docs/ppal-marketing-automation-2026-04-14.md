@@ -98,6 +98,11 @@ The current OpenClaw-first path has been verified up to the official plugin boun
   - the SSOT doc URL
   - the default Drive output folder token from runtime config
   - the `SFA/MA/Notion/Slack -> Base/Docs/IM` normalization
+- `larc ingress execute-apply --dry-run` now raises all four PPAL steps into executable adapters:
+  - `read_base`
+  - `read_document`
+  - `create_document`
+  - `send_message`
 
 ### Current Pilot Status
 
