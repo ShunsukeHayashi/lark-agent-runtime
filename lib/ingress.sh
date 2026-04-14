@@ -143,8 +143,11 @@ gate_tasks = gate_policy.get("tasks", {})
 
 KEYWORD_MAP = {
     r"\bdoc\b|document": ["read_document"],
+    r"\bnotion\b|campaign\s+brief|campaign\s+plan|marketing\s+brief": ["read_document"],
     r"create\s+\w*\s*doc|write\s+\w*\s*doc|new\s+doc": ["create_document"],
+    r"(?:create|draft|write|build|prepare|sync)\s+(?:\w+\s+){0,4}(?:campaign|marketing)\s+(?:brief|doc|document|plan)": ["create_document"],
     r"edit\s+\w*\s*doc|update\s+\w*\s*doc|modify\s+\w*\s*doc": ["update_document"],
+    r"(?:update|edit|revise|sync)\s+(?:\w+\s+){0,4}(?:campaign|marketing)\s+(?:brief|doc|document|plan)": ["update_document"],
     r"wiki|knowledge\s*base|knowledge\s*hub": ["read_wiki"],
     r"wiki.*(?:create|update|write|add|edit)|(?:create|update|write|add|edit).*wiki": ["write_wiki"],
     r"update\s+wiki|write\s+to\s+wiki": ["write_wiki"],
@@ -152,6 +155,7 @@ KEYWORD_MAP = {
     r"read\s+\w*\s*drive|list\s+file|file\s+list|browse\s+drive": ["read_drive"],
     r"create\s+folder|manage\s+file|move\s+file|delete\s+file": ["manage_drive"],
     r"\bbase\b|\bbitable\b": ["read_base"],
+    r"\bsfa\b|\bma\b|marketing\s+automation|lead\s+segment|lead\s+list|campaign\s+performance|\bfunnel\b": ["read_base"],
     r"create\s+\w*\s*record|record\s+create|add\s+\w*\s*record|new\s+\w*\s*record|insert\s+\w*\s*record": ["create_base_record"],
     r"update\s+(?:\w+\s+){0,3}record|edit\s+(?:\w+\s+){0,3}record|modify\s+(?:\w+\s+){0,3}record|patch\s+\w*\s*record": ["update_base_record"],
     r"read\s+\w*\s*(?:record|table)|list\s+\w*\s*record": ["read_base"],
@@ -161,6 +165,7 @@ KEYWORD_MAP = {
     r"\bcrm\b|customer\s+record|lead\s+record|deal\s+record|\bpipeline\b|\bprospect\b|\bopportunity\b": ["read_base"],
     r"(?=.*(?:create|add|new|log)\s+(?:\w+\s+){0,3}(?:crm|customer|lead|deal|prospect))(?=.*(?:send|message|notify))": ["send_crm_followup"],
     r"send\s+\w*\s*message|send\s+\w*\s*notification|send\s+\w*\s*(?:chat|im)|message\s+send": ["send_message"],
+    r"\bslack\b|sales\s+team|notify\s+(?:the\s+)?sales|send\s+(?:the\s+)?sales\s+team": ["send_message"],
     r"follow.?up\s+message|send\s+follow.?up": ["send_message"],
     r"notify\s+(?:the\s+)?\w+|send\s+\w*\s*alert": ["send_message"],
     r"read\s+\w*\s*message|read\s+\w*\s*chat|chat\s+history|message\s+history": ["read_message"],
@@ -577,6 +582,8 @@ TASK_OPENCLAW_TOOLS = {
 
 def detect_scenario(task_types):
     task_set = set(task_types)
+    if {"read_base", "send_message"} <= task_set and {"create_document", "update_document", "read_document"} & task_set:
+        return "ppal_marketing_ops"
     if {"create_crm_record", "send_crm_followup", "send_message"} & task_set:
         return "crm_followup"
     if "create_expense" in task_set or "submit_approval" in task_set:
@@ -592,7 +599,59 @@ def extract_fields(scenario_id, text):
     partial = []
     ask_user = ""
 
-    if scenario_id == "crm_followup":
+    if scenario_id == "ppal_marketing_ops":
+        lower = text.lower()
+        fields["base_token"] = "QRonbSCrBajWRtsZYrTjtUsep0d"
+        fields["user_table_id"] = "tbl4sJd5HVE7u47v"
+        fields["cv_table_id"] = "tbliH8JqoIWGgt9X"
+        fields["metrics_table_id"] = "tblR58a8UANR4nC2"
+        fields["source_table_id"] = "tbli5hWHQKH8AQxb"
+        fields["default_view_id"] = "vewvyNaZRz" if re.search(r"hot|follow.?up|priority|urgent", lower) else "vew1AT1P1m"
+        fields["ssot_doc_url"] = "https://www.larksuite.com/docx/BhN3d92LrohAokxqh2WjWEmRphh"
+        systems = []
+        if "sfa" in lower:
+            systems.append("sfa->ppal_base")
+        if re.search(r"\bma\b|marketing automation", lower):
+            systems.append("ma->ppal_base")
+        if "notion" in lower:
+            systems.append("notion->lark_docs")
+        if "slack" in lower:
+            systems.append("slack->lark_im")
+        fields["source_systems"] = systems or ["ppal_base", "lark_docs", "lark_im"]
+        goal_patterns = [
+            r"(identify\s+[^.]+)",
+            r"(follow.?up\s+[^.]+)",
+            r"(create\s+[^.]+campaign[^.]+)",
+            r"(draft\s+[^.]+campaign[^.]+)",
+            r"(notify\s+[^.]+sales[^.]+)",
+        ]
+        campaign_goal = ""
+        for pattern in goal_patterns:
+            m = re.search(pattern, text, re.I)
+            if m:
+                campaign_goal = m.group(1).strip()
+                break
+        fields["campaign_goal"] = campaign_goal
+        segment = ""
+        for value in ("buyer", "lead", "nurture", "prospect", "hotlist", "hot lead", "active", "upsell"):
+            if value in lower:
+                segment = value
+                break
+        fields["segment_hint"] = segment
+        fields["destination_target"] = "sales_team" if re.search(r"sales\s+team|slack|notify", lower) else ""
+        if not fields["campaign_goal"]:
+            missing.append("campaign_goal")
+            blocked.append("campaign_goal")
+            ask_user = "Please define the PPAL marketing goal first, for example which lead segment to target and what outcome to drive."
+        if not fields["segment_hint"]:
+            missing.append("segment_hint")
+            partial.append("segment_hint")
+            ask_user = ask_user or "Please specify the target lead segment or funnel slice in PPAL Base."
+        if not fields["destination_target"]:
+            missing.append("destination_target")
+            partial.append("destination_target")
+            ask_user = ask_user or "Please specify where the campaign result should be sent, for example the sales team chat."
+    elif scenario_id == "crm_followup":
         m = re.search(r"\bfor\s+([A-Za-z0-9._-][A-Za-z0-9._ -]{1,60})", text, re.I)
         q = re.search(r"['\"]([^'\"]{2,80})['\"]", text)
         customer_key = (m.group(1).strip() if m else (q.group(1).strip() if q else ""))
@@ -751,6 +810,8 @@ TASK_OPENCLAW_TOOLS = {
 
 def detect_scenario(task_types):
     task_set = set(task_types)
+    if {"read_base", "send_message"} <= task_set and {"create_document", "update_document", "read_document"} & task_set:
+        return "ppal_marketing_ops"
     if {"create_crm_record", "send_crm_followup", "send_message"} & task_set:
         return "crm_followup"
     if "create_expense" in task_set or "submit_approval" in task_set:
@@ -766,7 +827,59 @@ def extract_fields(scenario_id, text):
     partial = []
     ask_user = ""
 
-    if scenario_id == "crm_followup":
+    if scenario_id == "ppal_marketing_ops":
+        lower = text.lower()
+        fields["base_token"] = "QRonbSCrBajWRtsZYrTjtUsep0d"
+        fields["user_table_id"] = "tbl4sJd5HVE7u47v"
+        fields["cv_table_id"] = "tbliH8JqoIWGgt9X"
+        fields["metrics_table_id"] = "tblR58a8UANR4nC2"
+        fields["source_table_id"] = "tbli5hWHQKH8AQxb"
+        fields["default_view_id"] = "vewvyNaZRz" if re.search(r"hot|follow.?up|priority|urgent", lower) else "vew1AT1P1m"
+        fields["ssot_doc_url"] = "https://www.larksuite.com/docx/BhN3d92LrohAokxqh2WjWEmRphh"
+        systems = []
+        if "sfa" in lower:
+            systems.append("sfa->ppal_base")
+        if re.search(r"\bma\b|marketing automation", lower):
+            systems.append("ma->ppal_base")
+        if "notion" in lower:
+            systems.append("notion->lark_docs")
+        if "slack" in lower:
+            systems.append("slack->lark_im")
+        fields["source_systems"] = systems or ["ppal_base", "lark_docs", "lark_im"]
+        goal_patterns = [
+            r"(identify\s+[^.]+)",
+            r"(follow.?up\s+[^.]+)",
+            r"(create\s+[^.]+campaign[^.]+)",
+            r"(draft\s+[^.]+campaign[^.]+)",
+            r"(notify\s+[^.]+sales[^.]+)",
+        ]
+        campaign_goal = ""
+        for pattern in goal_patterns:
+            m = re.search(pattern, text, re.I)
+            if m:
+                campaign_goal = m.group(1).strip()
+                break
+        fields["campaign_goal"] = campaign_goal
+        segment = ""
+        for value in ("buyer", "lead", "nurture", "prospect", "hotlist", "hot lead", "active", "upsell"):
+            if value in lower:
+                segment = value
+                break
+        fields["segment_hint"] = segment
+        fields["destination_target"] = "sales_team" if re.search(r"sales\s+team|slack|notify", lower) else ""
+        if not fields["campaign_goal"]:
+            missing.append("campaign_goal")
+            blocked.append("campaign_goal")
+            ask_user = "Please define the PPAL marketing goal first, for example which lead segment to target and what outcome to drive."
+        if not fields["segment_hint"]:
+            missing.append("segment_hint")
+            partial.append("segment_hint")
+            ask_user = ask_user or "Please specify the target lead segment or funnel slice in PPAL Base."
+        if not fields["destination_target"]:
+            missing.append("destination_target")
+            partial.append("destination_target")
+            ask_user = ask_user or "Please specify where the campaign result should be sent, for example the sales team chat."
+    elif scenario_id == "crm_followup":
         m = re.search(r"\bfor\s+([A-Za-z0-9._-][A-Za-z0-9._ -]{1,60})", text, re.I)
         q = re.search(r"['\"]([^'\"]{2,80})['\"]", text)
         fields["customer_key"] = (m.group(1).strip() if m else (q.group(1).strip() if q else ""))
@@ -1575,7 +1688,7 @@ _ingress_build_openclaw_payload() {
   local local_mode="${3:-true}"
 
   python3 - "$queue_json" "$days" "$local_mode" <<'PY'
-import json, shlex, sys
+import json, re, shlex, sys
 
 queue = json.loads(sys.argv[1])
 days = int(sys.argv[2])
@@ -1606,6 +1719,44 @@ for task_type in task_types:
     for tool in TASK_OPENCLAW_TOOLS.get(task_type, []):
         if tool not in tool_hints:
             tool_hints.append(tool)
+def detect_scenario(task_types):
+    task_set = set(task_types)
+    if {"read_base", "send_message"} <= task_set and {"create_document", "update_document", "read_document"} & task_set:
+        return "ppal_marketing_ops"
+    if {"create_crm_record", "send_crm_followup", "send_message"} & task_set:
+        return "crm_followup"
+    if "create_expense" in task_set or "submit_approval" in task_set:
+        return "expense_approval"
+    if "update_document" in task_set or "write_wiki" in task_set:
+        return "document_update"
+    return "generic"
+
+def extract_normalized_fields(scenario_id, text):
+    lower = text.lower()
+    if scenario_id != "ppal_marketing_ops":
+        return {}
+    normalization = []
+    if "sfa" in lower:
+        normalization.append("SFA -> PPAL Base")
+    if re.search(r"\bma\b|marketing automation", lower):
+        normalization.append("MA -> PPAL Base")
+    if "notion" in lower:
+        normalization.append("Notion -> Lark Docs/Wiki")
+    if "slack" in lower:
+        normalization.append("Slack -> Lark IM")
+    return {
+        "base_token": "QRonbSCrBajWRtsZYrTjtUsep0d",
+        "user_table_id": "tbl4sJd5HVE7u47v",
+        "cv_table_id": "tbliH8JqoIWGgt9X",
+        "metrics_table_id": "tblR58a8UANR4nC2",
+        "source_table_id": "tbli5hWHQKH8AQxb",
+        "default_view_id": "vewvyNaZRz" if re.search(r"hot|follow.?up|priority|urgent", lower) else "vew1AT1P1m",
+        "ssot_doc_url": "https://www.larksuite.com/docx/BhN3d92LrohAokxqh2WjWEmRphh",
+        "normalization": normalization or ["PPAL Base", "Lark Docs/Wiki", "Lark IM"],
+    }
+
+scenario_id = detect_scenario(task_types)
+normalized_fields = extract_normalized_fields(scenario_id, message)
 next_action = "ready_for_execution"
 if status == "partial":
     next_action = "manual_followup_required"
@@ -1646,9 +1797,25 @@ prompt_lines = [
     f"- gate: {gate}",
     f"- authority: {authority}",
     f"- next_action: {next_action}",
+    f"- scenario_id: {scenario_id}",
     f"- task_types: {', '.join(task_types) if task_types else '(none)'}",
     f"- scopes: {', '.join(scopes) if scopes else '(none)'}",
     f"- message: {message}",
+]
+if normalized_fields:
+    prompt_lines.extend([
+        "",
+        "Normalized runtime context:",
+        f"- base_token: {normalized_fields.get('base_token', '')}",
+        f"- user_table_id: {normalized_fields.get('user_table_id', '')}",
+        f"- cv_table_id: {normalized_fields.get('cv_table_id', '')}",
+        f"- metrics_table_id: {normalized_fields.get('metrics_table_id', '')}",
+        f"- source_table_id: {normalized_fields.get('source_table_id', '')}",
+        f"- default_view_id: {normalized_fields.get('default_view_id', '')}",
+        f"- ssot_doc_url: {normalized_fields.get('ssot_doc_url', '')}",
+        f"- normalization: {', '.join(normalized_fields.get('normalization', []))}",
+    ])
+prompt_lines.extend([
     "",
     "Execution rules:",
     "- Prefer official openclaw-lark tools for Feishu/Lark operations.",
@@ -1660,7 +1827,7 @@ prompt_lines = [
     "",
     "Preferred official openclaw-lark tools:",
     *tool_lines,
-]
+])
 prompt = "\n".join(prompt_lines)
 
 cmd = [
@@ -1679,6 +1846,8 @@ print(json.dumps({
     "command": command_str,
     "local_mode": local_mode,
     "next_action": next_action,
+    "scenario_id": scenario_id,
+    "normalized_fields": normalized_fields,
     "tool_hints": tool_hints,
 }, ensure_ascii=False))
 PY
@@ -1870,6 +2039,11 @@ elif mode == "openclaw":
     print(f"  message: {message_text}")
     print(f"  retrieval_tokens: {', '.join(sorted(token_set)) if token_set else '(none)'}")
     if extra:
+        if extra.get("scenario_id"):
+            print(f"  scenario_id: {extra.get('scenario_id')}")
+        normalized_fields = extra.get("normalized_fields") or {}
+        if normalized_fields:
+            print(f"  normalized_fields: {json.dumps(normalized_fields, ensure_ascii=False)}")
         print(f"  openclaw_command: {extra.get('command')}")
         tool_hints = extra.get("tool_hints") or []
         print(f"  official_plugin_tools: {', '.join(tool_hints) if tool_hints else '(none)'}")

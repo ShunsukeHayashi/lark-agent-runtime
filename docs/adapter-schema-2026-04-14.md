@@ -93,3 +93,42 @@ Every scenario should resolve these fields before real execution:
 - `partial_note_template`:
   - `Target document resolved but content update still needs manual refinement`
 
+## Scenario: ppal_marketing_ops
+
+- `scenario_id`: `ppal_marketing_ops`
+- `task_types`:
+  - `read_base`
+  - `read_document`
+  - `create_document`
+  - `update_document`
+  - `send_message`
+- `preferred_tools`:
+  - `feishu_bitable_app_table_record`
+  - `feishu_search_doc_wiki`
+  - `feishu_create_doc`
+  - `feishu_fetch_doc`
+  - `feishu_update_doc`
+  - `feishu_im_user_message`
+- `default_context`:
+  - `base_token=QRonbSCrBajWRtsZYrTjtUsep0d`
+  - `user_table_id=tbl4sJd5HVE7u47v`
+  - `cv_table_id=tbliH8JqoIWGgt9X`
+  - `metrics_table_id=tblR58a8UANR4nC2`
+  - `source_table_id=tbli5hWHQKH8AQxb`
+  - `ssot_doc_url=https://www.larksuite.com/docx/BhN3d92LrohAokxqh2WjWEmRphh`
+- `required_fields`:
+  - `campaign_goal`
+- `blocked_if_missing`:
+  - `campaign_goal`
+- `partial_if_missing`:
+  - `segment_hint`
+  - `destination_target`
+- `normalization`:
+  - `SFA -> PPAL Base`
+  - `MA -> PPAL Base`
+  - `Notion -> Lark Docs/Wiki`
+  - `Slack -> Lark IM`
+- `success_note_template`:
+  - `PPAL marketing context normalized into Base, Docs, and IM execution steps`
+- `partial_note_template`:
+  - `PPAL marketing context prepared but segment or destination still needs manual confirmation`
