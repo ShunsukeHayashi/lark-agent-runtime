@@ -103,7 +103,13 @@ LARC_APPROVAL_CODE=XXXXXXXX           # Optional: Lark Approval flow code
 
 **All skills are in English** (translated from Chinese). Exception: `lark-project/SKILL.md` is intentionally in Japanese (internal Miyabi GK project).
 
-Skills: `lark-base` · `lark-calendar` · `lark-doc` · `lark-drive` · `lark-event` · `lark-im` · `lark-mail` · `lark-minutes` · `lark-sheets` · `lark-slides` · `lark-task` · `lark-vc` · `lark-whiteboard` · `lark-wiki` · `lark-approval` · `lark-attendance` · `lark-contact` · `lark-openapi-explorer` · `lark-skill-maker` · `lark-workflow-meeting-summary` · `lark-workflow-standup-report` · `lark-shared` · `lark-whiteboard-cli` · `lark-project`
+Skills: `lark-base` · `lark-calendar` · `lark-doc` · `lark-drive` · `lark-event` · `lark-im` · `lark-mail` · `lark-minutes` · `lark-sheets` · `lark-slides` · `lark-task` · `lark-vc` · `lark-whiteboard` · `lark-wiki` · `lark-approval` · `lark-attendance` · `lark-contact` · `lark-openapi-explorer` · `lark-skill-maker` · `lark-workflow-meeting-summary` · `lark-workflow-standup-report` · `lark-shared` · `lark-whiteboard-cli` · `lark-project` · `addness`
+
+**`addness` スキル**: ゴール管理OS Addness と OpenClaw を連携する。`addness-cli` 経由でゴールの開始・進捗記録・完了・作成・サマリー確認を行う。OpenClaw Agent がコーディング作業を行う際は必ず Addness ゴールと連動させること。詳細: `addness/SKILL.md` / OpenClaw 連携: `openclaw-larc-runtime/SKILL.md`
+
+**`lark-doc` の追加スキル**: `+mention-link` — text_run URL を mention_doc に変換して被リンク（相関図）を作成する。Lark相関図にリンクを認識させるには必ずこの方法を使うこと。`lark-cli docs +update` のmarkdown変換は常にtext_runを生成するため、被リンクには使えない。詳細: `lark-doc/references/lark-doc-mention-link.md` / スクリプト: `scripts/lark-mention-link.py`
+
+**ナレッジグラフ設計ルール**: `docs/lark-knowledge-graph-linking.md` — 4層アーキテクチャ、リンク種別（根拠/定義/順序/連動/帰還）、クリーンアップ手順、みやびGKグラフ構成（11ノード・46エッジ）
 
 ## Development Roadmap
 

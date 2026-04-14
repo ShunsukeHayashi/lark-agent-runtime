@@ -146,10 +146,51 @@ bin/larc ingress followup --queue-id <queue-id>
   - Calendar
   - Task
 
+## Addness ゴール管理との連携
+
+OpenClaw Agent はコーディング作業を Addness ゴールと連動させる。
+詳細: [`../addness/SKILL.md`](../addness/SKILL.md)
+
+### 作業開始時
+
+```bash
+# git ブランチから自動検出
+addness-cli work start
+
+# ゴールID直接指定
+addness-cli work start --goal <GOAL_ID>
+```
+
+### 作業中（進捗記録）
+
+```bash
+addness-cli progress --message "設計完了、実装着手"
+```
+
+### 作業完了時（LARC queue 完了と同時に必須）
+
+```bash
+# larc ingress done と合わせて実行する
+bin/larc ingress done --queue-id <queue-id> --note "Completed by OpenClaw"
+addness-cli work done --message "<完了内容>" --pr <PR_URL>
+```
+
+### サマリー確認
+
+```bash
+addness-cli summary --all
+```
+
+### 制約
+
+- **banana org への書き込みは絶対禁止**（読み取り専用）
+- ゴール ID 不明時: `addness-cli -- goal list --assigned-to me --json`
+
 ## やってはいけないこと
 
 - approval が必要な item を直接実行する
 - queue を更新せずに作業だけ終える
 - Lark の正本データをローカルだけで完結させる
 - LARC を飛ばして直接 API を乱用する
+- banana org のゴールを作成・更新・削除する
 

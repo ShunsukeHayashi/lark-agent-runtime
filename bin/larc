@@ -117,7 +117,7 @@ cmd_status() {
   # lark-cli connection check
   echo -e "${BOLD}Lark connection:${RESET}"
   local identity
-  identity=$(lark-cli auth status --jq '.userName' 2>/dev/null || echo "not connected")
+  identity=$(lark-cli auth status 2>&1 | jq -r '.userName' 2>/dev/null || echo "not connected")
   echo -e "  User: $identity"
 
   # Drive folder check
