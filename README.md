@@ -128,6 +128,7 @@ Key docs:
 - [docs/goal-aligned-playbook.md](docs/goal-aligned-playbook.md)
 - [docs/permission-model.md](docs/permission-model.md)
 - [docs/auth-suggest-cases.md](docs/auth-suggest-cases.md)
+- [docs/ssot-data-placement-2026-04-14.md](docs/ssot-data-placement-2026-04-14.md)
 - [docs/terminology-glossary.md](docs/terminology-glossary.md)
 - [CONTRIBUTING.md](CONTRIBUTING.md)
 
