@@ -561,8 +561,23 @@ TASK_ADAPTERS = {
     "write_calendar": "larc send --agent {agent} \"Calendar action requested: {message}\"",
 }
 
+TASK_OPENCLAW_TOOLS = {
+    "create_crm_record": ["feishu_bitable_app_table_record"],
+    "update_base_record": ["feishu_bitable_app_table_record"],
+    "read_base": ["feishu_bitable_app_table_record", "feishu_search_doc_wiki"],
+    "send_crm_followup": ["feishu_im_user_message"],
+    "send_message": ["feishu_im_user_message"],
+    "create_expense": ["feishu_bitable_app_table_record", "feishu_drive_file"],
+    "submit_approval": ["feishu_bitable_app_table_record"],
+    "create_document": ["feishu_create_doc"],
+    "update_document": ["feishu_fetch_doc", "feishu_update_doc"],
+    "write_wiki": ["feishu_search_doc_wiki", "feishu_update_doc"],
+    "write_calendar": ["feishu_calendar_event"],
+}
+
 finish_hint = []
 adapter_cmds = []
+tool_hints = []
 for task_type in task_types:
     if task_type in {"create_crm_record", "update_base_record"}:
         finish_hint.append("Updated Base/CRM record")
@@ -581,6 +596,8 @@ for task_type in task_types:
             queue_id=queue.get("queue_id"),
             message=message.replace('"', "'"),
         ))
+    for tool in TASK_OPENCLAW_TOOLS.get(task_type, []):
+        tool_hints.append(tool)
 
 print("")
 print("Execution stub plan")
@@ -602,6 +619,12 @@ if not adapter_cmds:
 else:
     for cmd in dict.fromkeys(adapter_cmds):
         print(f"    - {cmd}")
+print("  official_plugin_tools:")
+if not tool_hints:
+    print("    - No official plugin tool hint is defined yet.")
+else:
+    for tool in dict.fromkeys(tool_hints):
+        print(f"    - {tool}")
 print(f"  suggested_finish_note: {'; '.join(dict.fromkeys(finish_hint)) if finish_hint else 'Completed placeholder execution path'}")
 PY
 }
@@ -645,26 +668,43 @@ message = (queue.get("message_text") or "").replace('"', "'")
 task_types = queue.get("task_types", [])
 results = []
 
+TASK_OPENCLAW_TOOLS = {
+    "create_crm_record": ["feishu_bitable_app_table_record"],
+    "update_base_record": ["feishu_bitable_app_table_record"],
+    "read_base": ["feishu_bitable_app_table_record", "feishu_search_doc_wiki"],
+    "send_crm_followup": ["feishu_im_user_message"],
+    "send_message": ["feishu_im_user_message"],
+    "create_expense": ["feishu_bitable_app_table_record", "feishu_drive_file"],
+    "submit_approval": ["feishu_bitable_app_table_record"],
+    "create_document": ["feishu_create_doc"],
+    "update_document": ["feishu_fetch_doc", "feishu_update_doc"],
+    "write_wiki": ["feishu_search_doc_wiki", "feishu_update_doc"],
+    "write_calendar": ["feishu_calendar_event"],
+}
+
 for task_type in task_types:
     if task_type == "send_crm_followup":
         results.append({
             "task_type": task_type,
             "mode": "run",
             "message": f"Follow-up prepared from queue {queue.get('queue_id')}",
-            "note": "Sent CRM follow-up placeholder"
+            "note": "Sent CRM follow-up placeholder",
+            "tool_hints": TASK_OPENCLAW_TOOLS.get(task_type, [])
         })
     elif task_type == "send_message":
         results.append({
             "task_type": task_type,
             "mode": "run",
             "message": message,
-            "note": "Sent outbound message"
+            "note": "Sent outbound message",
+            "tool_hints": TASK_OPENCLAW_TOOLS.get(task_type, [])
         })
     else:
         results.append({
             "task_type": task_type,
             "mode": "skip",
-            "note": "No safe auto-executor is defined yet"
+            "note": "No safe auto-executor is defined yet",
+            "tool_hints": TASK_OPENCLAW_TOOLS.get(task_type, [])
         })
 
 print(json.dumps({"agent": agent, "steps": results}, ensure_ascii=False))
@@ -679,9 +719,11 @@ print("Execute apply plan")
 print(f"  agent: {plan['agent']}")
 for step in plan["steps"]:
     if step["mode"] == "run":
-        print(f"  - run: {step['task_type']} -> {step['message']}")
+        hints = ", ".join(step.get("tool_hints", [])) or "-"
+        print(f"  - run: {step['task_type']} -> {step['message']} [tools: {hints}]")
     else:
-        print(f"  - skip: {step['task_type']} -> {step['note']}")
+        hints = ", ".join(step.get("tool_hints", [])) or "-"
+        print(f"  - skip: {step['task_type']} -> {step['note']} [tools: {hints}]")
 PY
 
   if [[ "$dry_run" == "true" ]]; then
@@ -1378,6 +1420,24 @@ authority = queue.get("authority", "")
 task_types = queue.get("task_types", [])
 scopes = queue.get("scopes", [])
 message = queue.get("message_text", "")
+TASK_OPENCLAW_TOOLS = {
+    "create_crm_record": ["feishu_bitable_app_table_record"],
+    "update_base_record": ["feishu_bitable_app_table_record"],
+    "read_base": ["feishu_bitable_app_table_record", "feishu_search_doc_wiki"],
+    "send_crm_followup": ["feishu_im_user_message"],
+    "send_message": ["feishu_im_user_message"],
+    "create_expense": ["feishu_bitable_app_table_record", "feishu_drive_file"],
+    "submit_approval": ["feishu_bitable_app_table_record"],
+    "create_document": ["feishu_create_doc"],
+    "update_document": ["feishu_fetch_doc", "feishu_update_doc"],
+    "write_wiki": ["feishu_search_doc_wiki", "feishu_update_doc"],
+    "write_calendar": ["feishu_calendar_event"],
+}
+tool_hints = []
+for task_type in task_types:
+    for tool in TASK_OPENCLAW_TOOLS.get(task_type, []):
+        if tool not in tool_hints:
+            tool_hints.append(tool)
 next_action = "ready_for_execution"
 if status == "partial":
     next_action = "manual_followup_required"
@@ -1406,6 +1466,8 @@ elif status == "partial":
 elif status == "blocked_approval":
     operator_steps.append(f"4. This item is blocked. Resume only through: larc ingress approve --queue-id {queue_id} && larc ingress resume --queue-id {queue_id}")
 
+tool_lines = [f"- {tool}" for tool in tool_hints] if tool_hints else ["- No explicit tool hint yet; inspect the task manually."]
+
 prompt_lines = [
     "You are the OpenClaw agent responsible for the next governed action in LARC.",
     "",
@@ -1427,6 +1489,9 @@ prompt_lines = [
     "",
     "Recommended operator flow:",
     *operator_steps,
+    "",
+    "Preferred official openclaw-lark tools:",
+    *tool_lines,
 ]
 prompt = "\n".join(prompt_lines)
 
@@ -1446,6 +1511,7 @@ print(json.dumps({
     "command": command_str,
     "local_mode": local_mode,
     "next_action": next_action,
+    "tool_hints": tool_hints,
 }, ensure_ascii=False))
 PY
 }
@@ -1637,6 +1703,8 @@ elif mode == "openclaw":
     print(f"  retrieval_tokens: {', '.join(sorted(token_set)) if token_set else '(none)'}")
     if extra:
         print(f"  openclaw_command: {extra.get('command')}")
+        tool_hints = extra.get("tool_hints") or []
+        print(f"  official_plugin_tools: {', '.join(tool_hints) if tool_hints else '(none)'}")
     print("  recommended_commands:")
     for cmd in commands:
         print(f"    - {cmd}")
