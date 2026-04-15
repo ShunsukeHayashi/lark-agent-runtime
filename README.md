@@ -99,10 +99,12 @@ larc status
 | Mode | What runs | Status |
 |---|---|---|
 | **Supervised** | OpenClaw + Claude Code manually calls `larc ingress run-once` | ✅ Stable |
-| **OpenClaw-assisted autonomous** | OpenClaw calls `larc ingress openclaw --execute`; official `openclaw-lark` handles atomic Lark actions; LARC handles gate/queue/audit | ✅ Stable |
+| **OpenClaw-assisted autonomous** | OpenClaw Feishu/Lark channel handles bot/chat ingress, official `openclaw-lark` handles atomic Lark actions, and LARC handles gate/queue/audit | ✅ Stable |
 | **Experimental IM loop** | `larc daemon start` — IM poller enqueues messages, worker dispatches to OpenClaw automatically | 🧪 Experimental |
 
 > **The IM daemon loop is experimental.** Use supervised or OpenClaw-assisted mode for production workflows. The daemon is useful for testing and low-stakes automation, not as the primary onboarding path.
+>
+> **User-facing chat entrypoint**: the chat surface users should talk to is the bot/chat app connected by the OpenClaw Feishu/Lark channel. LARC app credentials are runtime plumbing, not a second user-facing chat app.
 
 ---
 
@@ -124,7 +126,9 @@ larc status
 
 - IM daemon loop (`larc daemon start`) — echo loop and restart reliability still being hardened
 - `larc send` notifications via bot token — just fixed (2026-04-15)
-- OpenClaw plugin/runtime combinations may still need setup verification per environment; the recommended path remains `official openclaw-lark plugin + LARC`
+- OpenClaw plugin/runtime combinations may still need setup verification per environment; the recommended path remains `OpenClaw Feishu/Lark channel + official openclaw-lark plugin + LARC`
+- Feishu/Lark bot-chat binding belongs to OpenClaw channel setup (`openclaw channels login --channel feishu`), not to the plugin alone
+- End users should be onboarded to the OpenClaw channel bot/chat app, not to a separate LARC-auth app
 
 ---
 

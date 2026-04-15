@@ -99,10 +99,12 @@ larc status
 | モード | 動作 | 状態 |
 |---|---|---|
 | **Supervised** | OpenClaw + Claude Code が手動で `larc ingress run-once` を呼ぶ | ✅ 安定 |
-| **OpenClaw-assisted autonomous** | OpenClaw が `larc ingress openclaw --execute` を呼ぶ。公式 `openclaw-lark` が原子的な Lark 操作を行い、LARC がゲート・キュー・監査を担当 | ✅ 安定 |
+| **OpenClaw-assisted autonomous** | OpenClaw の Feishu/Lark channel が bot/chat 入口を担当し、公式 `openclaw-lark` が原子的な Lark 操作を行い、LARC がゲート・キュー・監査を担当 | ✅ 安定 |
 | **Experimental IM loop** | `larc daemon start` — IM ポーラーがメッセージをエンキューし、worker が OpenClaw に自動ディスパッチ | 🧪 実験的 |
 
 > **IM デーモンループは実験段階です。** 本番ワークフローには supervised または OpenClaw-assisted モードを使用してください。主要オンボーディング導線としては案内しません。
+>
+> **ユーザー向け会話入口**: 実際にユーザーが話しかけるのは、OpenClaw の Feishu/Lark channel が接続した bot / chat app です。LARC 用のアプリ資格情報は runtime の配管であって、別の会話用アプリを案内する意図ではありません。
 
 ---
 
@@ -124,7 +126,9 @@ larc status
 
 - IM デーモンループ（`larc daemon start`）— echo loop と再起動の安定性を現在改善中
 - bot token による `larc send` 通知 — 修正済み（2026-04-15）
-- OpenClaw の plugin / runtime 組み合わせは環境ごとの確認がまだ必要。ただし推奨経路は `official openclaw-lark plugin + LARC`
+- OpenClaw の plugin / runtime 組み合わせは環境ごとの確認がまだ必要。ただし推奨経路は `OpenClaw Feishu/Lark channel + official openclaw-lark plugin + LARC`
+- Feishu/Lark の bot/chat 紐付けは plugin 単体ではなく、OpenClaw の channel 設定（`openclaw channels login --channel feishu`）側の役割
+- テストユーザーの案内先は OpenClaw channel 側の bot / chat app に統一し、LARC 認証アプリを別入口として扱わない
 
 ---
 

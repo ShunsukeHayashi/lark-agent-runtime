@@ -1,13 +1,17 @@
 # OpenClaw Integration
 
-LARC は OpenClaw の **governed runtime layer** として動作します。推奨構成では、公式 `openclaw-lark` プラグインと一緒に使います。
+LARC は OpenClaw の **governed runtime layer** として動作します。推奨構成では、OpenClaw の公式 Feishu/Lark channel と、公式 `openclaw-lark` プラグインを併用します。
+
+> **会話入口は 1 つです。** ユーザーが話しかける相手は、OpenClaw の Feishu/Lark channel が接続した chat app / bot です。LARC 用の認証アプリや補助的な IM 経路を別の会話入口として案内しないでください。
 
 ## アーキテクチャ
 
 ```
 OpenClaw Agent
+    ↓ OpenClaw Feishu/Lark channel
+Lark chat app / bot 接続
     ↓ official openclaw-lark plugin
-Lark の原子的な操作
+Lark の原子的な操作（IM / Docs / Base / Calendar ...）
     ↓
 LARC
     - auth suggest
@@ -20,9 +24,16 @@ Lark tenant surfaces
 
 ## 役割分担
 
+### OpenClaw Feishu/Lark channel
+
+- bot / chat app の作成と接続
+- DM / group chat の受信経路
+- pairing / allowlist / mention requirement
+- ユーザー向けの唯一の会話入口
+
 ### OpenClaw + official openclaw-lark plugin
 
-- メッセージ送信
+- メッセージ送受信 API
 - ドキュメント操作
 - Base / Approval / Calendar などの原子的アクション
 - LLM 実行主体
@@ -35,9 +46,29 @@ Lark tenant surfaces
 - specialist delegation
 - memory / audit / write-back
 
-LARC は plugin の代替ではなく、OpenClaw の実行を Lark 業務フローに合わせて統制する layer です。
+LARC は channel や plugin の代替ではなく、OpenClaw の実行を Lark 業務フローに合わせて統制する layer です。
 
 ## OpenClaw 側セットアップ
+
+### 1. Feishu/Lark channel を接続する
+
+まず、OpenClaw 側で Lark chat app / bot の接続を作ります。これは plugin の役割ではありません。
+
+```bash
+openclaw channels login --channel feishu
+openclaw gateway restart
+```
+
+必要に応じて、pairing や group allowlist も OpenClaw channel 側で設定します。
+
+```bash
+openclaw pairing list feishu
+openclaw pairing approve feishu <CODE>
+```
+
+### 2. official `openclaw-lark` plugin を使える状態にする
+
+この plugin が、OpenClaw から Lark API への原子的操作を担当します。
 
 ```bash
 bash scripts/install-openclaw-larc-runtime-skill.sh
@@ -46,6 +77,8 @@ openclaw skills list | rg larc-runtime
 
 > このリポジトリは `larc-runtime` skill を提供します。
 > Lark の原子的操作自体は official `openclaw-lark` plugin 側で扱う前提です。
+> chat app / bot 接続そのものは OpenClaw の Feishu/Lark channel 側で行います。
+> ユーザーには、この channel が作る chat app / bot を案内してください。
 
 ## OpenClaw への bundle 設計
 

@@ -116,10 +116,12 @@ larc status
 | 模式 | 运行方式 | 状态 |
 |---|---|---|
 | **Supervised** | OpenClaw + Claude Code 手动调用 `larc ingress run-once` | ✅ 稳定 |
-| **OpenClaw-assisted autonomous** | OpenClaw 调用 `larc ingress openclaw --execute`；官方 `openclaw-lark` 负责原子 Lark 操作，LARC 负责门控/队列/审计 | ✅ 稳定 |
+| **OpenClaw-assisted autonomous** | OpenClaw 的 Feishu/Lark channel 负责 bot/chat 入口，官方 `openclaw-lark` 负责原子 Lark 操作，LARC 负责门控/队列/审计 | ✅ 稳定 |
 | **Experimental IM loop** | `larc daemon start`：IM poller 自动入队，worker 自动派发到 OpenClaw | 🧪 实验性 |
 
 > **IM daemon loop 仍是实验性功能。** 生产或正式试点请优先使用 supervised 或 OpenClaw-assisted 模式。
+>
+> **用户实际对话入口**：应当引导用户去使用 OpenClaw 的 Feishu/Lark channel 连接出来的 bot / chat app。LARC 的应用凭据只是 runtime 认证链路，不应被当作第二个用户聊天入口。
 
 ---
 
@@ -146,8 +148,11 @@ larc status
 
 - LARC 已经是可运行的飞书 Agent work runtime surface
 - 但当前应主要被视为 OpenClaw 之下的 governed runtime
-- 当前最自然的主路径是 `OpenClaw Agent -> official openclaw-lark plugin + LARC`
+- 当前最自然的主路径是 `OpenClaw Agent -> OpenClaw Feishu/Lark channel -> official openclaw-lark plugin + LARC`
 - Lark IM / webhook bot ingress 更适合作为后续可选入口，目前仍属 experimental
+- Feishu/Lark 的 bot/chat 绑定属于 OpenClaw channel 配置（`openclaw channels login --channel feishu`），不是 plugin 单独完成的步骤
+- 推荐路径仍然是 `OpenClaw Feishu/Lark channel + official openclaw-lark plugin + LARC`
+- 测试用户应被引导到 OpenClaw channel 对应的 bot / chat app，而不是单独的 LARC 认证应用
 
 更多背景请看：
 

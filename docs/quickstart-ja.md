@@ -11,6 +11,8 @@ LARC（Lark Agent Runtime CLI）は、OpenClaw の下で Lark 実行を統制す
 
 ```
 OpenClaw Agent
+    ↓ OpenClaw Feishu/Lark channel
+Lark chat app / bot 接続
     ↓ official openclaw-lark plugin
 Lark の原子的な操作
     ↓
@@ -23,14 +25,29 @@ LARC
 Lark tenant surfaces
 ```
 
-LARC 単体の「常駐 IM ボット」を先に立てるのではなく、`OpenClaw Agent -> official openclaw-lark plugin + LARC` を主経路として使います。
+LARC 単体の「常駐 IM ボット」を先に立てるのではなく、`OpenClaw Agent -> OpenClaw Feishu/Lark channel -> official openclaw-lark plugin + LARC` を主経路として使います。
 
 > **重要**: `larc daemon start` による IM 自動ループはまだ experimental です。
 > テストユーザー導線では、まず OpenClaw から LARC bundle を使う運用を案内してください。
+>
+> **会話入口の原則**: テストユーザーや運用担当者が実際に話しかけるのは、OpenClaw の Feishu/Lark channel が作る chat app / bot です。
+> `lark-cli` 用の App ID / App Secret は LARC runtime の認証用であり、ユーザー向け chat app を別に立ち上げるための導線ではありません。
 
 ---
 
-## Step 0 — OpenClaw + LARC スキルのセットアップ
+## Step 0 — OpenClaw / Feishu channel / plugin / LARC の役割を分けて理解する
+
+オンボーディングで混同しやすいので、最初に役割を分けます。
+
+| 層 | 役割 |
+|---|---|
+| OpenClaw Feishu/Lark channel | **実際にユーザーが会話する chat app / bot** を接続し、DM / group message の入口を作る |
+| official `openclaw-lark` plugin | OpenClaw から Lark API の原子的操作を行う |
+| LARC | 権限説明、ゲート、queue、監査、memory、write-back を統制する |
+
+Lark の chat app と OpenClaw の紐付けは、plugin ではなく **OpenClaw の Feishu/Lark channel** 側で行います。ユーザー案内もこの chat app / bot に統一してください。
+
+## Step 1 — OpenClaw + LARC スキルのセットアップ
 
 LARC は OpenClaw エージェントのランタイム層です。**最初に OpenClaw を用意してください。**
 
@@ -48,7 +65,10 @@ openclaw skills list | rg larc-runtime
 > **LARC はスタンドアロンのエージェントではありません。**  
 > OpenClaw が実行主体であり、LARC は Lark 側の権限・キュー・監査・文脈取得を担う実行レイヤーです。
 >
-> **別途必要**: OpenClaw 側では公式 `openclaw-lark` プラグインが使える状態にしておいてください。LARC はその代替ではなく、実行統制レイヤーです。
+> **別途必要**: OpenClaw 側では
+> 1. Feishu/Lark channel の接続
+> 2. 公式 `openclaw-lark` プラグイン
+> の両方が必要です。LARC はその代替ではなく、実行統制レイヤーです。
 
 その他の前提確認：
 
@@ -59,7 +79,7 @@ which node       # Node.js（lark-cli のインストールに必要）
 
 ---
 
-## Step 1 — インストール
+## Step 2 — インストール
 
 ```bash
 # 1. lark-cli のインストール（未インストールの場合）
@@ -76,13 +96,41 @@ larc version
 
 ---
 
-## Step 2 — lark-cli アプリ設定 + Lark 認証
+## Step 3 — OpenClaw の Feishu/Lark channel を接続する
+
+chat app / bot と OpenClaw の紐付けは、ここで行います。`openclaw-lark` plugin の役割ではありません。
+
+```bash
+openclaw channels login --channel feishu
+openclaw gateway restart
+```
+
+DM の pairing や group 設定が必要なら、OpenClaw channel 側で設定します。
+
+```bash
+openclaw pairing list feishu
+openclaw pairing approve feishu <CODE>
+```
+
+> group chat を使う場合は、`groupPolicy`、`groupAllowFrom`、`requireMention` も OpenClaw 側の Feishu channel 設定で調整してください。
+>
+> **ここで作られた chat app / bot が、ユーザーに案内すべき唯一の会話入口です。**
+
+## Step 4 — official `openclaw-lark` plugin を利用可能にする
+
+Lark の原子的操作は official plugin 側で実行します。plugin は会話入口そのものではなく、OpenClaw が接続した chat app / bot の背後で API 操作を担います。
+
+> 公式手順は `larksuite/openclaw-lark` README と OpenClaw の `docs/channels/feishu.md` を参照してください。
+
+## Step 5 — lark-cli アプリ設定 + Lark 認証
 
 ### 2-1. アプリ情報を入手
 
 テスト担当者から **App ID** と **App Secret** を受け取ってください。
 
 > テスト担当者の方はこちら → [Lark アプリ設定ガイド](lark-app-setup.md)
+>
+> **注意**: ここで設定するアプリ資格情報は LARC runtime の認証に使います。ユーザー向け chat app を新たに案内する手順ではありません。
 
 ### 2-2. lark-cli にアプリを登録
 
@@ -110,7 +158,7 @@ lark-cli auth status
 
 ---
 
-## Step 3 — セットアップ（1コマンド）
+## Step 6 — セットアップ（1コマンド）
 
 ```bash
 # ドライランで確認
@@ -134,7 +182,7 @@ larc quickstart
 
 ---
 
-## Step 4 — 動作確認
+## Step 7 — 動作確認
 
 ```bash
 # 状態確認（接続・OpenClaw 検出・キュー統計を一覧表示）
@@ -158,7 +206,7 @@ larc ingress openclaw --agent main --days 14
 
 ---
 
-## Step 5 — 推奨運用（OpenClaw 補助）
+## Step 8 — 推奨運用（OpenClaw 補助）
 
 推奨フローは、OpenClaw から LARC bundle を読み、Lark 操作は公式 `openclaw-lark` プラグインで行い、状態更新は LARC に返す形です。
 
@@ -179,7 +227,7 @@ LARC 側で重視するのは次です。
 
 ---
 
-## Step 6 — experimental 自動ループ
+## Step 9 — experimental 自動ループ
 
 `larc daemon start` はまだ experimental です。テストや検証用には使えますが、現時点ではこれを主要オンボーディング導線として案内しません。
 
@@ -196,7 +244,7 @@ larc daemon stop
 
 | モード | 動作 | 状態 |
 |--------|------|------|
-| **recommended** | OpenClaw + official openclaw-lark plugin + LARC | OpenClaw が実行主体、LARC が権限・ゲート・queue を統制 | ✅ 推奨 |
+| **recommended** | OpenClaw Feishu/Lark channel + official openclaw-lark plugin + LARC | OpenClaw が**ユーザー向け chat app / bot**を接続し、plugin が原子的操作、LARC が権限・ゲート・queue を統制 | ✅ 推奨 |
 | **Supervised** | OpenClaw / Claude Code + LARC | `larc ingress openclaw` や `run-once` で bundle を確認しながら進める | ✅ 安定 |
 | **OpenClaw-assisted** | OpenClaw が `larc ingress openclaw --execute` を呼ぶ。公式 `openclaw-lark` が原子的な Lark 操作を行い、LARC がゲート・監査を担当 | ✅ 安定 |
 | **Experimental IM loop** | `larc daemon start` — IM メッセージを自動エンキューして OpenClaw に自動ディスパッチ | 🧪 実験的 |
@@ -274,6 +322,8 @@ larc daemon logs
 
 ```
 OpenClaw Agent
+    ↓ OpenClaw Feishu/Lark channel
+Lark chat app / bot 接続
     ↓ official openclaw-lark plugin
 Lark atomic operations
     ↓
