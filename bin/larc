@@ -360,6 +360,14 @@ except Exception:
     [[ -z "$base_token" ]] && { _qs_fail "Base 作成失敗: $base_result"; exit 1; }
     _qs_ok "LARC-memory Base: $base_token"
 
+    # Field definitions per table
+    declare -A _tbl_fields
+    _tbl_fields["agent_queue"]="queue_id agent_id source sender event_id message_text task_types scopes authority gate risk status created_at assigned_agent_id worker_agent_id started_at updated_at execution_note completed_at"
+    _tbl_fields["agent_logs"]="log_id queue_id agent_id action status note timestamp"
+    _tbl_fields["agent_memory"]="memory_id agent_id date topic content tags"
+    _tbl_fields["agents_registry"]="agent_id name model workspace chat_id scopes created_at"
+    _tbl_fields["wiki_knowledge_graph"]="node_id title url obj_type parent_id space_id indexed_at"
+
     for tbl_name in agent_queue agent_logs agent_memory agents_registry wiki_knowledge_graph; do
       local tbl_result tbl_id
       tbl_result=$(lark-cli api POST "/open-apis/bitable/v1/apps/${base_token}/tables" \
@@ -370,6 +378,15 @@ except Exception:
         _qs_ok "  ${tbl_name} → $tbl_id"
         [[ "$tbl_name" == "agent_queue" ]] && queue_tbl="$tbl_id"
         [[ "$tbl_name" == "agent_logs"  ]] && logs_tbl="$tbl_id"
+
+        # Create fields for this table
+        local field_count=0
+        for field_name in ${_tbl_fields[$tbl_name]}; do
+          lark-cli api POST "/open-apis/bitable/v1/apps/${base_token}/tables/${tbl_id}/fields" \
+            --data "{\"field_name\":\"${field_name}\",\"type\":1}" \
+            >/dev/null 2>&1 && field_count=$((field_count+1)) || true
+        done
+        _qs_ok "    フィールド作成: ${field_count}件"
       else
         _qs_fail "  ${tbl_name} 作成失敗"
       fi

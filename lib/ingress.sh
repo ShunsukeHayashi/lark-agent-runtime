@@ -1631,11 +1631,16 @@ print(json.dumps(row, ensure_ascii=False))
 PY
 )
 
-  lark-cli base +record-upsert \
+  local audit_out
+  audit_out=$(lark-cli base +record-upsert \
     --base-token "$LARC_BASE_APP_TOKEN" \
     --table-id "$table_id" \
-    --json "$audit_record" \
-    >/dev/null 2>&1 && log_ok "Audit log written to agent_logs" || log_warn "Audit log write failed"
+    --json "$audit_record" 2>&1)
+  if [[ $? -eq 0 ]]; then
+    log_ok "Audit log written to agent_logs"
+  else
+    log_warn "Audit log write failed: $audit_out"
+  fi
 }
 
 _ingress_notify_completion() {
@@ -2620,11 +2625,16 @@ print(json.dumps(d, ensure_ascii=False))
 PY
 )
 
-  lark-cli base +record-upsert \
+  local upsert_out
+  upsert_out=$(lark-cli base +record-upsert \
     --base-token "$LARC_BASE_APP_TOKEN" \
     --table-id "$table_id" \
-    --json "$base_json" \
-    >/dev/null 2>&1 && log_ok "Queue item recorded in Lark Base" || log_warn "Base queue write failed"
+    --json "$base_json" 2>&1)
+  if [[ $? -eq 0 ]]; then
+    log_ok "Queue item recorded in Lark Base"
+  else
+    log_warn "Base queue write failed: $upsert_out"
+  fi
 }
 
 _get_or_create_queue_table() {
