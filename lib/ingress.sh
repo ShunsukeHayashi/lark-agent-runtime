@@ -494,28 +494,20 @@ PY
   fi
 
   local target_agent prompt dispatch_mode session_id
-  target_agent=$(python3 - "$payload_json" <<'PY'
+  # Extract target_agent, dispatch_mode, session_id in one subprocess; prompt stays separate
+  # because it is multi-line (the full OpenClaw bundle text).
+  IFS=$'\t' read -r target_agent dispatch_mode session_id < <(python3 - "$payload_json" <<'PY'
 import json, sys
 d = json.loads(sys.argv[1])
-print(d.get("target_agent", "main"))
+print(d.get("target_agent", "main") + "\t" +
+      ("local" if d.get("local_mode", True) else "gateway") + "\t" +
+      d.get("session_id", ""))
 PY
-)
+  ) || { target_agent="main"; dispatch_mode="local"; session_id=""; }
   prompt=$(python3 - "$payload_json" <<'PY'
 import json, sys
 d = json.loads(sys.argv[1])
 print(d.get("prompt", ""))
-PY
-)
-  dispatch_mode=$(python3 - "$payload_json" <<'PY'
-import json, sys
-d = json.loads(sys.argv[1])
-print("local" if d.get("local_mode", True) else "gateway")
-PY
-)
-  session_id=$(python3 - "$payload_json" <<'PY'
-import json, sys
-d = json.loads(sys.argv[1])
-print(d.get("session_id", ""))
 PY
 )
 
@@ -1136,84 +1128,62 @@ PY
     return 0
   fi
 
-  local blocked_fields
-  blocked_fields=$(python3 - "$plan_json" <<'PY'
+  # Unpack all plan fields in a single subprocess: blocked_fields, ask_user_prompt,
+  # skipped_count, worker_agent, and run-mode steps (one JSON per line after the header).
+  local _plan_out
+  _plan_out=$(python3 - "$plan_json" <<'PY'
 import json, sys
 plan = json.loads(sys.argv[1])
 print(",".join(plan.get("blocked_fields", [])))
-PY
-)
-  if [[ -n "$blocked_fields" ]]; then
-    log_error "Queue item $queue_id is blocked by missing required fields: $blocked_fields"
-    python3 - "$plan_json" <<'PY'
-import json, sys
-plan = json.loads(sys.argv[1])
-if plan.get("ask_user_prompt"):
-    print(plan["ask_user_prompt"])
-PY
-    return 1
-  fi
-
-  local run_steps
-  run_steps=$(python3 - "$plan_json" <<'PY'
-import json, sys
-plan = json.loads(sys.argv[1])
+print(plan.get("ask_user_prompt", ""))
+print(sum(1 for s in plan["steps"] if s["mode"] == "skip"))
+print(plan["agent"])
 for step in plan["steps"]:
     if step["mode"] == "run":
         print(json.dumps(step, ensure_ascii=False))
 PY
-)
+  )
+
+  local blocked_fields worker_agent skipped_count run_steps
+  blocked_fields=$(sed -n '1p' <<< "$_plan_out")
+  if [[ -n "$blocked_fields" ]]; then
+    log_error "Queue item $queue_id is blocked by missing required fields: $blocked_fields"
+    local _ask
+    _ask=$(sed -n '2p' <<< "$_plan_out")
+    [[ -n "$_ask" ]] && echo "$_ask"
+    return 1
+  fi
+  skipped_count=$(sed -n '3p' <<< "$_plan_out")
+  worker_agent=$(sed -n '4p' <<< "$_plan_out")
+  run_steps=$(sed -n '5,$p' <<< "$_plan_out")
 
   if [[ -z "$run_steps" ]]; then
     log_warn "No safe adapters to execute for queue item $queue_id"
     return 0
   fi
 
-  local skipped_count
-  skipped_count=$(python3 - "$plan_json" <<'PY'
-import json, sys
-plan = json.loads(sys.argv[1])
-print(sum(1 for step in plan["steps"] if step["mode"] == "skip"))
-PY
-)
-
-  local worker_agent
-  worker_agent=$(python3 - "$plan_json" <<'PY'
-import json, sys
-plan = json.loads(sys.argv[1])
-print(plan["agent"])
-PY
-  )
-
   local execution_notes=()
   while IFS= read -r step_json; do
     [[ -z "$step_json" ]] && continue
     local step_message step_note step_dispatch step_session_id
-    step_message=$(python3 - "$step_json" <<'PY'
-import json, sys
+    # Extract all step fields in one subprocess; message is base64-encoded (may contain newlines).
+    local _step_out
+    _step_out=$(python3 - "$step_json" <<'PY'
+import base64, json, sys
 step = json.loads(sys.argv[1])
-print(step.get("message", ""))
-PY
-)
-    step_note=$(python3 - "$step_json" <<'PY'
-import json, sys
-step = json.loads(sys.argv[1])
+msg_b64 = base64.b64encode(step.get("message", "").encode()).decode()
+print(msg_b64)
 print(step.get("note", ""))
-PY
-)
-    step_dispatch=$(python3 - "$step_json" <<'PY'
-import json, sys
-step = json.loads(sys.argv[1])
 print(step.get("dispatch", "lark_send"))
-PY
-)
-    if [[ "$step_dispatch" == "openclaw" ]]; then
-      step_session_id=$(python3 - "$step_json" <<'PY'
-import json, sys
-step = json.loads(sys.argv[1])
 print(step.get("session_id", ""))
 PY
-)
+    )
+    step_message=$(base64 --decode <<< "$(sed -n '1p' <<< "$_step_out")")
+    step_note=$(sed -n '2p' <<< "$_step_out")
+    step_dispatch=$(sed -n '3p' <<< "$_step_out")
+    step_session_id=$(sed -n '4p' <<< "$_step_out")
+
+    if [[ "$step_dispatch" == "openclaw" ]]; then
       openclaw agent --agent "$worker_agent" --session-id "${step_session_id:-larc-step-$queue_id}" --json --local --message "$step_message" >/dev/null
     else
       cmd_send --agent "$worker_agent" "$step_message"
