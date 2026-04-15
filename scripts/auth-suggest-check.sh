@@ -3,6 +3,10 @@
 
 set -euo pipefail
 
+# Ensure Python subprocesses emit UTF-8 on Windows (cp1252 by default) — see #22
+export PYTHONIOENCODING="${PYTHONIOENCODING:-utf-8}"
+export PYTHONUTF8="${PYTHONUTF8:-1}"
+
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
 

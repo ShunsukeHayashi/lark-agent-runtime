@@ -14,6 +14,10 @@
 
 set -euo pipefail
 
+# Ensure Python subprocesses emit UTF-8 on Windows (cp1252 by default) — see #22
+export PYTHONIOENCODING="${PYTHONIOENCODING:-utf-8}"
+export PYTHONUTF8="${PYTHONUTF8:-1}"
+
 # ── Configuration ──────────────────────────────────────────────────────────────
 LARC_VERSION="0.2.0"
 LARC_REPO_URL="https://github.com/ShunsukeHayashi/lark-agent-runtime.git"
