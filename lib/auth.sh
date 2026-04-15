@@ -241,6 +241,37 @@ scope_str = " ".join(sorted(all_scopes.keys()))
 print(f"\n  To issue auth URL:")
 print(f"    larc auth login --scope \"{scope_str}\"")
 
+# Known API limitation warnings — surface before caller invests effort
+TASK_WARNINGS = {
+    "manage_contact": (
+        "WARN: 外部テナントユーザー（別会社のLarkアカウント）はAPIで検索・一覧取得できません。\n"
+        "      外部ユーザーを追加するには：\n"
+        "        A) 管理コンソール (admin.larksuite.com) でゲスト招待後、open_id で操作\n"
+        "        B) 相手にopen_idを確認してもらい --member_type openid で直接指定\n"
+        "      参照: docs/known-issues/lark-external-user-api-gap.md"
+    ),
+    "manage_wiki": (
+        "WARN: Wiki メンバー追加で外部ユーザーのメールアドレス検索はできません (131005エラー)。\n"
+        "      外部ユーザーを Wiki に追加するには：\n"
+        "        A) 管理コンソールでゲスト招待後、open_id で wiki members create を実行\n"
+        "        B) open_sharing=anyone_readable でリンク公開（Larkアカウント不要）\n"
+        "      参照: docs/known-issues/lark-external-user-api-gap.md"
+    ),
+    "read_contact": (
+        "NOTE: 外部テナントのユーザーは GET /contact/v3/users などで返りません（内部ユーザーのみ）。\n"
+        "      参照: docs/known-issues/lark-external-user-api-gap.md"
+    ),
+}
+
+YELLOW = "\033[33m"; RESET_C = "\033[0m"; BOLD_C = "\033[1m"
+warnings_shown = set()
+for tk in sorted(matched_tasks):
+    if tk in TASK_WARNINGS and tk not in warnings_shown:
+        warnings_shown.add(tk)
+        print(f"\n  {YELLOW}{BOLD_C}⚠  Known limitation ({tk}):{RESET_C}")
+        for line in TASK_WARNINGS[tk].split("\n"):
+            print(f"  {YELLOW}{line}{RESET_C}")
+
 # Suggest profiles
 print(f"\n  Or use a profile for bulk setup:")
 for pname, pdata in profiles.items():
