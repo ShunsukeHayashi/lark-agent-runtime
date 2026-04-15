@@ -166,22 +166,40 @@ except Exception:
 " 2>/dev/null || echo "")
 
   if [[ -z "$app_id_configured" ]]; then
-    _qs_fail "lark-cli にアプリが設定されていません"
+    _qs_info "lark-cli にアプリが登録されていません。今すぐ設定します。"
     echo ""
-    echo -e "  ${_W}【Step 1】まず lark-cli にアプリを登録してください:${_E}"
+    echo -e "  ${_W}Lark Developer Console から App ID と App Secret を用意してください。${_E}"
+    echo -e "  ${_B}（https://open.larksuite.com/app → 対象アプリ → Credentials & Basic Info）${_E}"
     echo ""
-    echo -e "    ${_C}lark-cli config init \\${_E}"
-    echo -e "      ${_C}--app-id   <テスト用 App ID> \\${_E}"
-    echo -e "      ${_C}--app-secret-stdin \\${_E}"
-    echo -e "      ${_C}--brand    lark${_E}"
+
+    # Prompt for App ID interactively
+    local input_app_id=""
+    while [[ -z "$input_app_id" ]]; do
+      printf "  App ID を入力してください (cli_...): "
+      read -r input_app_id
+    done
+
+    # Prompt for App Secret interactively (hidden input)
+    local input_app_secret=""
+    while [[ -z "$input_app_secret" ]]; do
+      printf "  App Secret を入力してください: "
+      read -rs input_app_secret
+      echo ""
+    done
+
     echo ""
-    echo -e "  ${_B}App ID と App Secret はテスト担当者から入手してください${_E}"
-    echo -e "  ${_B}（Lark Developer Console → アプリ → 認証情報）${_E}"
+    _qs_info "lark-cli config init を実行中..."
+    if echo "$input_app_secret" | lark-cli config init \
+        --app-id "$input_app_id" \
+        --app-secret-stdin \
+        --brand lark 2>&1; then
+      app_id_configured="$input_app_id"
+      _qs_ok "アプリ登録完了: $app_id_configured"
+    else
+      _qs_fail "lark-cli config init に失敗しました。App ID / Secret を確認してください。"
+      exit 1
+    fi
     echo ""
-    echo -e "  ${_W}【Step 2】その後:${_E}"
-    echo -e "    ${_C}lark-cli auth login${_E}   # ブラウザでログイン"
-    echo -e "    ${_C}larc quickstart${_E}        # このコマンドを再実行"
-    exit 1
   fi
 
   # Sub-check 1b: Is user logged in?
@@ -192,13 +210,24 @@ except Exception:
   token_status=$(echo "$auth_json" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('tokenStatus',''))" 2>/dev/null)
 
   if [[ "$token_status" != "valid" || -z "$user_name" ]]; then
-    _qs_fail "Lark アカウントにログインしていません（アプリ: ${app_id_configured}）"
+    _qs_info "Lark アカウントへのログインが必要です。ブラウザで認証します..."
     echo ""
-    echo -e "  ${_W}解決方法:${_E}"
-    echo -e "    ${_C}lark-cli auth login${_E}   # ブラウザが開きます。Lark アカウントでログイン"
+    echo -e "  ${_W}ブラウザが開きます。Lark アカウントでログインしてください。${_E}"
+    echo -e "  ${_B}ブラウザが自動で開かない場合は、表示される URL をコピーしてブラウザに貼り付けてください。${_E}"
     echo ""
-    echo -e "  ログイン後に再実行:  ${_C}larc quickstart${_E}"
-    exit 1
+    # Run auth login directly so the URL appears inline
+    lark-cli auth login
+    echo ""
+
+    # Re-check after login
+    auth_json=$(lark-cli auth status 2>/dev/null || echo "{}")
+    user_name=$(echo "$auth_json"    | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('userName',''))" 2>/dev/null)
+    token_status=$(echo "$auth_json" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('tokenStatus',''))" 2>/dev/null)
+
+    if [[ "$token_status" != "valid" || -z "$user_name" ]]; then
+      _qs_fail "ログインを確認できませんでした。もう一度 'larc quickstart' を実行してください。"
+      exit 1
+    fi
   fi
   _qs_ok "認証済み: ${user_name}  (app: ${app_id_configured})"
 
