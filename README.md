@@ -72,14 +72,28 @@ In practical terms:
 ## Quick Start
 
 ```bash
+# 1. Install lark-cli
 npm install -g @larksuite/cli
-git clone https://github.com/ShunsukeHayashi/lark-agent-runtime
-cd lark-agent-runtime
-chmod +x bin/larc
-export PATH="$PWD/bin:$PATH"
-larc init
-larc bootstrap
+
+# 2. Clone and install LARC
+git clone https://github.com/ShunsukeHayashi/lark-agent-runtime ~/larc
+bash ~/larc/scripts/install.sh
+
+# 3. Configure lark-cli with your Lark app credentials
+lark-cli config init \
+  --app-id   <App ID> \
+  --app-secret-stdin \
+  --brand    lark
+
+# 4. Log in with your Lark account
+lark-cli auth login
+
+# 5. One-command setup (creates Drive folders, Base tables, registers agent)
+larc quickstart
 ```
+
+→ Full guide: [docs/quickstart-ja.md](docs/quickstart-ja.md)  
+→ Lark app setup (for coordinators): [docs/lark-app-setup.md](docs/lark-app-setup.md)
 
 ---
 
