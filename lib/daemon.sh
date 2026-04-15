@@ -145,6 +145,11 @@ try:
         if isinstance(text, list):
             text = " ".join(str(x) for x in text)
         text = text.strip()
+
+        # Skip larc outbound notification messages (fallback for user-token sends)
+        if text.startswith("[larc →") or text.startswith("[larc→"):
+            new_ids.append(msg_id)
+            continue
         if not text:
             new_ids.append(msg_id)
             continue

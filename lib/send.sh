@@ -50,6 +50,7 @@ ${message}"
   run_id=$(uuidgen 2>/dev/null || cat /proc/sys/kernel/random/uuid 2>/dev/null || date +%s)
 
   lark-cli im +messages-send \
+    --as bot \
     --chat-id "$chat_id" \
     --text "$full_message" \
     &>/dev/null && {
