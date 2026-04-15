@@ -15,7 +15,8 @@
 set -euo pipefail
 
 # ── Configuration ──────────────────────────────────────────────────────────────
-LARC_VERSION="0.1.0"
+LARC_VERSION="0.2.0"
+LARC_REPO_URL="https://github.com/ShunsukeHayashi/lark-agent-runtime.git"
 SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
 LIB_DIR="$SCRIPT_DIR/lib"
 export LIB_DIR LARC_HOME LARC_CACHE LARC_CONFIG LARC_TENANT_ID
@@ -822,6 +823,11 @@ ${BOLD}Commands:${RESET}
   ${CYAN}webhook stop${RESET}          Stop webhook server
   ${CYAN}webhook handle${RESET} [json] Process an approval event payload
   ${CYAN}status${RESET}                Show connection state and config
+  ${CYAN}update${RESET}                Update LARC and lark-cli to latest versions
+                          --check           Check only, do not install
+                          --larc-only       Update only LARC
+                          --lark-cli-only   Update only lark-cli
+  ${CYAN}version${RESET}               Print version and exit
 
 ${BOLD}Examples:${RESET}
   larc init
@@ -975,13 +981,197 @@ PYEOF
   log_ok "OCR complete (Gemini Vision)"
 }
 
+# ── Update ──────────────────────────────────────────────────────────────────
+
+# _update_check_notify: prints a notice if a newer version is available on GitHub.
+# Runs at most once per TTL (default 3600 s) to avoid blocking every command.
+_update_check_notify() {
+  local check_stamp="$LARC_CACHE/update_check_stamp"
+  local ttl="${LARC_UPDATE_CHECK_TTL:-3600}"
+  local now; now=$(date +%s)
+
+  # Skip if recently checked
+  if [[ -f "$check_stamp" ]]; then
+    local last; last=$(cat "$check_stamp" 2>/dev/null || echo 0)
+    [[ $((now - last)) -lt $ttl ]] && return 0
+  fi
+
+  # Record timestamp immediately (avoid blocking on network failure)
+  echo "$now" > "$check_stamp" 2>/dev/null || true
+
+  # Detect repo directory
+  local repo_dir
+  repo_dir="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
+  if [[ ! -d "$repo_dir/.git" ]]; then
+    return 0   # Not a git repo (e.g. /usr/local/bin/larc without source)
+  fi
+
+  # Fetch remote refs quietly (timeout 5 s)
+  local remote_sha local_sha
+  remote_sha=$(git -C "$repo_dir" ls-remote origin HEAD 2>/dev/null | awk '{print $1}' | head -1)
+  local_sha=$(git -C "$repo_dir" rev-parse HEAD 2>/dev/null)
+
+  if [[ -n "$remote_sha" && -n "$local_sha" && "$remote_sha" != "$local_sha" ]]; then
+    echo -e "\n${YELLOW}[larc]${RESET} 新しいバージョンが利用可能です。"
+    echo -e "${YELLOW}[larc]${RESET} 更新するには: ${BOLD}larc update${RESET}\n"
+  fi
+}
+
+cmd_update() {
+  # ── larc update — pull latest LARC + update lark-cli ─────────────────────
+  #
+  # Options:
+  #   --check         Check for updates without installing
+  #   --lark-cli-only Update only lark-cli (skip LARC git pull)
+  #   --larc-only     Update only LARC (skip lark-cli npm update)
+
+  local check_only=false lark_cli_only=false larc_only=false
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --check)         check_only=true;     shift ;;
+      --lark-cli-only) lark_cli_only=true;  shift ;;
+      --larc-only)     larc_only=true;      shift ;;
+      *) log_warn "Unknown option: $1"; shift ;;
+    esac
+  done
+
+  local _R='\033[0;31m' _G='\033[0;32m' _Y='\033[1;33m'
+  local _B='\033[0;34m' _C='\033[0;36m' _W='\033[1m' _E='\033[0m'
+
+  echo ""
+  echo -e "${_W}${_C}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${_E}"
+  echo -e "${_W}${_C}  LARC Update${_E}"
+  echo -e "${_W}${_C}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${_E}"
+  echo ""
+
+  # Resolve LARC repo directory
+  local repo_dir
+  repo_dir="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
+
+  # ── Check mode ────────────────────────────────────────────────────────────
+  if [[ "$check_only" == "true" ]]; then
+    echo -e "${_B}現在のバージョン: ${LARC_VERSION}${_E}"
+
+    if [[ -d "$repo_dir/.git" ]]; then
+      echo -e "${_B}リモートを確認中...${_E}"
+      local remote_sha local_sha
+      remote_sha=$(git -C "$repo_dir" ls-remote origin HEAD 2>/dev/null | awk '{print $1}' | head -1)
+      local_sha=$(git -C "$repo_dir" rev-parse HEAD 2>/dev/null)
+      local remote_tag
+      remote_tag=$(git -C "$repo_dir" ls-remote --tags origin 2>/dev/null | \
+        awk '{print $2}' | sed 's|refs/tags/||' | grep -v '\^{}' | tail -1)
+
+      if [[ -n "$remote_sha" && "$remote_sha" != "$local_sha" ]]; then
+        echo -e "  ${_Y}⚑${_E} 未取得のコミットがあります"
+        [[ -n "$remote_tag" ]] && echo -e "  最新タグ: ${_W}${remote_tag}${_E}"
+        echo -e "  更新するには: ${_C}larc update${_E}"
+      else
+        echo -e "  ${_G}✓${_E} 最新バージョンです"
+      fi
+    else
+      echo -e "  ${_Y}!${_E} git リポジトリが見つかりません（バイナリインストール）"
+      echo -e "  最新版確認: ${_C}${LARC_REPO_URL}${_E}"
+    fi
+
+    # lark-cli version check
+    if command -v lark-cli &>/dev/null; then
+      local current_lark
+      current_lark=$(lark-cli --version 2>/dev/null || echo "unknown")
+      echo ""
+      echo -e "${_B}lark-cli 現在バージョン: ${current_lark}${_E}"
+      local latest_lark
+      latest_lark=$(npm view @larksuite/cli version 2>/dev/null || echo "unknown")
+      if [[ "$latest_lark" != "unknown" && "$current_lark" != "$latest_lark" ]]; then
+        echo -e "  ${_Y}⚑${_E} 新バージョン利用可能: ${latest_lark}"
+        echo -e "  更新するには: ${_C}larc update --lark-cli-only${_E}"
+      else
+        echo -e "  ${_G}✓${_E} lark-cli は最新です"
+      fi
+    fi
+    echo ""
+    return 0
+  fi
+
+  # ── Update LARC (git pull + install) ─────────────────────────────────────
+  if [[ "$lark_cli_only" != "true" ]]; then
+    echo -e "${_W}▶ LARC 本体を更新${_E}"
+
+    if [[ ! -d "$repo_dir/.git" ]]; then
+      echo -e "  ${_Y}!${_E} git リポジトリが見つかりません"
+      echo -e "  手動で更新してください: git pull または git clone"
+      echo ""
+    else
+      echo -e "  ${_B}git pull (origin main)...${_E}"
+      local before_sha after_sha
+      before_sha=$(git -C "$repo_dir" rev-parse HEAD 2>/dev/null)
+
+      if git -C "$repo_dir" pull --ff-only origin main 2>&1 | \
+          sed 's/^/  /'; then
+        after_sha=$(git -C "$repo_dir" rev-parse HEAD 2>/dev/null)
+
+        if [[ "$before_sha" == "$after_sha" ]]; then
+          echo -e "  ${_G}✓${_E} 既に最新バージョンです"
+        else
+          echo -e "  ${_G}✓${_E} LARC を更新しました (${before_sha:0:7} → ${after_sha:0:7})"
+
+          # Re-run install to update symlink + skills
+          echo -e "  ${_B}スキルを再インストール中...${_E}"
+          if bash "$repo_dir/scripts/install.sh" 2>&1 | grep -E '(✓|✗|!)' | sed 's/^/  /'; then
+            echo -e "  ${_G}✓${_E} スキル更新完了"
+          fi
+
+          # Reset update check stamp so we don't warn again immediately
+          rm -f "$LARC_CACHE/update_check_stamp" 2>/dev/null || true
+        fi
+      else
+        echo -e "  ${_R}✗${_E} git pull に失敗しました"
+        echo -e "  未コミットの変更がある場合は手動で対応してください:"
+        echo -e "  ${_C}git -C $repo_dir stash && larc update${_E}"
+        [[ "$larc_only" == "true" ]] && return 1
+      fi
+    fi
+  fi
+
+  # ── Update lark-cli ───────────────────────────────────────────────────────
+  if [[ "$larc_only" != "true" ]]; then
+    echo -e "${_W}▶ lark-cli を更新${_E}"
+
+    if ! command -v npm &>/dev/null; then
+      echo -e "  ${_Y}!${_E} npm が見つかりません。Node.js をインストールしてください"
+    else
+      echo -e "  ${_B}npm update -g @larksuite/cli...${_E}"
+      if npm update -g @larksuite/cli 2>&1 | tail -5 | sed 's/^/  /'; then
+        local new_ver
+        new_ver=$(lark-cli --version 2>/dev/null || echo "unknown")
+        echo -e "  ${_G}✓${_E} lark-cli 更新完了: ${new_ver}"
+      else
+        echo -e "  ${_Y}!${_E} lark-cli 更新に失敗しました（権限エラーの場合: sudo npm update -g @larksuite/cli）"
+      fi
+    fi
+    echo ""
+  fi
+
+  echo -e "${_G}${_W}✓ 更新完了${_E}"
+  echo -e "  現在の LARC バージョン: ${LARC_VERSION}"
+  echo ""
+}
+
 # ── Main ────────────────────────────────────────────────────────────────────
 main() {
   [[ $# -eq 0 ]] && { cmd_help; exit 0; }
 
   load_config
 
+  # Background update-availability check (non-blocking, throttled by TTL)
+  # Skipped for: update, help, version, status (avoid noise)
+  case "${1:-}" in
+    update|help|--help|-h|version|--version) ;;
+    *) ( _update_check_notify & ) 2>/dev/null ;;
+  esac
+
   case "$1" in
+    update)     shift; cmd_update "$@" ;;
+    version|--version) echo "larc v${LARC_VERSION}"; exit 0 ;;
     init)       shift; cmd_init "$@" ;;
     bootstrap)  shift; require_lark_cli; cmd_bootstrap "$@" ;;
     memory)     shift; require_lark_cli; cmd_memory "$@" ;;
