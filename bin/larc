@@ -114,6 +114,17 @@ cmd_template()  { _cmd_template "$@"; }
 cmd_dashboard() { source "$LIB_DIR/dashboard.sh"; cmd_dashboard "$@"; }
 cmd_billing()   { source "$LIB_DIR/billing.sh";   cmd_billing   "$@"; }
 
+# Share a Drive folder with the current user (full edit access).
+# Uses bot identity; drive:drive scope is not available on user OAuth tokens.
+_qs_share_folder() {
+  local folder_token="$1" open_id="$2"
+  lark-cli drive permission.members create \
+    --as bot \
+    --params "{\"token\":\"${folder_token}\",\"type\":\"folder\"}" \
+    --data "{\"member_type\":\"openid\",\"member_id\":\"${open_id}\",\"perm\":\"full_access\",\"type\":\"user\"}" \
+    >/dev/null 2>&1
+}
+
 cmd_quickstart() {
   # ── LARC Quickstart — zero-to-running in one command ──────────────────────
   # Safe for existing Lark workspaces: only creates new larc-* folders.
@@ -282,16 +293,6 @@ except Exception:
     # drive:drive is granted to the bot app, NOT to the user OAuth token.
     # After creation, share each folder with the logged-in user so it appears
     # in their Drive. Requires docs:permission.member:create scope on the bot.
-
-    # Helper: share a folder with the current user (full edit access)
-    _qs_share_folder() {
-      local folder_token="$1" open_id="$2"
-      lark-cli drive permission.members create \
-        --as bot \
-        --params "{\"token\":\"${folder_token}\",\"type\":\"folder\"}" \
-        --data "{\"member_type\":\"openid\",\"member_id\":\"${open_id}\",\"perm\":\"full_access\",\"type\":\"user\"}" \
-        >/dev/null 2>&1
-    }
 
     _qs_info "larc-workspace フォルダを作成中 (bot identity)..."
     local ws_result

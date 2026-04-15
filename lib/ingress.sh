@@ -2638,9 +2638,19 @@ PY
 }
 
 _ensure_table_fields() {
-  # Ensure required fields exist on a table (idempotent — errors on duplicates are ignored)
+  # Ensure required fields exist on a table (idempotent — errors on duplicates are ignored).
+  # Results are cached per table for 24h to avoid redundant API calls on every enqueue.
   local base_token="$1" table_id="$2"
   shift 2
+  local cache_dir="${LARC_CACHE_DIR:-$HOME/.larc/cache}/fields"
+  local cache_file="${cache_dir}/${base_token}_${table_id}"
+
+  # Skip if verified within the last 24 hours
+  if [[ -f "$cache_file" ]] && find "$cache_file" -mtime -1 2>/dev/null | grep -q .; then
+    return 0
+  fi
+
+  mkdir -p "$cache_dir"
   for field_name in "$@"; do
     lark-cli base +field-create \
       --base-token "$base_token" \
@@ -2648,6 +2658,7 @@ _ensure_table_fields() {
       --json "{\"name\":\"$field_name\",\"type\":\"text\"}" \
       >/dev/null 2>&1 || true
   done
+  touch "$cache_file"
 }
 
 _get_or_create_queue_table() {
