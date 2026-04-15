@@ -8,6 +8,7 @@ set -uo pipefail
 # Resolve LIB_DIR relative to this file if not exported by parent
 _DAEMON_SH_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LIB_DIR="${LIB_DIR:-$_DAEMON_SH_DIR}"
+source "${LIB_DIR}/runtime-common.sh"
 
 # Self-contained log functions (daemon runs in subprocesses without bin/larc's env)
 _RED='\033[0;31m'; _GREEN='\033[0;32m'; _YELLOW='\033[1;33m'
@@ -62,9 +63,7 @@ _im_poller_loop() {
   local interval="${2:-30}"
 
   # Load config in the background subprocess context
-  local _cfg="${LARC_CONFIG:-}"
-  [[ -z "$_cfg" ]] && _cfg="${LARC_HOME:-$HOME/.larc}/config.env"
-  [[ -f "$_cfg" ]] && { set -a; source "$_cfg"; set +a; }
+  larc_load_runtime_config
 
   local chat_id="${LARC_IM_CHAT_ID:-}"
   local allow_from="${LARC_ALLOW_FROM:-}"

@@ -4,6 +4,9 @@
 
 set -uo pipefail
 
+_BILLING_SH_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${_BILLING_SH_DIR}/runtime-common.sh"
+
 _BLUE='\033[0;34m'; _GREEN='\033[0;32m'; _YELLOW='\033[1;33m'
 _RED='\033[0;31m'; _CYAN='\033[0;36m'; _BOLD='\033[1m'; _RESET='\033[0m'
 type log_head &>/dev/null || { log_head() { echo -e "\n${_BOLD}${_CYAN}▶ $*${_RESET}"; }; }
@@ -219,8 +222,7 @@ cmd_billing() {
   shift || true
 
   # Load config
-  local _cfg="${LARC_CONFIG:-${LARC_HOME:-$HOME/.larc}/config.env}"
-  [[ -f "$_cfg" ]] && { set -a; source "$_cfg"; set +a; }
+  larc_load_runtime_config
 
   mkdir -p "$BILLING_DIR"
 

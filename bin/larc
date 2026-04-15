@@ -865,6 +865,72 @@ cmd_status() {
     echo -e "  Drive folder: ${RED}not set${RESET} (run 'larc init')"
   fi
 
+  # Base connectivity
+  if [[ -n "${LARC_BASE_APP_TOKEN:-}" ]]; then
+    local base_ok
+    base_ok=$(lark-cli base +table-list --base-token "$LARC_BASE_APP_TOKEN" --jq '.ok' 2>/dev/null || echo "false")
+    if [[ "$base_ok" == "true" ]]; then
+      echo -e "  Base:         ${GREEN}connected${RESET} ($LARC_BASE_APP_TOKEN)"
+    else
+      echo -e "  Base:         ${YELLOW}unreachable${RESET} ($LARC_BASE_APP_TOKEN)"
+    fi
+  else
+    echo -e "  Base:         ${RED}not set${RESET}"
+  fi
+
+  # OpenClaw detection
+  local _claw_cmd=""
+  if command -v openclaw &>/dev/null; then
+    _claw_cmd="openclaw"
+  elif command -v open-claw &>/dev/null; then
+    _claw_cmd="open-claw"
+  fi
+  if [[ -n "$_claw_cmd" ]]; then
+    echo -e "  OpenClaw:     ${GREEN}installed${RESET} ($_claw_cmd)"
+  else
+    echo -e "  OpenClaw:     ${YELLOW}not installed${RESET} (supervised mode only)"
+  fi
+
+  # Daemon status
+  echo ""
+  echo -e "${BOLD}Daemon:${RESET}"
+  local _pid_dir="${LARC_HOME:-$HOME/.larc}/run"
+  local _im_pid="$_pid_dir/im-poller.pid"
+  local _wk_pid="$_pid_dir/worker.pid"
+  if [[ -f "$_im_pid" ]] && kill -0 "$(cat "$_im_pid")" 2>/dev/null; then
+    echo -e "  IM poller: ${GREEN}running${RESET} (PID $(cat "$_im_pid"))"
+  else
+    echo -e "  IM poller: ${RED}stopped${RESET}"
+  fi
+  if [[ -f "$_wk_pid" ]] && kill -0 "$(cat "$_wk_pid")" 2>/dev/null; then
+    echo -e "  Worker:    ${GREEN}running${RESET} (PID $(cat "$_wk_pid"))"
+  else
+    echo -e "  Worker:    ${RED}stopped${RESET}"
+  fi
+
+  # Queue stats from local cache
+  local queue_file="${LARC_HOME:-$HOME/.larc}/cache/queue/main.jsonl"
+  if [[ -f "$queue_file" ]]; then
+    local _pending _done _failed _total
+    _total=$(wc -l < "$queue_file" | tr -d ' ')
+    _pending=$(python3 -c "
+import json
+lines=open('$queue_file').readlines()
+print(sum(1 for l in lines if l.strip() and json.loads(l).get('status','') in {'pending','pending_preview','in_progress'}))
+" 2>/dev/null || echo 0)
+    _done=$(python3 -c "
+import json
+lines=open('$queue_file').readlines()
+print(sum(1 for l in lines if l.strip() and json.loads(l).get('status','') == 'done'))
+" 2>/dev/null || echo 0)
+    _failed=$(python3 -c "
+import json
+lines=open('$queue_file').readlines()
+print(sum(1 for l in lines if l.strip() and json.loads(l).get('status','') == 'failed'))
+" 2>/dev/null || echo 0)
+    echo -e "  Queue (main): total=$_total  active=$_pending  done=$_done  failed=$_failed"
+  fi
+
   # Cache state
   echo ""
   echo -e "${BOLD}Local cache:${RESET}"

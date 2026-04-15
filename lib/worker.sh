@@ -4,6 +4,9 @@
 
 set -uo pipefail
 
+_WORKER_SH_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${_WORKER_SH_DIR}/runtime-common.sh"
+
 # Self-contained log functions (worker runs in subprocesses without bin/larc's env)
 _BLUE='\033[0;34m'; _GREEN='\033[0;32m'; _YELLOW='\033[1;33m'
 _CYAN='\033[0;36m'; _BOLD='\033[1m'; _RESET='\033[0m'
@@ -81,9 +84,7 @@ cmd_worker() {
   local interval=30
 
   # Load config in subprocess context
-  local _cfg="${LARC_CONFIG:-}"
-  [[ -z "$_cfg" ]] && _cfg="${LARC_HOME:-$HOME/.larc}/config.env"
-  [[ -f "$_cfg" ]] && { set -a; source "$_cfg"; set +a; }
+  larc_load_runtime_config
 
   while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -95,11 +96,7 @@ cmd_worker() {
 
   # Detect openclaw once at startup — avoid PATH search on every 30s poll cycle
   local _openclaw_cmd=""
-  if command -v openclaw &>/dev/null; then
-    _openclaw_cmd="openclaw"
-  elif command -v open-claw &>/dev/null; then
-    _openclaw_cmd="open-claw"
-  fi
+  _openclaw_cmd="$(larc_detect_openclaw_cmd)"
   export LARC_OPENCLAW_CMD="$_openclaw_cmd"
 
   log_head "LARC worker starting (agent=$agent_id, interval=${interval}s, openclaw=${_openclaw_cmd:-none})"

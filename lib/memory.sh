@@ -192,27 +192,44 @@ _memory_search() {
   local table_id
   table_id=$(_get_or_create_memory_table)
 
-  local raw_response
-  raw_response=$(lark-cli base +record-list \
-    --base-token "$LARC_BASE_APP_TOKEN" \
-    --table-id "$table_id" \
-    2>/dev/null || echo "{}")
+  # Collect all pages into a temp file to avoid argv size limits
+  local tmp_file
+  tmp_file=$(mktemp /tmp/larc-memory-search.XXXXXX.jsonl)
+  local offset=0 has_more=true
+  local fields_json=""
+  while [[ "$has_more" == "true" ]]; do
+    local page
+    page=$(lark-cli base +record-list \
+      --base-token "$LARC_BASE_APP_TOKEN" \
+      --table-id "$table_id" \
+      --limit 100 --offset "$offset" \
+      2>/dev/null || echo "{}")
+    # Extract rows and append; capture fields on first page
+    if [[ -z "$fields_json" ]]; then
+      fields_json=$(echo "$page" | python3 -c "import json,sys; d=json.load(sys.stdin).get('data',{}); print(json.dumps(d.get('fields',[])))" 2>/dev/null || echo "[]")
+    fi
+    echo "$page" | python3 -c "
+import json,sys
+d=json.load(sys.stdin).get('data',{})
+for row in d.get('data',[]):
+    print(json.dumps(row))
+" 2>/dev/null >> "$tmp_file"
+    has_more=$(echo "$page" | python3 -c "import json,sys; print(json.load(sys.stdin).get('data',{}).get('has_more','false'))" 2>/dev/null || echo "false")
+    offset=$((offset + 100))
+  done
 
-  python3 - "$raw_response" "$agent_id" "$query" "$days" <<'PY'
+  python3 - "$tmp_file" "$fields_json" "$agent_id" "$query" "$days" <<'PY'
 import json, sys
 from datetime import datetime, timedelta, timezone
 
-resp = json.loads(sys.argv[1])
-target_agent = sys.argv[2]
-query = sys.argv[3].lower()
-days = int(sys.argv[4])
+tmp_file = sys.argv[1]
+fields = json.loads(sys.argv[2])
+target_agent = sys.argv[3]
+query = sys.argv[4].lower()
+days = int(sys.argv[5])
 
-d = resp.get("data", resp)
-rows = d.get("data", [])
-fields = d.get("fields", [])
-
-if not rows or not fields:
-    print("(no memory entries)")
+if not fields:
+    print("(memory table fields not ready)")
     raise SystemExit(0)
 
 def idx(name):
@@ -232,26 +249,31 @@ if None in (date_idx, agent_idx, content_idx):
 
 cutoff = datetime.now(timezone.utc).date() - timedelta(days=days)
 matches = []
-for row in rows:
-    if max(date_idx, agent_idx, content_idx) >= len(row):
-        continue
-    if str(row[agent_idx]) != target_agent:
-        continue
-    raw_date = str(row[date_idx] or "")
-    try:
-        row_date = datetime.strptime(raw_date, "%Y-%m-%d").date()
-    except ValueError:
-        continue
-    if row_date < cutoff:
-        continue
-    content = str(row[content_idx] or "")
-    if query not in content.lower():
-        continue
-    snippet = " ".join(content.strip().split())
-    if len(snippet) > 140:
-        snippet = snippet[:137] + "..."
-    updated = str(row[updated_idx]) if updated_idx is not None and updated_idx < len(row) else "-"
-    matches.append((raw_date, updated, snippet))
+with open(tmp_file) as f:
+    for line in f:
+        line = line.strip()
+        if not line:
+            continue
+        row = json.loads(line)
+        if max(date_idx, agent_idx, content_idx) >= len(row):
+            continue
+        if str(row[agent_idx]) != target_agent:
+            continue
+        raw_date = str(row[date_idx] or "")
+        try:
+            row_date = datetime.strptime(raw_date, "%Y-%m-%d").date()
+        except ValueError:
+            continue
+        if row_date < cutoff:
+            continue
+        content = str(row[content_idx] or "")
+        if query not in content.lower():
+            continue
+        snippet = " ".join(content.strip().split())
+        if len(snippet) > 140:
+            snippet = snippet[:137] + "..."
+        updated = str(row[updated_idx]) if updated_idx is not None and updated_idx < len(row) else "-"
+        matches.append((raw_date, updated, snippet))
 
 if not matches:
     print("(no matches)")
@@ -261,6 +283,7 @@ for raw_date, updated, snippet in sorted(matches, reverse=True):
     print(f"{raw_date}  updated={updated}")
     print(f"  {snippet}")
 PY
+  rm -f "$tmp_file"
 }
 
 _get_or_create_memory_table() {
