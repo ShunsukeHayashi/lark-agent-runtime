@@ -48,8 +48,20 @@ log_head()  { echo -e "\n${BOLD}${CYAN}▶ $*${RESET}"; }
 
 require_lark_cli() {
   if ! command -v lark-cli &>/dev/null; then
-    log_error "lark-cli not found. Install: npm install -g @larksuite/cli"
-    exit 1
+    log_warn "lark-cli が見つかりません。自動インストールを試みます..."
+    if command -v npm &>/dev/null; then
+      if npm install -g @larksuite/cli; then
+        log_ok "lark-cli をインストールしました"
+      else
+        log_error "lark-cli のインストールに失敗しました"
+        log_error "手動でインストールしてください: npm install -g @larksuite/cli"
+        exit 1
+      fi
+    else
+      log_error "npm が見つかりません。Node.js をインストールしてから再実行してください"
+      log_error "Node.js: https://nodejs.org/"
+      exit 1
+    fi
   fi
 }
 
@@ -274,8 +286,15 @@ except Exception:
       "import sys,json; print(json.load(sys.stdin).get('data',{}).get('token',''))" 2>/dev/null || echo "")
     if [[ -z "$root_token" ]]; then
       _qs_fail "ルートフォルダトークンの取得に失敗しました"
-      echo -e "  ${_B}drive:drive スコープが付与されているか確認してください${_E}"
-      echo -e "  ${_B}（Lark Developer Console → Permissions & Scopes → drive:drive）${_E}"
+      echo ""
+      echo -e "  ${_W}【解決手順】${_E}"
+      echo -e "  1. ブラウザで Lark Developer Console を開く"
+      echo -e "     ${_C}https://open.larksuite.com/app${_E}"
+      echo -e "  2. 対象アプリ → Permissions & Scopes を開く"
+      echo -e "  3. 以下のスコープを追加して「Save」→「Publish」する:"
+      echo -e "     ${_C}drive:drive${_E}  （Drive フォルダの作成・操作）"
+      echo ""
+      echo -e "  スコープ追加後、もう一度 ${_C}larc quickstart${_E} を実行してください。"
       exit 1
     fi
     _qs_ok "ルートフォルダ: $root_token"
@@ -485,15 +504,23 @@ IDXEOF
     if [[ -n "$existing_agent" ]]; then
       _qs_skip "main エージェント既登録"
     else
-      larc agent register \
-        --id   main \
-        --name "Main Agent" \
-        --model "claude-sonnet-4-6" \
-        --workspace "General-purpose Lark workspace agent" \
-        --chat  "${chat_id:-}" \
-        >/dev/null 2>&1 \
+      local reg_out reg_ok=false
+      for attempt in 1 2 3; do
+        reg_out=$(larc agent register \
+          --id   main \
+          --name "Main Agent" \
+          --model "claude-sonnet-4-6" \
+          --workspace "General-purpose Lark workspace agent" \
+          --chat  "${chat_id:-}" 2>&1)
+        if [[ $? -eq 0 ]]; then
+          reg_ok=true
+          break
+        fi
+        [[ $attempt -lt 3 ]] && { _qs_info "登録リトライ中 (${attempt}/3)..."; sleep 2; }
+      done
+      $reg_ok \
         && _qs_ok "main エージェント登録完了" \
-        || _qs_fail "エージェント登録失敗（後で 'larc agent register' で再実行可）"
+        || { _qs_fail "エージェント登録に失敗しました"; echo "$reg_out" | tail -3; }
     fi
   fi
 
