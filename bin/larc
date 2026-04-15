@@ -278,43 +278,40 @@ except Exception:
     ws_token="(dry-run)"
     wd_token="(dry-run)"
   else
-    # Get root folder token (required by create_folder API)
-    _qs_info "ルートフォルダトークンを取得中..."
-    local root_token root_meta
-    root_meta=$(lark-cli api GET /open-apis/drive/explorer/v2/root_folder/meta 2>/dev/null || echo "")
-    root_token=$(echo "$root_meta" | python3 -c \
-      "import sys,json; print(json.load(sys.stdin).get('data',{}).get('token',''))" 2>/dev/null || echo "")
-    if [[ -z "$root_token" ]]; then
-      _qs_fail "ルートフォルダトークンの取得に失敗しました"
-      echo ""
-      echo -e "  ${_W}【解決手順】${_E}"
-      echo -e "  1. ブラウザで Lark Developer Console を開く"
-      echo -e "     ${_C}https://open.larksuite.com/app${_E}"
-      echo -e "  2. 対象アプリ → Permissions & Scopes を開く"
-      echo -e "  3. 以下のスコープを追加して「Save」→「Publish」する:"
-      echo -e "     ${_C}drive:drive${_E}  （Drive フォルダの作成・操作）"
-      echo ""
-      echo -e "  スコープ追加後、もう一度 ${_C}larc quickstart${_E} を実行してください。"
-      exit 1
-    fi
-    _qs_ok "ルートフォルダ: $root_token"
+    # Create folders in Drive root.
+    # folder_token="" means root directory (per lark-cli schema).
+    # Required scope: space:folder:create (NOT drive:drive).
+    # Do NOT fetch root_folder/meta first — it triggers unnecessary permission checks.
 
     _qs_info "larc-workspace フォルダを作成中..."
     local ws_result
     ws_result=$(lark-cli drive files create_folder \
-      --data "{\"name\":\"larc-workspace\",\"folder_token\":\"$root_token\"}" 2>&1)
+      --data '{"name":"larc-workspace","folder_token":""}' 2>&1)
     ws_token=$(echo "$ws_result" | python3 -c \
       "import sys,json; d=json.load(sys.stdin); print(d.get('data',{}).get('token',''))" 2>/dev/null)
-    [[ -z "$ws_token" ]] && { _qs_fail "作成失敗: $ws_result"; exit 1; }
+    if [[ -z "$ws_token" ]]; then
+      _qs_fail "larc-workspace 作成失敗"
+      echo ""
+      echo -e "  ${_W}エラー詳細:${_E} $ws_result"
+      echo ""
+      echo -e "  ${_W}【確認事項】${_E}"
+      echo -e "  Developer Console → Permissions & Scopes で"
+      echo -e "  ${_C}space:folder:create${_E} が追加・公開済みか確認してください"
+      echo -e "  → ${_C}https://open.larksuite.com/app${_E}"
+      exit 1
+    fi
     _qs_ok "larc-workspace 作成: $ws_token"
 
     _qs_info "larc-workdir フォルダを作成中..."
     local wd_result
     wd_result=$(lark-cli drive files create_folder \
-      --data "{\"name\":\"larc-workdir\",\"folder_token\":\"$root_token\"}" 2>&1)
+      --data '{"name":"larc-workdir","folder_token":""}' 2>&1)
     wd_token=$(echo "$wd_result" | python3 -c \
       "import sys,json; d=json.load(sys.stdin); print(d.get('data',{}).get('token',''))" 2>/dev/null)
-    [[ -z "$wd_token" ]] && { _qs_fail "作成失敗: $wd_result"; exit 1; }
+    if [[ -z "$wd_token" ]]; then
+      _qs_fail "larc-workdir 作成失敗: $wd_result"
+      exit 1
+    fi
     _qs_ok "larc-workdir  作成: $wd_token"
   fi
 
