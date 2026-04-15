@@ -7,9 +7,9 @@
 
 ## Overall Verdict
 
-Current verdict: `PREVIEW READY`
+Current verdict: `PREVIEW CANDIDATE`
 
-The repository is now suitable for an initial preview release.
+The repository is now suitable for an initial preview release candidate.
 Public-facing docs are aligned to the OpenClaw-first story, and the tenant hygiene sweep has been completed.
 The remaining work is release packaging, not a security or narrative blocker.
 
@@ -25,7 +25,7 @@ The remaining work is release packaging, not a security or narrative blocker.
 | Secret and tenant hygiene | `GO` | Tenant-specific open_id, table/view IDs, doc tokens, and fixed tenant URLs were replaced with placeholders or env-driven examples |
 | Trilingual documentation | `GO` | README and contribution guides in English, Chinese, and Japanese are aligned to the same OpenClaw-first meaning |
 | Permission credibility | `GO` | 8 regression cases passing; authority explanation in CLI output; gate policy in `config/gate-policy.json` |
-| Implementation completeness | `GO` | Runtime, permission intelligence, queue/agent flow, and OpenClaw handoff path are present; IM daemon loop remains explicitly experimental |
+| Implementation completeness | `GO (preview)` | Runtime, permission intelligence, queue/agent flow, and OpenClaw handoff path are present; IM daemon loop and environment-specific plugin/channel setup still require stable-release hardening |
 | Repo cleanliness | `GO` | Hygiene fixes are committed and the remaining work is packaging, not tree cleanup |
 | Public release packaging | `HOLD` | Release note, version tag, and publish decision are still pending |
 
@@ -128,7 +128,7 @@ Goal:
 
 ## Recommendation
 
-The repo no longer has a security- or narrative-level blocker for a preview release.
+The repo no longer has a security- or narrative-level blocker for a preview release candidate.
 
 Instead:
 

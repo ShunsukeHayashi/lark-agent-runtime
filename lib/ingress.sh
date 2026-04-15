@@ -621,7 +621,7 @@ PY
   fi
 
   python3 - "$queue_json" "${LARC_DRIVE_FOLDER_TOKEN:-}" <<'PY'
-import json, re, sys
+import json, os, re, sys
 
 queue = json.loads(sys.argv[1])
 drive_folder_token = sys.argv[2]
@@ -683,6 +683,20 @@ def detect_scenario(task_types):
         return "document_update"
     return "generic"
 
+def load_scenario_defaults(lower):
+    return {
+        "base_token": os.getenv("LARC_SCENARIO_BASE_TOKEN", ""),
+        "user_table_id": os.getenv("LARC_SCENARIO_USER_TABLE_ID", ""),
+        "cv_table_id": os.getenv("LARC_SCENARIO_CV_TABLE_ID", ""),
+        "metrics_table_id": os.getenv("LARC_SCENARIO_METRICS_TABLE_ID", ""),
+        "source_table_id": os.getenv("LARC_SCENARIO_SOURCE_TABLE_ID", ""),
+        "default_view_id": os.getenv(
+            "LARC_SCENARIO_PRIORITY_VIEW_ID" if re.search(r"hot|follow.?up|priority|urgent", lower) else "LARC_SCENARIO_DEFAULT_VIEW_ID",
+            "",
+        ),
+        "ssot_doc_url": os.getenv("LARC_SCENARIO_SSOT_DOC_URL", ""),
+    }
+
 def extract_fields(scenario_id, text):
     fields = {}
     missing = []
@@ -692,13 +706,7 @@ def extract_fields(scenario_id, text):
 
     if scenario_id == "ppal_marketing_ops":
         lower = text.lower()
-        fields["base_token"] = "REPLACE_BASE_TOKEN"
-        fields["user_table_id"] = "REPLACE_USER_TABLE_ID"
-        fields["cv_table_id"] = "REPLACE_CV_TABLE_ID"
-        fields["metrics_table_id"] = "REPLACE_METRICS_TABLE_ID"
-        fields["source_table_id"] = "REPLACE_SOURCE_TABLE_ID"
-        fields["default_view_id"] = "REPLACE_PRIORITY_VIEW_ID" if re.search(r"hot|follow.?up|priority|urgent", lower) else "REPLACE_DEFAULT_VIEW_ID"
-        fields["ssot_doc_url"] = "https://example.com/replace-with-ssot-doc-url"
+        fields.update(load_scenario_defaults(lower))
         fields["output_folder_token"] = drive_folder_token
         fields["output_folder_strategy"] = "larc_workspace_default" if fields["output_folder_token"] else ""
         systems = []
@@ -738,6 +746,26 @@ def extract_fields(scenario_id, text):
             missing.append("campaign_goal")
             blocked.append("campaign_goal")
             ask_user = "Please define the PPAL marketing goal first, for example which lead segment to target and what outcome to drive."
+        required_runtime_fields = [
+            "base_token",
+            "user_table_id",
+            "cv_table_id",
+            "metrics_table_id",
+            "source_table_id",
+            "default_view_id",
+            "ssot_doc_url",
+        ]
+        missing_runtime_fields = [name for name in required_runtime_fields if not fields.get(name)]
+        if missing_runtime_fields:
+            missing.extend(name for name in missing_runtime_fields if name not in missing)
+            blocked.extend(name for name in missing_runtime_fields if name not in blocked)
+            ask_user = ask_user or (
+                "Scenario runtime defaults are not configured. Set "
+                "LARC_SCENARIO_BASE_TOKEN, LARC_SCENARIO_USER_TABLE_ID, LARC_SCENARIO_CV_TABLE_ID, "
+                "LARC_SCENARIO_METRICS_TABLE_ID, LARC_SCENARIO_SOURCE_TABLE_ID, "
+                "LARC_SCENARIO_PRIORITY_VIEW_ID or LARC_SCENARIO_DEFAULT_VIEW_ID, and LARC_SCENARIO_SSOT_DOC_URL "
+                "before running this PPAL marketing flow."
+            )
         if not fields["output_folder_token"]:
             missing.append("output_folder_token")
             blocked.append("output_folder_token")
@@ -885,7 +913,7 @@ PY
 
   local plan_json
   plan_json=$(python3 - "$queue_json" "${LARC_DRIVE_FOLDER_TOKEN:-}" <<'PY'
-import json, re, sys
+import json, os, re, sys
 
 queue = json.loads(sys.argv[1])
 drive_folder_token = sys.argv[2]
@@ -921,6 +949,20 @@ def detect_scenario(task_types):
         return "document_update"
     return "generic"
 
+def load_scenario_defaults(lower):
+    return {
+        "base_token": os.getenv("LARC_SCENARIO_BASE_TOKEN", ""),
+        "user_table_id": os.getenv("LARC_SCENARIO_USER_TABLE_ID", ""),
+        "cv_table_id": os.getenv("LARC_SCENARIO_CV_TABLE_ID", ""),
+        "metrics_table_id": os.getenv("LARC_SCENARIO_METRICS_TABLE_ID", ""),
+        "source_table_id": os.getenv("LARC_SCENARIO_SOURCE_TABLE_ID", ""),
+        "default_view_id": os.getenv(
+            "LARC_SCENARIO_PRIORITY_VIEW_ID" if re.search(r"hot|follow.?up|priority|urgent", lower) else "LARC_SCENARIO_DEFAULT_VIEW_ID",
+            "",
+        ),
+        "ssot_doc_url": os.getenv("LARC_SCENARIO_SSOT_DOC_URL", ""),
+    }
+
 def extract_fields(scenario_id, text):
     fields = {}
     missing = []
@@ -930,13 +972,7 @@ def extract_fields(scenario_id, text):
 
     if scenario_id == "ppal_marketing_ops":
         lower = text.lower()
-        fields["base_token"] = "REPLACE_BASE_TOKEN"
-        fields["user_table_id"] = "REPLACE_USER_TABLE_ID"
-        fields["cv_table_id"] = "REPLACE_CV_TABLE_ID"
-        fields["metrics_table_id"] = "REPLACE_METRICS_TABLE_ID"
-        fields["source_table_id"] = "REPLACE_SOURCE_TABLE_ID"
-        fields["default_view_id"] = "REPLACE_PRIORITY_VIEW_ID" if re.search(r"hot|follow.?up|priority|urgent", lower) else "REPLACE_DEFAULT_VIEW_ID"
-        fields["ssot_doc_url"] = "https://example.com/replace-with-ssot-doc-url"
+        fields.update(load_scenario_defaults(lower))
         fields["output_folder_token"] = drive_folder_token
         fields["output_folder_strategy"] = "larc_workspace_default" if fields["output_folder_token"] else ""
         systems = []
@@ -974,6 +1010,26 @@ def extract_fields(scenario_id, text):
             missing.append("campaign_goal")
             blocked.append("campaign_goal")
             ask_user = "Please define the PPAL marketing goal first, for example which lead segment to target and what outcome to drive."
+        required_runtime_fields = [
+            "base_token",
+            "user_table_id",
+            "cv_table_id",
+            "metrics_table_id",
+            "source_table_id",
+            "default_view_id",
+            "ssot_doc_url",
+        ]
+        missing_runtime_fields = [name for name in required_runtime_fields if not fields.get(name)]
+        if missing_runtime_fields:
+            missing.extend(name for name in missing_runtime_fields if name not in missing)
+            blocked.extend(name for name in missing_runtime_fields if name not in blocked)
+            ask_user = ask_user or (
+                "Scenario runtime defaults are not configured. Set "
+                "LARC_SCENARIO_BASE_TOKEN, LARC_SCENARIO_USER_TABLE_ID, LARC_SCENARIO_CV_TABLE_ID, "
+                "LARC_SCENARIO_METRICS_TABLE_ID, LARC_SCENARIO_SOURCE_TABLE_ID, "
+                "LARC_SCENARIO_PRIORITY_VIEW_ID or LARC_SCENARIO_DEFAULT_VIEW_ID, and LARC_SCENARIO_SSOT_DOC_URL "
+                "before running this PPAL marketing flow."
+            )
         if not fields["segment_hint"]:
             missing.append("segment_hint")
             partial.append("segment_hint")
@@ -2219,7 +2275,7 @@ _ingress_build_openclaw_payload() {
   local local_mode="${3:-true}"
 
   python3 - "$queue_json" "$days" "$local_mode" "${LARC_DRIVE_FOLDER_TOKEN:-}" <<'PY'
-import json, re, shlex, sys
+import json, os, re, shlex, sys
 
 queue = json.loads(sys.argv[1])
 days = int(sys.argv[2])
@@ -2264,6 +2320,20 @@ def detect_scenario(task_types):
         return "document_update"
     return "generic"
 
+def load_scenario_defaults(lower):
+    return {
+        "base_token": os.getenv("LARC_SCENARIO_BASE_TOKEN", ""),
+        "user_table_id": os.getenv("LARC_SCENARIO_USER_TABLE_ID", ""),
+        "cv_table_id": os.getenv("LARC_SCENARIO_CV_TABLE_ID", ""),
+        "metrics_table_id": os.getenv("LARC_SCENARIO_METRICS_TABLE_ID", ""),
+        "source_table_id": os.getenv("LARC_SCENARIO_SOURCE_TABLE_ID", ""),
+        "default_view_id": os.getenv(
+            "LARC_SCENARIO_PRIORITY_VIEW_ID" if re.search(r"hot|follow.?up|priority|urgent", lower) else "LARC_SCENARIO_DEFAULT_VIEW_ID",
+            "",
+        ),
+        "ssot_doc_url": os.getenv("LARC_SCENARIO_SSOT_DOC_URL", ""),
+    }
+
 def extract_normalized_fields(scenario_id, text):
     lower = text.lower()
     if scenario_id != "ppal_marketing_ops":
@@ -2277,18 +2347,13 @@ def extract_normalized_fields(scenario_id, text):
         normalization.append("Notion -> Lark Docs/Wiki")
     if "slack" in lower:
         normalization.append("Slack -> Lark IM")
-    return {
-        "base_token": "REPLACE_BASE_TOKEN",
-        "user_table_id": "REPLACE_USER_TABLE_ID",
-        "cv_table_id": "REPLACE_CV_TABLE_ID",
-        "metrics_table_id": "REPLACE_METRICS_TABLE_ID",
-        "source_table_id": "REPLACE_SOURCE_TABLE_ID",
-        "default_view_id": "REPLACE_PRIORITY_VIEW_ID" if re.search(r"hot|follow.?up|priority|urgent", lower) else "REPLACE_DEFAULT_VIEW_ID",
-        "ssot_doc_url": "https://example.com/replace-with-ssot-doc-url",
+    fields = load_scenario_defaults(lower)
+    fields.update({
         "output_folder_token": drive_folder_token,
         "output_folder_strategy": "larc_workspace_default" if drive_folder_token else "",
         "normalization": normalization or ["PPAL Base", "Lark Docs/Wiki", "Lark IM"],
-    }
+    })
+    return fields
 
 scenario_id = detect_scenario(task_types)
 normalized_fields = extract_normalized_fields(scenario_id, message)
