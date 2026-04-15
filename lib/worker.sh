@@ -38,17 +38,23 @@ _worker_poll_once() {
         log_warn "Quota exceeded — skipping execution of $queue_id"
         return 0
       fi
-      # Claim and execute atomically via run-once (avoids double-execution)
-      log_info "Executing queue item $queue_id (gate=$gate, status=$status)"
-      local run_out
-      run_out=$(larc ingress run-once --queue-id "$queue_id" --agent "$agent_id" --days 14 2>&1)
-      local run_rc=$?
+      # Route to openclaw if available, otherwise fall back to run-once (supervised mode)
+      local run_out run_rc=0
+      if command -v openclaw &>/dev/null || command -v open-claw &>/dev/null; then
+        log_info "Dispatching $queue_id via openclaw (gate=$gate)"
+        run_out=$(larc ingress openclaw --queue-id "$queue_id" --agent "$agent_id" --days 14 --execute 2>&1)
+        run_rc=$?
+      else
+        log_info "Rendering bundle for $queue_id (supervised mode — openclaw not installed)"
+        run_out=$(larc ingress run-once --queue-id "$queue_id" --agent "$agent_id" --days 14 2>&1)
+        run_rc=$?
+      fi
       echo "$run_out"
       if [[ "$run_rc" -eq 0 ]]; then
         log_ok "Completed: $queue_id"
         larc billing record "$agent_id" "$queue_id" "done" 2>/dev/null || true
       else
-        log_warn "run-once failed for $queue_id (rc=$run_rc)"
+        log_warn "Execution failed for $queue_id (rc=$run_rc)"
         larc billing record "$agent_id" "$queue_id" "failed" 2>/dev/null || true
       fi
       ;;

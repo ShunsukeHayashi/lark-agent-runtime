@@ -65,6 +65,12 @@ require_lark_cli() {
   fi
 }
 
+# Returns 0 if openclaw CLI is available, 1 otherwise.
+# Checks both 'openclaw' and 'open-claw' binary names.
+_detect_openclaw() {
+  command -v openclaw &>/dev/null || command -v open-claw &>/dev/null
+}
+
 load_config() {
   # Ensure tenant directory exists
   mkdir -p "$LARC_HOME" "$LARC_CACHE"
@@ -589,8 +595,18 @@ IDXEOF
     echo -e "${_W}次にできること:${_E}"
     echo -e "  ${_C}larc status${_E}                            # 状態確認"
     echo -e "  ${_C}larc ingress enqueue --text '依頼内容'${_E}  # タスクを送る"
-    echo -e "  ${_C}larc ingress run-once${_E}                  # 次のタスクを処理"
-    echo -e "  ${_C}larc daemon start${_E}                      # 常駐デーモン起動"
+    if _detect_openclaw; then
+      echo -e "  ${_C}larc ingress openclaw --execute${_E}        # OpenClaw で実行（自動モード）"
+      echo -e "  ${_C}larc daemon start${_E}                      # 常駐デーモン起動（openclaw 自動実行）"
+      echo ""
+      echo -e "  ${_G}✓ OpenClaw を検出しました — daemon start で全自動ループが有効になります${_E}"
+    else
+      echo -e "  ${_C}larc ingress run-once${_E}                  # 次のタスクを処理（要 Claude Code）"
+      echo -e "  ${_C}larc daemon start${_E}                      # 常駐デーモン起動"
+      echo ""
+      echo -e "  ${_Y}OpenClaw 未検出 — 完全自動実行には openclaw のインストールが必要です${_E}"
+      echo -e "  ${_Y}インストール後は daemon が自動的に openclaw 経由で実行します${_E}"
+    fi
     echo ""
     echo -e "  ${_B}Lark Drive に larc-workspace/ と larc-workdir/ が作成されました${_E}"
     echo -e "  ${_B}既存のファイルやプロジェクトには変更を加えていません${_E}"

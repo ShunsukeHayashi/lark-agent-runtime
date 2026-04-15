@@ -134,9 +134,20 @@ larc ingress done --queue-id <表示された queue_id>
 
 ---
 
+## 実行モード
+
+LARC には2つの実行モードがあります。
+
+| モード | 必要なもの | 動作 |
+|--------|-----------|------|
+| **supervised** | Claude Code のみ | `run-once` がバンドルを出力 → Claude Code が判断して実行 |
+| **autonomous** | Claude Code + OpenClaw | `daemon start` で完全自動ループ（IM → 実行 → 返信） |
+
+---
+
 ## 日常的な使い方
 
-### Claude Code でタスクを投げる
+### Supervised モード（Claude Code のみ）
 
 ```bash
 # 依頼テキストをエンキュー
@@ -146,12 +157,23 @@ larc ingress enqueue --text "先月の経費レポートを作成してくださ
 larc ingress run-once --agent main
 ```
 
-### デーモンモード（常時稼働）
+### Autonomous モード（OpenClaw インストール済みの場合）
 
 ```bash
-# バックグラウンドで自動ポーリング
-larc daemon start --agent main --interval 30
+# 単発実行（OpenClaw が次のタスクを取得して自動実行）
+larc ingress openclaw --execute --agent main
 
+# デーモン起動（Lark IM → 自動エンキュー → OpenClaw 実行 → 返信 の完全ループ）
+larc daemon start --agent main --interval 30
+```
+
+> **openclaw が未インストールの場合でも `daemon start` は動作します。**  
+> その場合は supervised モード（バンドル出力）にフォールバックします。  
+> openclaw インストール後に daemon を再起動すると自動的に autonomous モードに切り替わります。
+
+### デーモン管理
+
+```bash
 # 状態確認
 larc daemon status
 
