@@ -2,6 +2,16 @@
 
 > Claude Code context file for this project.
 
+## 🚫 エージェント動作ルール（必読）
+
+**LARC ソースコードは絶対に編集しない。**
+
+- `~/.larc/runtime/` 以下のファイル（`bin/larc`, `lib/*.sh`, `scripts/`, `config/` など）は読み取り専用として扱う
+- エージェントがタスクを実行する際、LARC ソースへの書き込み・削除・移動は一切行わない
+- LARC 本体のアップデートは必ず `larc update` コマンド経由でのみ行う
+- エージェントの成果物（ドキュメント・レポート・データ）は必ず **Lark Drive の `larc-workdir/`** に出力する
+- ローカルへの一時ファイル出力が必要な場合は `~/.larc/cache/` または `/tmp/` を使用する
+
 ## Project Summary
 
 **LARC** bridges OpenClaw-style coding agents with Lark (Feishu) — enabling AI agents to operate on back-office and white-collar tasks, not just code.

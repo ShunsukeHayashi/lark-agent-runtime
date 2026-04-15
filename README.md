@@ -75,9 +75,8 @@ In practical terms:
 # 1. Install lark-cli
 npm install -g @larksuite/cli
 
-# 2. Clone and install LARC
-git clone https://github.com/ShunsukeHayashi/lark-agent-runtime ~/larc
-bash ~/larc/scripts/install.sh
+# 2. Install LARC (downloads to ~/.larc/runtime/ — do not edit this directory)
+curl -fsSL https://raw.githubusercontent.com/ShunsukeHayashi/lark-agent-runtime/main/scripts/install.sh | bash
 
 # 3. Configure lark-cli with your Lark app credentials
 lark-cli config init \
@@ -91,6 +90,8 @@ lark-cli auth login
 # 5. One-command setup (creates Drive folders, Base tables, registers agent)
 larc quickstart
 ```
+
+> **Note**: LARC installs to `~/.larc/runtime/` automatically. Do not edit files in that directory — use `larc update` to upgrade.
 
 → Full guide: [docs/quickstart-ja.md](docs/quickstart-ja.md)  
 → Lark app setup (for coordinators): [docs/lark-app-setup.md](docs/lark-app-setup.md)

@@ -32,22 +32,20 @@ which node      # Node.js（lark-cli のインストールに必要）
 ## Step 1 — インストール
 
 ```bash
-# 1. リポジトリをクローン
-git clone https://github.com/ShunsukeHayashi/lark-agent-runtime.git ~/larc
-cd ~/larc
-
-# 2. lark-cli のインストール（未インストールの場合）
+# 1. lark-cli のインストール（未インストールの場合）
 npm install -g @larksuite/cli
 
-# 3. LARC インストール（bin/larc のシンボリックリンク作成 + スキル配備）
-bash scripts/install.sh
+# 2. LARC インストール（~/.larc/runtime/ に自動配置）
+curl -fsSL https://raw.githubusercontent.com/ShunsukeHayashi/lark-agent-runtime/main/scripts/install.sh | bash
 ```
 
 インストール後の確認：
 
 ```bash
-larc --help   # コマンド一覧が表示されれば OK
+larc version   # バージョンが表示されれば OK
 ```
+
+> **重要**: LARC は `~/.larc/runtime/` にインストールされます。このディレクトリ内のファイルは直接編集しないでください（エージェントも触りません）。更新は `larc update` で行ってください。
 
 ---
 

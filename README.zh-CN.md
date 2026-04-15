@@ -70,9 +70,8 @@ LARC 的切入点是 `permission-first`：
 # 1. 安装 lark-cli
 npm install -g @larksuite/cli
 
-# 2. 克隆并安装 LARC
-git clone https://github.com/ShunsukeHayashi/lark-agent-runtime ~/larc
-bash ~/larc/scripts/install.sh
+# 2. 安装 LARC（自动下载到 ~/.larc/runtime/，请勿直接编辑该目录）
+curl -fsSL https://raw.githubusercontent.com/ShunsukeHayashi/lark-agent-runtime/main/scripts/install.sh | bash
 
 # 3. 配置飞书应用凭据
 lark-cli config init \
@@ -86,6 +85,8 @@ lark-cli auth login
 # 5. 一键完成环境配置（创建 Drive 文件夹、Base 表、注册 Agent）
 larc quickstart
 ```
+
+> **注意**：LARC 自动安装到 `~/.larc/runtime/`，请勿直接编辑该目录内的文件。升级请使用 `larc update`。
 
 ---
 
