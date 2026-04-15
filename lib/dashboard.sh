@@ -4,12 +4,10 @@
 
 set -uo pipefail
 
-_BLUE='\033[0;34m'; _GREEN='\033[0;32m'; _YELLOW='\033[1;33m'
-_CYAN='\033[0;36m'; _BOLD='\033[1m'; _RESET='\033[0m'
-type log_head &>/dev/null || { log_head() { echo -e "\n${_BOLD}${_CYAN}▶ $*${_RESET}"; }; }
-type log_info &>/dev/null || { log_info() { echo -e "${_BLUE}[larc]${_RESET} $*"; }; }
-type log_ok   &>/dev/null || { log_ok()   { echo -e "${_GREEN}[larc]${_RESET} $*"; }; }
-type log_warn &>/dev/null || { log_warn() { echo -e "${_YELLOW}[larc]${_RESET} $*"; }; }
+_DASHBOARD_SH_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${_DASHBOARD_SH_DIR}/runtime-common.sh"
+
+larc_init_fallback_logs
 
 # ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -174,8 +172,7 @@ cmd_dashboard() {
   shift || true
 
   # Load config if needed
-  local _cfg="${LARC_CONFIG:-${LARC_HOME:-$HOME/.larc}/config.env}"
-  [[ -f "$_cfg" ]] && { set -a; source "$_cfg"; set +a; }
+  larc_load_runtime_config
 
   local agent_id=""
   local push=false

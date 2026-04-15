@@ -4,13 +4,10 @@
 
 set -uo pipefail
 
-# Self-contained log functions (webhook runs in subprocesses without bin/larc's env)
-_RED='\033[0;31m'; _GREEN='\033[0;32m'; _YELLOW='\033[1;33m'
-_BLUE='\033[0;34m'; _CYAN='\033[0;36m'; _BOLD='\033[1m'; _RESET='\033[0m'
-type log_head  &>/dev/null || { log_head()  { echo -e "\n${_BOLD}${_CYAN}▶ $*${_RESET}"; }; }
-type log_info  &>/dev/null || { log_info()  { echo -e "${_BLUE}[larc]${_RESET} $*"; }; }
-type log_ok    &>/dev/null || { log_ok()    { echo -e "${_GREEN}[larc]${_RESET} $*"; }; }
-type log_warn  &>/dev/null || { log_warn()  { echo -e "${_YELLOW}[larc]${_RESET} $*"; }; }
+_WEBHOOK_SH_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${_WEBHOOK_SH_DIR}/runtime-common.sh"
+
+larc_init_fallback_logs
 
 WEBHOOK_PID_FILE="${LARC_HOME:-$HOME/.larc}/run/webhook.pid"
 WEBHOOK_LOG="${LARC_HOME:-$HOME/.larc}/logs/webhook.log"
@@ -208,15 +205,15 @@ cmd_webhook() {
 
     status)
       if [[ -f "$WEBHOOK_PID_FILE" ]] && kill -0 "$(cat "$WEBHOOK_PID_FILE")" 2>/dev/null; then
-        echo -e "  Webhook server: ${_GREEN}running${_RESET} (PID $(cat "$WEBHOOK_PID_FILE"), port $WEBHOOK_PORT)"
+        echo -e "  Webhook server: ${_LARC_LOG_GREEN}running${_LARC_LOG_RESET} (PID $(cat "$WEBHOOK_PID_FILE"), port $WEBHOOK_PORT)"
       else
-        echo -e "  Webhook server: ${_RED}stopped${_RESET}"
+        echo -e "  Webhook server: ${_LARC_LOG_RED}stopped${_LARC_LOG_RESET}"
       fi
       ;;
 
     help|*)
       echo ""
-      echo -e "${_BOLD}larc webhook${_RESET} — Approval webhook server"
+      echo -e "${_LARC_LOG_BOLD}larc webhook${_LARC_LOG_RESET} — Approval webhook server"
       echo ""
       echo "  larc webhook start  [port]   Start HTTP server (default: $WEBHOOK_PORT)"
       echo "  larc webhook stop            Stop server"

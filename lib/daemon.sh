@@ -10,19 +10,7 @@ _DAEMON_SH_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LIB_DIR="${LIB_DIR:-$_DAEMON_SH_DIR}"
 source "${LIB_DIR}/runtime-common.sh"
 
-# Self-contained log functions (daemon runs in subprocesses without bin/larc's env)
-_RED='\033[0;31m'; _GREEN='\033[0;32m'; _YELLOW='\033[1;33m'
-_BLUE='\033[0;34m'; _CYAN='\033[0;36m'; _BOLD='\033[1m'; _RESET='\033[0m'
-_log_info()  { echo -e "${_BLUE}[larc]${_RESET} $*"; }
-_log_ok()    { echo -e "${_GREEN}[larc]${_RESET} $*"; }
-_log_warn()  { echo -e "${_YELLOW}[larc]${_RESET} $*"; }
-_log_head()  { echo -e "\n${_BOLD}${_CYAN}▶ $*${_RESET}"; }
-
-# Use parent's log functions if available, else fall back to own
-type log_head  &>/dev/null || { log_head()  { _log_head  "$@"; }; }
-type log_info  &>/dev/null || { log_info()  { _log_info  "$@"; }; }
-type log_ok    &>/dev/null || { log_ok()    { _log_ok    "$@"; }; }
-type log_warn  &>/dev/null || { log_warn()  { _log_warn  "$@"; }; }
+larc_init_fallback_logs
 
 DAEMON_PID_DIR="${LARC_HOME:-$HOME/.larc}/run"
 DAEMON_LOG_DIR="${LARC_HOME:-$HOME/.larc}/logs"
@@ -255,7 +243,7 @@ cmd_daemon() {
 
     status)
       echo ""
-      echo -e "${_BOLD}LARC Daemon Status${_RESET}"
+      echo -e "${_LARC_LOG_BOLD}LARC Daemon Status${_LARC_LOG_RESET}"
       echo "────────────────────────────────────"
 
       if _daemon_is_running "$IM_PID_FILE"; then

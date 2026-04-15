@@ -7,13 +7,7 @@ set -uo pipefail
 _BILLING_SH_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${_BILLING_SH_DIR}/runtime-common.sh"
 
-_BLUE='\033[0;34m'; _GREEN='\033[0;32m'; _YELLOW='\033[1;33m'
-_RED='\033[0;31m'; _CYAN='\033[0;36m'; _BOLD='\033[1m'; _RESET='\033[0m'
-type log_head &>/dev/null || { log_head() { echo -e "\n${_BOLD}${_CYAN}▶ $*${_RESET}"; }; }
-type log_info &>/dev/null || { log_info() { echo -e "${_BLUE}[larc]${_RESET} $*"; }; }
-type log_ok   &>/dev/null || { log_ok()   { echo -e "${_GREEN}[larc]${_RESET} $*"; }; }
-type log_warn &>/dev/null || { log_warn() { echo -e "${_YELLOW}[larc]${_RESET} $*"; }; }
-type log_error &>/dev/null || { log_error() { echo -e "${_RED}[larc]${_RESET} $*" >&2; }; }
+larc_init_fallback_logs
 
 BILLING_DIR="${LARC_HOME:-$HOME/.larc}/billing"
 USAGE_FILE="${BILLING_DIR}/usage.jsonl"
