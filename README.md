@@ -1,6 +1,6 @@
 # LARC — Lark Agent Runtime
 
-> Permission-first runtime for AI agents that work inside Lark
+> The Lark execution and governance layer for OpenClaw agents
 
 [![version](https://img.shields.io/badge/version-0.2.0-blue)](bin/larc)
 [![CI](https://github.com/ShunsukeHayashi/lark-agent-runtime/actions/workflows/ci.yml/badge.svg)](https://github.com/ShunsukeHayashi/lark-agent-runtime/actions/workflows/ci.yml)
@@ -9,48 +9,35 @@
 
 English | [简体中文](README.zh-CN.md) | [日本語](README.ja.md)
 
-Official name: `Lark Agent Runtime`
-Short name: `LARC`
-
 ---
 
 ## What is LARC?
 
-**LARC** is a permission-managed runtime for AI agents that work inside Lark.
+**LARC** is the Lark execution and governance layer for [OpenClaw](https://openclaw.dev) agents.
 
-If Claude Code is part of the execution environment for coding agents, LARC is the execution environment for office-work agents inside Lark.
+OpenClaw is the agent brain and execution engine. LARC is what gives OpenClaw safe, permission-controlled access to Lark's enterprise surfaces.
 
-The goal is not just "a CLI that talks to Lark." The goal is to treat Lark itself as the operating surface for agents:
+```
+OpenClaw agent (LLM execution)
+    ↓  larc ingress openclaw
+LARC (permission · queue · audit · context)
+    ↓  lark-cli
+Lark API — Drive / Base / IM / Approval / Wiki
+```
 
-- Drive as disclosure-chain storage
-- Base as memory and registry
-- IM as the action and coordination layer
-- Approval as execution control
-- Wiki as a knowledge and graph surface
+If OpenClaw is the agent, LARC is the guard rail: it enforces execution gates, tracks authority, manages the task queue, and records everything back into Lark.
 
 ---
 
-## Why this project exists
+## Why this exists
 
-AI agents are already strong in coding workflows, but they are still weak in ordinary white-collar work. The blocker is often not model quality. It is:
+AI agents are strong in coding workflows but still weak in ordinary white-collar work. The blocker is rarely model quality. It is:
 
 - unclear minimum permissions
-- unclear execution authority
-- an overreliance on local filesystems instead of enterprise-native surfaces
+- unclear execution authority  
+- an over-reliance on local filesystems instead of enterprise-native surfaces
 
-LARC takes a `permission-first` approach:
-
-1. explain the likely scopes
-2. explain the authority model
-3. route the action through Lark-native surfaces
-
-In practical terms:
-
-1. a task arrives
-2. `larc auth suggest` explains what permissions are needed and whose authority should be used
-3. `larc approve gate` decides whether the action can run directly, needs preview, or must go through approval
-4. execution happens through Lark IM / Base / Drive / Wiki / Approval
-5. `larc memory` records what happened back into Lark
+LARC takes a `permission-first` approach — explain required scopes before touching anything, route through Lark-native surfaces, record every action back into Base.
 
 ---
 
@@ -58,155 +45,122 @@ In practical terms:
 
 | Capability | What it does |
 |---|---|
-| `larc bootstrap` | Loads `SOUL.md → USER.md → MEMORY.md → HEARTBEAT.md` from Lark Drive |
+| `larc bootstrap` | Loads `SOUL → USER → MEMORY → HEARTBEAT` from Lark Drive into the agent context |
 | `larc auth suggest` | Infers minimum scopes and authority type from a natural-language task description |
 | `larc approve gate` | Checks execution gate policy (none / preview / approval) before running a task |
-| `larc agent register` | Registers an agent in Lark Base with declared scopes; supports YAML batch registration |
+| `larc ingress openclaw` | Builds and dispatches the next governed action bundle to OpenClaw |
+| `larc ingress recover` | Resets stale in-progress queue items after a worker crash |
+| `larc agent register` | Registers agents in Lark Base with declared scopes; supports YAML batch registration |
+| `larc memory` | Syncs daily memory with Lark Base; supports full pagination and keyword search |
+| `larc status` | Shows Base connectivity, OpenClaw install state, daemon status, and queue stats |
 | `larc kg build` / `larc kg query` | Indexes Lark Wiki node graph and answers concept queries with neighbor context |
-| `larc memory` | Syncs daily memory with Lark Base |
-| `larc send` / `larc task` | Provides basic execution paths for IM and task operations |
-| `larc ingress` | Runs the queue loop surface: enqueue, OpenClaw bundle, approve/resume, delegate, next, run-once, execute, followup |
-| Claude Code skills | Ships Lark-oriented skills in `.claude/skills/` |
+| Claude Code skills | Ships 24 Lark-oriented skills in `.claude/skills/` |
 
 ---
 
 ## Quick Start
 
+### Prerequisites
+
 ```bash
-# 1. Install lark-cli
-npm install -g @larksuite/cli
-
-# 2. Install LARC (downloads to ~/.larc/runtime/ — do not edit this directory)
-curl -fsSL https://raw.githubusercontent.com/ShunsukeHayashi/lark-agent-runtime/main/scripts/install.sh | bash
-
-# 3. Configure lark-cli with your Lark app credentials
-lark-cli config init \
-  --app-id   <App ID> \
-  --app-secret-stdin \
-  --brand    lark
-
-# 4. Log in with your Lark account
-lark-cli auth login
-
-# 5. One-command setup (creates Drive folders, Base tables, registers agent)
-larc quickstart
+which openclaw    # OpenClaw — the agent execution engine
+which lark-cli    # lark-cli — npm install -g @larksuite/cli
+which python3     # Python 3.8+
 ```
 
-> **Note**: LARC installs to `~/.larc/runtime/` automatically. Do not edit files in that directory — use `larc update` to upgrade.
+> **Start with OpenClaw.** LARC is a runtime layer for OpenClaw agents, not a standalone agent.  
+> Install the LARC runtime skill in OpenClaw first: `bash scripts/install-openclaw-larc-runtime-skill.sh`
+
+### Install LARC
+
+```bash
+# Install LARC (downloads to ~/.larc/runtime/)
+curl -fsSL https://raw.githubusercontent.com/ShunsukeHayashi/lark-agent-runtime/main/scripts/install.sh | bash
+
+# Configure lark-cli with your Lark app credentials
+lark-cli config init --app-id <App ID> --app-secret-stdin --brand lark
+lark-cli auth login
+
+# One-command workspace setup
+larc quickstart
+
+# Verify everything
+larc status
+```
 
 → Full guide: [docs/quickstart-ja.md](docs/quickstart-ja.md)  
 → Lark app setup (for coordinators): [docs/lark-app-setup.md](docs/lark-app-setup.md)
 
 ---
 
+## Operating modes
+
+| Mode | What runs | Status |
+|---|---|---|
+| **Supervised** | OpenClaw + Claude Code manually calls `larc ingress run-once` | ✅ Stable |
+| **OpenClaw-assisted autonomous** | OpenClaw calls `larc ingress openclaw --execute`; LARC handles gate/queue/audit | ✅ Stable |
+| **Experimental IM loop** | `larc daemon start` — IM poller enqueues messages, worker dispatches to OpenClaw automatically | 🧪 Experimental |
+
+> **The IM daemon loop is experimental.** Use supervised or OpenClaw-assisted mode for production workflows. The daemon is useful for testing and low-stakes automation.
+
+---
+
 ## Current status
 
-The five foundational phases are complete and live-verified against a real Lark tenant:
+### Proven and stable
 
-| Phase | What was proven |
+| Area | What is verified |
 |---|---|
-| A — Runtime | `bootstrap`, `memory`, `send`, `task`, `agent` all working against live Lark APIs |
-| B — Permission Intelligence | `auth suggest` infers minimum scopes for 8 compound office tasks; authority explanation included |
-| C — Agent Operating Model | 4-agent registry in Lark Base; YAML batch registration; scopes stored per agent |
-| D — Approval & Execution Control | Gate policy (32 task types × none/preview/approval); `larc approve gate` command |
-| E — Knowledge Graph | Wiki BFS traversal; 37-node graph indexed; keyword query returns matches with neighbor context |
+| Permission intelligence | `auth suggest` infers minimum scopes for 32 task types; authority model documented |
+| Approval gate | `approve gate` enforces none/preview/approval policy before execution |
+| Queue lifecycle | `enqueue → openclaw → done/fail/partial/followup` full cycle verified |
+| Agent registry | YAML batch registration; scopes stored per agent in Lark Base |
+| Memory sync | Paginated `memory pull/push/search` against live Lark Base |
+| Knowledge graph | Wiki BFS traversal; keyword query with neighbor context |
+| Status dashboard | `larc status` shows Base, OpenClaw, daemon, and queue state in one view |
 
-What is now live in the Agentic LARC MVP surface:
-- queue ingestion: `enqueue`, `list`
-- continuation: `approve`, `resume`
-- delegation: `delegate`
-- retrieval and handoff: `context`, `handoff`, `memory search`
-- worker loop: `next`, `run-once`, `execute-stub`, `execute-apply`
-- outcome states: `done`, `failed`, `partial`, `followup`
-- supervised pilot: PPAL marketing flow has been exercised through queueing, OpenClaw dispatch, Base read, IM send, `partial`, `followup`, `done`, and Base mirror write-back
-- operator runbook: [PPAL marketing supervised runbook](docs/ppal-marketing-supervised-runbook-2026-04-14.md)
+### Experimental
 
-What is still experimental or future:
-- IM webhook / bot-triggered ingress from inside Lark itself (optional path, not the primary architecture)
-- MergeGate integration for controlled execution review
-- Full OpenClaw CLI compatibility layer
-- Knowledge graph link extraction from document content (currently hierarchy-based)
-- China-market go-to-market narrative refinement
-
-Important nuance:
-
-- LARC is already a working runtime surface for Lark-backed agent work
-- today, it is best used as a supervised runtime under an upper-layer agent such as OpenClaw or Claude Code
-- the primary path is `OpenClaw Agent -> official openclaw-lark plugin + LARC`
-- supervised usage is now real, not conceptual: the PPAL marketing case has already been run end-to-end under operator supervision
-- IM/webhook bot ingress is an optional future entrypoint, not the required core path
-
-Key docs:
-
-- [PLAYBOOK.md](PLAYBOOK.md)
-- [docs/agentic-larc-mvp-2026-04-14.md](docs/agentic-larc-mvp-2026-04-14.md)
-- [docs/larc-vs-lark-cli-and-openclaw.md](docs/larc-vs-lark-cli-and-openclaw.md)
-- [docs/goal-aligned-playbook.md](docs/goal-aligned-playbook.md)
-- [docs/permission-model.md](docs/permission-model.md)
-- [docs/auth-suggest-cases.md](docs/auth-suggest-cases.md)
-- [docs/ssot-data-placement-2026-04-14.md](docs/ssot-data-placement-2026-04-14.md)
-- [docs/terminology-glossary.md](docs/terminology-glossary.md)
-- [CONTRIBUTING.md](CONTRIBUTING.md)
+- IM daemon loop (`larc daemon start`) — echo loop and restart reliability still being hardened
+- `larc send` notifications via bot token — just fixed (2026-04-15)
+- OpenClaw Lark native plugin (`extensions/lark/`) — currently incompatible with current SDK; LARC uses `lark-cli` directly instead
 
 ---
 
 ## Repo structure
 
 ```text
-bin/
-  larc                         # Main CLI entrypoint
+bin/larc                       # Main CLI entrypoint
 lib/
   bootstrap.sh                 # Disclosure-chain loading from Lark Drive
-  memory.sh                    # Daily memory sync ↔ Lark Base
-  send.sh                      # IM message sending
+  memory.sh                    # Daily memory sync ↔ Lark Base (paginated)
+  send.sh                      # IM message sending (--as bot)
+  ingress.sh                   # Queue, OpenClaw bundle, delegation, worker loop
+  daemon.sh                    # IM poller + queue worker subprocess management
+  worker.sh                    # Queue worker (OpenClaw dispatch or supervised fallback)
+  runtime-common.sh            # Shared helpers for subprocess modules
   agent.sh                     # Agent registration and management
-  task.sh                      # Lark Project task operations
-  approve.sh                   # Approval flow + execution gate check
-  heartbeat.sh                 # System state logging
   auth.sh                      # Scope inference and authorization
+  approve.sh                   # Approval flow + execution gate check
   knowledge-graph.sh           # Wiki node graph build and query
-  ingress.sh                   # Queue, OpenClaw bundle, delegation, worker loop, partial follow-up
 config/
   scope-map.json               # 32 task types × required scopes × authority type
   gate-policy.json             # 32 task types × risk level × execution gate
-agents.yaml                    # Example multi-agent batch registration
+.claude/skills/lark-*/         # 24 Claude Code skills (Lark-oriented)
 docs/
-  goal-aligned-playbook.md
-  permission-model.md
-  auth-suggest-cases.md        # 8 verified regression cases
-  terminology-glossary.md      # (also .zh-CN.md, .ja.md)
-scripts/
-  setup-workspace.sh
-  register-agents.sh           # YAML batch agent registration
-  auth-suggest-check.sh        # Regression check for all 8 scope inference cases
-.claude/skills/
-  lark-*/                      # 24 Claude Code skills (Lark-oriented)
+  quickstart-ja.md             # Full onboarding guide (Japanese)
+  openclaw-integration.md      # How LARC connects to OpenClaw
+  permission-model.md          # Scope and authority model
 ```
-
----
-
-## Roadmap focus
-
-- MergeGate integration for controlled execution review gates
-- Full OpenClaw CLI compatibility layer
-- Knowledge graph link extraction from document content
-- Trilingual open-source release (English / Chinese / Japanese)
 
 ---
 
 ## Verification
 
-For lightweight local verification before opening a PR:
-
 ```bash
-# Shell syntax checks for entrypoints and helper scripts
 bash -n bin/larc scripts/install.sh scripts/auth-suggest-check.sh
-
-# Permission-intelligence regression checks
 bash scripts/auth-suggest-check.sh --verify
 ```
-
-These checks are also run in GitHub Actions.
 
 ---
 

@@ -24,12 +24,26 @@ Lark IM に返信
 
 ---
 
-## Step 0 — 前提確認
+## Step 0 — OpenClaw + LARC スキルのセットアップ
+
+LARC は OpenClaw エージェントのランタイム層です。**最初に OpenClaw を用意してください。**
+
+```bash
+# OpenClaw がインストールされているか確認
+which openclaw
+
+# OpenClaw に LARC ランタイムスキルをインストール
+bash scripts/install-openclaw-larc-runtime-skill.sh
+```
+
+> **LARC はスタンドアロンのエージェントではありません。**  
+> OpenClaw が実行主体であり、LARC は Lark 側の権限・キュー・監査・文脈取得を担う実行レイヤーです。
+
+その他の前提確認：
 
 ```bash
 which python3    # Python 3.8 以上
 which node       # Node.js（lark-cli のインストールに必要）
-which openclaw   # OpenClaw（autonomous モードに必要）
 ```
 
 ---
@@ -162,13 +176,13 @@ larc daemon stop     # 停止
 
 ## 実行モード
 
-| モード | 必要なもの | 動作 |
-|--------|-----------|------|
-| **supervised** | Claude Code のみ | `run-once` がバンドルを出力 → Claude Code が判断して実行 |
-| **autonomous** | Claude Code + OpenClaw | `daemon start` で完全自動ループ（IM → 実行 → 返信） |
+| モード | 動作 | 状態 |
+|--------|------|------|
+| **Supervised** | Claude Code が手動で `larc ingress run-once` を呼ぶ → バンドルを確認して実行 | ✅ 安定 |
+| **OpenClaw-assisted** | OpenClaw が `larc ingress openclaw --execute` を呼ぶ → ゲート・監査は LARC が担当 | ✅ 安定 |
+| **Experimental IM loop** | `larc daemon start` — IM メッセージを自動エンキューして OpenClaw に自動ディスパッチ | 🧪 実験的 |
 
-> OpenClaw 未インストールでも `daemon start` は動作します（supervised モードにフォールバック）。  
-> OpenClaw インストール後に daemon を再起動すると自動的に autonomous モードに切り替わります。
+> **IM デーモンループは実験段階です。** 本番用途には Supervised または OpenClaw-assisted を使用してください。
 
 ---
 

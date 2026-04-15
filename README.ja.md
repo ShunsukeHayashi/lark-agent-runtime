@@ -1,6 +1,6 @@
 # LARC — Lark Agent Runtime
 
-> Lark の中で仕事をする AI エージェントのための、権限管理付き実行環境
+> OpenClaw エージェントのための Lark 実行・ガバナンス層
 
 [![version](https://img.shields.io/badge/version-0.2.0-blue)](bin/larc)
 [![CI](https://github.com/ShunsukeHayashi/lark-agent-runtime/actions/workflows/ci.yml/badge.svg)](https://github.com/ShunsukeHayashi/lark-agent-runtime/actions/workflows/ci.yml)
@@ -9,144 +9,158 @@
 
 [English](README.md) | [简体中文](README.zh-CN.md) | 日本語
 
-正式名: `Lark Agent Runtime`
-略称: `LARC`
-
 ---
 
 ## LARC とは
 
-**LARC** は、Lark の中で仕事をする AI エージェントのための、権限管理付きランタイムです。
+**LARC** は、[OpenClaw](https://openclaw.dev) エージェントのための Lark 実行・ガバナンス層です。
 
-Claude Code がコーディングエージェントの実行環境の一部だとすれば、LARC は Lark の中で働く一般業務エージェントの実行環境です。
+OpenClaw がエージェントの頭脳（LLM 実行エンジン）であり、LARC は OpenClaw に Lark の企業サーフェスへの安全でガバナンスされたアクセスを提供します。
 
-狙いは「Lark に接続する CLI」を作ることではありません。狙いは、Lark 自体をエージェントの実行面にすることです。
+```
+OpenClaw エージェント（LLM 実行）
+    ↓  larc ingress openclaw
+LARC（権限 · キュー · 監査 · 文脈取得）
+    ↓  lark-cli
+Lark API — Drive / Base / IM / Approval / Wiki
+```
 
-- Drive を disclosure chain の保存先として使う
-- Base を memory / registry として使う
-- IM をアクションと調整の面として使う
-- Approval を実行制御として使う
-- Wiki をナレッジ面として使う
+OpenClaw がエージェントなら、LARC はガードレールです。実行ゲートを適用し、権限を追跡し、タスクキューを管理し、すべての結果を Lark に記録します。
 
 ---
 
 ## なぜ必要か
 
-開発業務では AI エージェントが広がっていますが、一般的なバックオフィス業務ではまだ弱いままです。大きな理由は、モデル性能ではなく次の3点です。
+AI エージェントは開発業務では強力ですが、一般的なバックオフィス業務ではまだ弱いままです。障壁はモデル性能ではなく、次の3点です。
 
 - どの権限が必要か分かりにくい
 - 誰の権限として動くのかが曖昧になりやすい
-- ローカルファイル前提の設計が多く、業務ツール中心の運用に合いにくい
+- ローカルファイル前提の設計が、業務ツール中心の運用に合いにくい
 
-LARC はこのギャップに対して、`permission-first` の設計で入ります。
-
-実際の流れは次の通りです。
-
-1. タスクが届く
-2. `larc auth suggest` が必要権限と authority を説明する
-3. `larc approve gate` が、そのまま実行できるか、preview が必要か、approval が必要かを決める
-4. 実行は Lark IM / Base / Drive / Wiki / Approval 上で行う
-5. `larc memory` が実行内容を Lark に記録する
+LARC は `permission-first` で設計されています。何かに触れる前に必要なスコープを説明し、Lark のネイティブサーフェスを経由してルーティングし、すべての操作を Base に記録します。
 
 ---
 
 ## 主な機能
 
 | 機能 | 説明 |
-|------|------|
-| `larc bootstrap` | Drive 上の `SOUL.md → USER.md → MEMORY.md → HEARTBEAT.md` をまとめて取り込む |
-| `larc auth suggest` | 自然文タスクから必要 scope と authority を推定する |
-| `larc approve gate` | 実行前に none / preview / approval のゲート要件を確認する |
-| `larc agent register` | Lark Base にエージェントを登録し、YAML バッチ登録にも対応する |
-| `larc kg build` / `larc kg query` | Lark Wiki ノードグラフを索引化し、近傍ノード付きで概念検索する |
-| `larc memory` | Base と日次メモリを同期する |
-| `larc ingress` | enqueue、approve/resume、delegate、worker loop などのキュー処理面を提供する |
-| `larc send` / `larc task` | IM 送信や業務タスク操作の基本経路を提供する |
-| Approval 対応 | 承認インスタンス生成と承認タスク実行を分けて扱う |
-| Claude Code skills | `.claude/skills/` に Lark 系スキル群を同梱する |
+|---|---|
+| `larc bootstrap` | Lark Drive から `SOUL → USER → MEMORY → HEARTBEAT` をエージェントコンテキストに読み込む |
+| `larc auth suggest` | 自然言語のタスク説明から必要な最小スコープと実行権限を推定 |
+| `larc approve gate` | タスク実行前に実行ゲートポリシー（none / preview / approval）を確認 |
+| `larc ingress openclaw` | OpenClaw への次のガバナンスアクションバンドルを構築・ディスパッチ |
+| `larc ingress recover` | ワーカークラッシュ後の停滞した in_progress アイテムをリセット |
+| `larc agent register` | 宣言されたスコープとともにエージェントを Lark Base に登録（YAML バッチ登録対応） |
+| `larc memory` | Lark Base との日次メモリ同期（完全ページネーション・キーワード検索対応） |
+| `larc status` | Base 接続性・OpenClaw インストール状態・デーモン状態・キュー統計を一覧表示 |
+| `larc kg build` / `larc kg query` | Lark Wiki ノードグラフをインデックスし、隣接コンテキスト付きでキーワード検索 |
+| Claude Code スキル | `.claude/skills/` に 24 の Lark 向けスキルを同梱 |
 
 ---
 
 ## クイックスタート
 
+### 前提条件
+
 ```bash
-# 1. lark-cli をインストール
-npm install -g @larksuite/cli
-
-# 2. LARC をインストール（~/.larc/runtime/ に自動配置されます）
-curl -fsSL https://raw.githubusercontent.com/ShunsukeHayashi/lark-agent-runtime/main/scripts/install.sh | bash
-
-# 3. Lark アプリ認証情報を登録
-lark-cli config init \
-  --app-id   <App ID> \
-  --app-secret-stdin \
-  --brand    lark
-
-# 4. Lark アカウントでログイン
-lark-cli auth login
-
-# 5. 1コマンドで環境構築（Drive フォルダ・Base テーブル・エージェント登録）
-larc quickstart
+which openclaw    # OpenClaw — エージェント実行エンジン
+which lark-cli    # lark-cli — npm install -g @larksuite/cli
+which python3     # Python 3.8 以上
 ```
 
-> **注意**: LARC は `~/.larc/runtime/` に自動インストールされます。このディレクトリ内のファイルは直接編集しないでください。更新は `larc update` で行ってください。
+> **最初に OpenClaw を用意してください。** LARC はスタンドアロンのエージェントではなく、OpenClaw エージェントのランタイム層です。  
+> OpenClaw に LARC ランタイムスキルをインストールしてから始めてください: `bash scripts/install-openclaw-larc-runtime-skill.sh`
+
+### LARC インストール
+
+```bash
+# LARC インストール（~/.larc/runtime/ にダウンロード）
+curl -fsSL https://raw.githubusercontent.com/ShunsukeHayashi/lark-agent-runtime/main/scripts/install.sh | bash
+
+# lark-cli に Lark アプリ情報を設定
+lark-cli config init --app-id <App ID> --app-secret-stdin --brand lark
+lark-cli auth login
+
+# ワークスペースのセットアップ（1コマンド）
+larc quickstart
+
+# すべての状態を確認
+larc status
+```
 
 → 詳細ガイド: [docs/quickstart-ja.md](docs/quickstart-ja.md)  
-→ Lark アプリ設定（担当者向け）: [docs/lark-app-setup.md](docs/lark-app-setup.md)
+→ Lark アプリ設定（テスト担当者向け）: [docs/lark-app-setup.md](docs/lark-app-setup.md)
+
+---
+
+## 実行モード
+
+| モード | 動作 | 状態 |
+|---|---|---|
+| **Supervised** | OpenClaw + Claude Code が手動で `larc ingress run-once` を呼ぶ | ✅ 安定 |
+| **OpenClaw-assisted autonomous** | OpenClaw が `larc ingress openclaw --execute` を呼ぶ。LARC がゲート・キュー・監査を担当 | ✅ 安定 |
+| **Experimental IM loop** | `larc daemon start` — IM ポーラーがメッセージをエンキューし、worker が OpenClaw に自動ディスパッチ | 🧪 実験的 |
+
+> **IM デーモンループは実験段階です。** 本番ワークフローには supervised または OpenClaw-assisted モードを使用してください。
 
 ---
 
 ## 現在の状態
 
-5つの基盤フェーズが完了し、実際の Lark テナントで動作確認済みです。
+### 安定・検証済み
 
-| フェーズ | 証明された内容 |
+| 領域 | 確認内容 |
 |---|---|
-| A — ランタイム | `bootstrap`・`memory`・`send`・`task`・`agent` がすべて実際の Lark API と連動 |
-| B — 権限インテリジェンス | `auth suggest` が 8種の複合業務タスクで最小権限を推論・権限主体を説明 |
-| C — エージェント管理 | 4エージェントを Lark Base レジストリに登録；YAML バッチ登録対応；スコープ保存 |
-| D — 承認と実行制御 | ゲートポリシー（32 タスク種別 × none/preview/approval）；`larc approve gate` |
-| E — ナレッジグラフ | Wiki BFS 走査；37 ノードをインデックス化；keyword query で隣接ノードまで返す |
+| 権限インテリジェンス | 32 タスクタイプの最小スコープ推論・権限モデルのドキュメント化 |
+| 承認ゲート | 実行前に none/preview/approval ポリシーを適用 |
+| キューライフサイクル | `enqueue → openclaw → done/fail/partial/followup` の全サイクル確認済み |
+| エージェントレジストリ | YAML バッチ登録・エージェントごとのスコープを Lark Base に保存 |
+| メモリ同期 | ライブ Lark Base に対してページネーション対応の pull/push/search を検証 |
+| ナレッジグラフ | Wiki BFS トラバーサル・隣接コンテキスト付きキーワードクエリ |
+| ステータスダッシュボード | `larc status` が Base・OpenClaw・デーモン・キュー状態を一括表示 |
 
-現在も実験中または今後の予定：
-- MergeGate 統合（実行審査ゲート）
-- OpenClaw CLI 完全互換レイヤー
-- ドキュメント本文からのリンク抽出（現在は階層構造ベース）
-- 中国市場向けのナレッジグラフ事例整備
+### 実験的
 
-重要な補足：
+- IM デーモンループ（`larc daemon start`）— echo loop と再起動の安定性を現在改善中
+- bot token による `larc send` 通知 — 修正済み（2026-04-15）
+- OpenClaw Lark ネイティブプラグイン（`extensions/lark/`）— 現 SDK と非互換のため、LARC は代わりに `lark-cli` を直接使用
 
-- LARC はすでに、Lark ベースの agent work を支える runtime surface としては動いています
-- ただし現時点では、Claude Code などの上位エージェントが使う supervised runtime です
-- 現時点の主経路は `OpenClaw Agent -> official openclaw-lark plugin + LARC` です
-- Lark IM / webhook bot ingress は将来の追加入口であり、必須の中核経路ではありません
+---
 
-詳しくは以下を参照してください。
+## リポジトリ構成
 
-- [PLAYBOOK.md](PLAYBOOK.md)
-- [docs/agentic-larc-mvp-2026-04-14.md](docs/agentic-larc-mvp-2026-04-14.md)
-- [docs/larc-vs-lark-cli-and-openclaw.md](docs/larc-vs-lark-cli-and-openclaw.md)
-- [docs/goal-aligned-playbook.md](docs/goal-aligned-playbook.md)
-- [docs/permission-model.md](docs/permission-model.md)
-- [docs/auth-suggest-cases.md](docs/auth-suggest-cases.md)
-- [CONTRIBUTING.md](CONTRIBUTING.md)
-- [docs/terminology-glossary.ja.md](docs/terminology-glossary.ja.md)
+```text
+bin/larc                       # メイン CLI エントリポイント
+lib/
+  bootstrap.sh                 # Lark Drive からの disclosure chain 読み込み
+  memory.sh                    # Lark Base との日次メモリ同期（ページネーション対応）
+  send.sh                      # IM メッセージ送信（--as bot）
+  ingress.sh                   # キュー・OpenClaw バンドル・委任・ワーカーループ
+  daemon.sh                    # IM ポーラー + キューワーカーのサブプロセス管理
+  worker.sh                    # キューワーカー（OpenClaw ディスパッチまたは supervised フォールバック）
+  runtime-common.sh            # サブプロセスモジュール共通ヘルパー
+  agent.sh                     # エージェント登録・管理
+  auth.sh                      # スコープ推論・認可
+  approve.sh                   # 承認フロー・実行ゲート確認
+  knowledge-graph.sh           # Wiki ノードグラフ構築・クエリ
+config/
+  scope-map.json               # 32 タスクタイプ × 必要スコープ × 権限タイプ
+  gate-policy.json             # 32 タスクタイプ × リスクレベル × 実行ゲート
+.claude/skills/lark-*/         # 24 の Lark 向け Claude Code スキル
+docs/
+  quickstart-ja.md             # 詳細オンボーディングガイド
+  openclaw-integration.md      # LARC と OpenClaw の接続方法
+  permission-model.md          # スコープ・権限モデル
+```
 
 ---
 
 ## 検証
 
-PR を出す前の軽量なローカル検証:
-
 ```bash
-# エントリポイントと補助スクリプトの構文確認
 bash -n bin/larc scripts/install.sh scripts/auth-suggest-check.sh
-
-# permission-intelligence の回帰チェック
 bash scripts/auth-suggest-check.sh --verify
 ```
-
-これらは GitHub Actions でも実行されます。
 
 ---
 
