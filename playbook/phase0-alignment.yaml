@@ -1,0 +1,98 @@
+---
+# LARC Phase 0 — lark-cli Command Alignment Playbook
+# 目的: lib/*.sh 内の誤った lark-cli コマンドを実在するショートカットに置換する
+# 根拠: CLAUDE.md「Key Architecture Decisions > lark-cli Command Alignment (PHASE 0)」
+
+meta:
+  version: 1
+  agent: main
+  gate: none
+  source: playbook
+
+# ── コマンド対応表（全タスク共通コンテキスト）──────────────────────────────
+command_map:
+  "drive list --folder-token":       "drive files list --params '{\"folder_token\":\"...\"}'"
+  "drive download --file-token":     "drive +download --file-token"
+  "drive folder create":             "drive files create_folder --data '{\"folder_token\":\"...\",\"name\":\"...\"}'"
+  "base tables list":                "base +table-list --base-token"
+  "base records list":               "base +record-list --base-token"
+  "base records create":             "base +record-upsert --base-token"
+  "base records update":             "base +record-upsert --base-token"
+  "task tasks create":               "task +create"
+  "task tasks patch":                "task +complete"
+
+# ── タスク一覧 ──────────────────────────────────────────────────────────────
+tasks:
+
+  - id: phase0-bootstrap
+    title: "Phase0: lib/bootstrap.sh の lark-cli コマンド整合修正"
+    file: lib/bootstrap.sh
+    instruction: |
+      lib/bootstrap.sh を読み、以下の command_map に従って誤った lark-cli コマンドを
+      正しいショートカットに置換してください。
+      - 変更は最小限に留め、ロジックは変更しない
+      - 対応するコマンドが見つからない場合はそのまま残し、コメントで「要確認」と記す
+      - 修正後、diff 相当の変更箇所を出力して終了
+
+  - id: phase0-memory
+    title: "Phase0: lib/memory.sh の lark-cli コマンド整合修正"
+    file: lib/memory.sh
+    instruction: |
+      lib/memory.sh を読み、command_map に従って誤った lark-cli コマンドを正しい
+      ショートカットに置換してください。
+      - memory sync（pull/push）に関わる drive/base コマンドが主な対象
+      - ロジックは変更しない。修正箇所の diff を出力して終了
+
+  - id: phase0-send
+    title: "Phase0: lib/send.sh の lark-cli コマンド整合修正"
+    file: lib/send.sh
+    instruction: |
+      lib/send.sh を読み、command_map に従って誤った lark-cli コマンドを正しい
+      ショートカットに置換してください。
+      - im メッセージ送信に使う lark-cli コマンドが主な対象
+      - ロジックは変更しない。修正箇所の diff を出力して終了
+
+  - id: phase0-task
+    title: "Phase0: lib/task.sh の lark-cli コマンド整合修正"
+    file: lib/task.sh
+    instruction: |
+      lib/task.sh を読み、command_map に従って誤った lark-cli コマンドを正しい
+      ショートカットに置換してください。
+      - task +create / task +complete への置換が主な対象
+      - ロジックは変更しない。修正箇所の diff を出力して終了
+
+  - id: phase0-approve
+    title: "Phase0: lib/approve.sh の lark-cli コマンド整合修正"
+    file: lib/approve.sh
+    instruction: |
+      lib/approve.sh を読み、command_map に従って誤った lark-cli コマンドを正しい
+      ショートカットに置換してください。
+      - Lark Approval フロー（approval instance create/query）が主な対象
+      - ロジックは変更しない。修正箇所の diff を出力して終了
+
+  - id: phase0-auth
+    title: "Phase0: lib/auth.sh の lark-cli コマンド整合修正"
+    file: lib/auth.sh
+    instruction: |
+      lib/auth.sh を読み、command_map に従って誤った lark-cli コマンドを正しい
+      ショートカットに置換してください。
+      - スコープ推論・認可に関わる drive/base コマンドが対象
+      - ロジックは変更しない。修正箇所の diff を出力して終了
+
+  - id: phase0-heartbeat
+    title: "Phase0: lib/heartbeat.sh の lark-cli コマンド整合修正"
+    file: lib/heartbeat.sh
+    instruction: |
+      lib/heartbeat.sh を読み、command_map に従って誤った lark-cli コマンドを正しい
+      ショートカットに置換してください。
+      - heartbeat ログの drive/base 書き込みが主な対象
+      - ロジックは変更しない。修正箇所の diff を出力して終了
+
+  - id: update-claude-md
+    title: "CLAUDE.md ロードマップを完了済みフェーズに更新"
+    file: CLAUDE.md
+    instruction: |
+      CLAUDE.md の Development Roadmap セクションを以下のとおり更新してください:
+      - "Phase 2B: Multi-agent YAML batch registration" → [x] 完了
+      - "Phase 2C: larc agent register from YAML"       → [x] 完了
+      変更はその2行のみ。他は一切変更しない。

@@ -1,0 +1,426 @@
+{
+  "version": 2,
+  "nodes": [
+    {
+      "type": "frame",
+      "id": "root",
+      "x": 0, "y": 0,
+      "width": 1200,
+      "height": "fit-content",
+      "layout": "vertical",
+      "gap": 16,
+      "padding": 32,
+      "fillColor": "#FFFFFF",
+      "children": [
+        {
+          "type": "text",
+          "id": "title",
+          "width": "fill-container",
+          "height": "fit-content",
+          "text": "みやびAIエージェントアーキテクチャー",
+          "fontSize": 28,
+          "textColor": "#1F2329",
+          "textAlign": "center",
+          "verticalAlign": "middle"
+        },
+        {
+          "type": "text",
+          "id": "subtitle",
+          "width": "fill-container",
+          "height": "fit-content",
+          "text": "市場インプット → プランニングOS → インテリジェンス → エグゼキューション → フィードバックループ",
+          "fontSize": 14,
+          "textColor": "#646A73",
+          "textAlign": "center",
+          "verticalAlign": "middle"
+        },
+        {
+          "type": "frame",
+          "id": "layers-container",
+          "width": "fill-container",
+          "height": "fit-content",
+          "layout": "vertical",
+          "gap": 12,
+          "padding": 0,
+          "children": [
+            {
+              "type": "frame",
+              "id": "row-layer-1",
+              "width": "fill-container",
+              "height": "fit-content",
+              "layout": "horizontal",
+              "gap": 16,
+              "padding": 0,
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "text",
+                  "id": "label-1",
+                  "width": 100,
+                  "height": "fit-content",
+                  "text": "市場層",
+                  "fontSize": 16,
+                  "textColor": "#1F2329",
+                  "textAlign": "right"
+                },
+                {
+                  "type": "frame",
+                  "id": "layer-1",
+                  "width": "fill-container",
+                  "height": "fit-content",
+                  "layout": "vertical",
+                  "gap": 8,
+                  "padding": 20,
+                  "fillColor": "#F0F4FC",
+                  "borderColor": "#5178C6",
+                  "borderWidth": 2,
+                  "borderRadius": 8,
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "l1-desc",
+                      "width": "fill-container",
+                      "height": "fit-content",
+                      "text": "インプットレイヤー — 市場フィードバックの入口",
+                      "fontSize": 13,
+                      "textColor": "#5178C6",
+                      "textAlign": "center"
+                    },
+                    {
+                      "type": "frame",
+                      "id": "l1-nodes",
+                      "width": "fill-container",
+                      "height": "fit-content",
+                      "layout": "horizontal",
+                      "gap": 12,
+                      "padding": 0,
+                      "children": [
+                        { "type": "rect", "id": "n-x", "width": "fill-container", "height": "fit-content", "text": "X（旧Twitter）\nSNS発信・反応収集", "fillColor": "#FFFFFF", "borderColor": "#5178C6", "borderWidth": 2, "borderRadius": 8, "fontSize": 13, "textAlign": "center", "verticalAlign": "middle", "padding": 12 },
+                        { "type": "rect", "id": "n-yt", "width": "fill-container", "height": "fit-content", "text": "YouTube\n動画コンテンツ配信", "fillColor": "#FFFFFF", "borderColor": "#5178C6", "borderWidth": 2, "borderRadius": 8, "fontSize": 13, "textAlign": "center", "verticalAlign": "middle", "padding": 12 },
+                        { "type": "rect", "id": "n-course", "width": "fill-container", "height": "fit-content", "text": "コース・プロダクト\nアウトプット配信", "fillColor": "#FFFFFF", "borderColor": "#5178C6", "borderWidth": 2, "borderRadius": 8, "fontSize": 13, "textAlign": "center", "verticalAlign": "middle", "padding": 12 },
+                        { "type": "rect", "id": "n-mkt", "width": "fill-container", "height": "fit-content", "text": "市場フィードバック\n需要・反応・競合情報", "fillColor": "#FFFFFF", "borderColor": "#5178C6", "borderWidth": 2, "borderRadius": 8, "fontSize": 13, "textAlign": "center", "verticalAlign": "middle", "padding": 12 }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "row-layer-2",
+              "width": "fill-container",
+              "height": "fit-content",
+              "layout": "horizontal",
+              "gap": 16,
+              "padding": 0,
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "text",
+                  "id": "label-2",
+                  "width": 100,
+                  "height": "fit-content",
+                  "text": "プランニング\nOS層",
+                  "fontSize": 16,
+                  "textColor": "#1F2329",
+                  "textAlign": "right"
+                },
+                {
+                  "type": "frame",
+                  "id": "layer-2",
+                  "width": "fill-container",
+                  "height": "fit-content",
+                  "layout": "vertical",
+                  "gap": 8,
+                  "padding": 20,
+                  "fillColor": "#EAE2FE",
+                  "borderColor": "#8569CB",
+                  "borderWidth": 2,
+                  "borderRadius": 8,
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "l2-desc",
+                      "width": "fill-container",
+                      "height": "fit-content",
+                      "text": "Addness（三上くん開発）— ゴール管理OS。エージェントはここと対話してゴールを管理する。",
+                      "fontSize": 13,
+                      "textColor": "#8569CB",
+                      "textAlign": "center"
+                    },
+                    {
+                      "type": "frame",
+                      "id": "l2-nodes",
+                      "width": "fill-container",
+                      "height": "fit-content",
+                      "layout": "horizontal",
+                      "gap": 12,
+                      "padding": 0,
+                      "children": [
+                        { "type": "rect", "id": "n-goal", "width": "fill-container", "height": "fit-content", "text": "ゴールツリー\n階層型目標管理", "fillColor": "#FFFFFF", "borderColor": "#8569CB", "borderWidth": 2, "borderRadius": 8, "fontSize": 13, "textAlign": "center", "verticalAlign": "middle", "padding": 12 },
+                        { "type": "rect", "id": "n-addness-cli", "width": "fill-container", "height": "fit-content", "text": "addness-cli\nAIエージェント書き込みI/F", "fillColor": "#FFFFFF", "borderColor": "#8569CB", "borderWidth": 2, "borderRadius": 8, "fontSize": 13, "textAlign": "center", "verticalAlign": "middle", "padding": 12 },
+                        { "type": "rect", "id": "n-hook", "width": "fill-container", "height": "fit-content", "text": "Claude Code Hook\nセッション開始/終了に自動連動", "fillColor": "#FFFFFF", "borderColor": "#8569CB", "borderWidth": 2, "borderRadius": 8, "fontSize": 13, "textAlign": "center", "verticalAlign": "middle", "padding": 12 },
+                        { "type": "rect", "id": "n-addness-ui", "width": "fill-container", "height": "fit-content", "text": "フロントエンドUI\nゴール可視化・振り返り", "fillColor": "#FFFFFF", "borderColor": "#8569CB", "borderWidth": 2, "borderRadius": 8, "fontSize": 13, "textAlign": "center", "verticalAlign": "middle", "padding": 12 }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "row-layer-3",
+              "width": "fill-container",
+              "height": "fit-content",
+              "layout": "horizontal",
+              "gap": 16,
+              "padding": 0,
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "text",
+                  "id": "label-3",
+                  "width": 100,
+                  "height": "fit-content",
+                  "text": "インテリ\nジェンス層",
+                  "fontSize": 16,
+                  "textColor": "#1F2329",
+                  "textAlign": "right"
+                },
+                {
+                  "type": "frame",
+                  "id": "layer-3",
+                  "width": "fill-container",
+                  "height": "fit-content",
+                  "layout": "vertical",
+                  "gap": 8,
+                  "padding": 20,
+                  "fillColor": "#DFF5E5",
+                  "borderColor": "#509863",
+                  "borderWidth": 2,
+                  "borderRadius": 8,
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "l3-desc",
+                      "width": "fill-container",
+                      "height": "fit-content",
+                      "text": "エージェントの神経系・思考層 — Claude Code / OpenClaw が担当",
+                      "fontSize": 13,
+                      "textColor": "#509863",
+                      "textAlign": "center"
+                    },
+                    {
+                      "type": "frame",
+                      "id": "l3-nodes",
+                      "width": "fill-container",
+                      "height": "fit-content",
+                      "layout": "horizontal",
+                      "gap": 12,
+                      "padding": 0,
+                      "children": [
+                        { "type": "rect", "id": "n-claude", "width": "fill-container", "height": "fit-content", "text": "Claude Code\n思考・コード生成・判断", "fillColor": "#FFFFFF", "borderColor": "#509863", "borderWidth": 2, "borderRadius": 8, "fontSize": 13, "textAlign": "center", "verticalAlign": "middle", "padding": 12 },
+                        { "type": "rect", "id": "n-openclaw", "width": "fill-container", "height": "fit-content", "text": "OpenClaw\nゲートウェイループ・マルチエージェント", "fillColor": "#FFFFFF", "borderColor": "#509863", "borderWidth": 2, "borderRadius": 8, "fontSize": 13, "textAlign": "center", "verticalAlign": "middle", "padding": 12 },
+                        { "type": "rect", "id": "n-skills", "width": "fill-container", "height": "fit-content", "text": "LARCスキル群\n24種のClaude Codeスキル", "fillColor": "#FFFFFF", "borderColor": "#509863", "borderWidth": 2, "borderRadius": 8, "fontSize": 13, "textAlign": "center", "verticalAlign": "middle", "padding": 12 }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "row-layer-4",
+              "width": "fill-container",
+              "height": "fit-content",
+              "layout": "horizontal",
+              "gap": 16,
+              "padding": 0,
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "text",
+                  "id": "label-4",
+                  "width": 100,
+                  "height": "fit-content",
+                  "text": "エグゼ\nキューション層",
+                  "fontSize": 16,
+                  "textColor": "#1F2329",
+                  "textAlign": "right"
+                },
+                {
+                  "type": "frame",
+                  "id": "layer-4",
+                  "width": "fill-container",
+                  "height": "fit-content",
+                  "layout": "vertical",
+                  "gap": 8,
+                  "padding": 20,
+                  "fillColor": "#FEF1CE",
+                  "borderColor": "#D4B45B",
+                  "borderWidth": 2,
+                  "borderRadius": 8,
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "l4-desc",
+                      "width": "fill-container",
+                      "height": "fit-content",
+                      "text": "LARC（Lark Agent Runtime CLI）— ローカル不要、クラウド完結で実行",
+                      "fontSize": 13,
+                      "textColor": "#D4B45B",
+                      "textAlign": "center"
+                    },
+                    {
+                      "type": "frame",
+                      "id": "l4-nodes",
+                      "width": "fill-container",
+                      "height": "fit-content",
+                      "layout": "horizontal",
+                      "gap": 12,
+                      "padding": 0,
+                      "children": [
+                        { "type": "rect", "id": "n-drive", "width": "fill-container", "height": "fit-content", "text": "Lark Drive\nSOUL/USER/MEMORY/HEARTBEAT", "fillColor": "#FFFFFF", "borderColor": "#D4B45B", "borderWidth": 2, "borderRadius": 8, "fontSize": 13, "textAlign": "center", "verticalAlign": "middle", "padding": 12 },
+                        { "type": "rect", "id": "n-wiki", "width": "fill-container", "height": "fit-content", "text": "Lark Wiki\nナレッジグラフ・記事生成", "fillColor": "#FFFFFF", "borderColor": "#D4B45B", "borderWidth": 2, "borderRadius": 8, "fontSize": 13, "textAlign": "center", "verticalAlign": "middle", "padding": 12 },
+                        { "type": "rect", "id": "n-base", "width": "fill-container", "height": "fit-content", "text": "Lark Base\n構造化データ・オートメーション", "fillColor": "#FFFFFF", "borderColor": "#D4B45B", "borderWidth": 2, "borderRadius": 8, "fontSize": 13, "textAlign": "center", "verticalAlign": "middle", "padding": 12 },
+                        { "type": "rect", "id": "n-im", "width": "fill-container", "height": "fit-content", "text": "Lark IM\nデリバリー・通知配信", "fillColor": "#FFFFFF", "borderColor": "#D4B45B", "borderWidth": 2, "borderRadius": 8, "fontSize": 13, "textAlign": "center", "verticalAlign": "middle", "padding": 12 }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "row-layer-5",
+              "width": "fill-container",
+              "height": "fit-content",
+              "layout": "horizontal",
+              "gap": 16,
+              "padding": 0,
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "text",
+                  "id": "label-5",
+                  "width": 100,
+                  "height": "fit-content",
+                  "text": "FB\nループ層",
+                  "fontSize": 16,
+                  "textColor": "#1F2329",
+                  "textAlign": "right"
+                },
+                {
+                  "type": "frame",
+                  "id": "layer-5",
+                  "width": "fill-container",
+                  "height": "fit-content",
+                  "layout": "vertical",
+                  "gap": 8,
+                  "padding": 20,
+                  "fillColor": "#FEE3E2",
+                  "borderColor": "#D25D5A",
+                  "borderWidth": 2,
+                  "borderRadius": 8,
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "l5-desc",
+                      "width": "fill-container",
+                      "height": "fit-content",
+                      "text": "フィードバックループ — GitHub × Lark で回し、Addnessで閉じる",
+                      "fontSize": 13,
+                      "textColor": "#D25D5A",
+                      "textAlign": "center"
+                    },
+                    {
+                      "type": "frame",
+                      "id": "l5-nodes",
+                      "width": "fill-container",
+                      "height": "fit-content",
+                      "layout": "horizontal",
+                      "gap": 12,
+                      "padding": 0,
+                      "children": [
+                        { "type": "rect", "id": "n-github", "width": "fill-container", "height": "fit-content", "text": "GitHub\nコード管理・PR・レビュー", "fillColor": "#FFFFFF", "borderColor": "#D25D5A", "borderWidth": 2, "borderRadius": 8, "fontSize": 13, "textAlign": "center", "verticalAlign": "middle", "padding": 12 },
+                        { "type": "rect", "id": "n-addness-loop", "width": "fill-container", "height": "fit-content", "text": "Addness work done\nゴール完了・進捗記録", "fillColor": "#FFFFFF", "borderColor": "#D25D5A", "borderWidth": 2, "borderRadius": 8, "fontSize": 13, "textAlign": "center", "verticalAlign": "middle", "padding": 12 },
+                        { "type": "rect", "id": "n-metrics", "width": "fill-container", "height": "fit-content", "text": "メトリクストラッキング\n成果→次のゴール自動生成", "fillColor": "#FFFFFF", "borderColor": "#D25D5A", "borderWidth": 2, "borderRadius": 8, "fontSize": 13, "textAlign": "center", "verticalAlign": "middle", "padding": 12 }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "connector",
+      "connector": {
+        "from": "layer-1",
+        "to": "layer-2",
+        "fromAnchor": "bottom",
+        "toAnchor": "top",
+        "lineShape": "rightAngle",
+        "lineWidth": 2,
+        "lineColor": "#BBBFC4",
+        "endArrow": "arrow"
+      }
+    },
+    {
+      "type": "connector",
+      "connector": {
+        "from": "layer-2",
+        "to": "layer-3",
+        "fromAnchor": "bottom",
+        "toAnchor": "top",
+        "lineShape": "rightAngle",
+        "lineWidth": 2,
+        "lineColor": "#BBBFC4",
+        "endArrow": "arrow"
+      }
+    },
+    {
+      "type": "connector",
+      "connector": {
+        "from": "layer-3",
+        "to": "layer-4",
+        "fromAnchor": "bottom",
+        "toAnchor": "top",
+        "lineShape": "rightAngle",
+        "lineWidth": 2,
+        "lineColor": "#BBBFC4",
+        "endArrow": "arrow"
+      }
+    },
+    {
+      "type": "connector",
+      "connector": {
+        "from": "layer-4",
+        "to": "layer-5",
+        "fromAnchor": "bottom",
+        "toAnchor": "top",
+        "lineShape": "rightAngle",
+        "lineWidth": 2,
+        "lineColor": "#BBBFC4",
+        "endArrow": "arrow"
+      }
+    },
+    {
+      "type": "connector",
+      "connector": {
+        "from": "layer-5",
+        "to": "layer-2",
+        "fromAnchor": "left",
+        "toAnchor": "left",
+        "lineShape": "rightAngle",
+        "lineWidth": 2,
+        "lineColor": "#D25D5A",
+        "lineStyle": "dashed",
+        "endArrow": "arrow",
+        "label": "ループ"
+      }
+    }
+  ]
+}

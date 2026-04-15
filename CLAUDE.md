@@ -117,9 +117,9 @@ Skills: `lark-base` · `lark-calendar` · `lark-doc` · `lark-drive` · `lark-ev
 - [x] Phase 1B: Drive workspace setup + Base table provisioning
 - [x] Phase 1C: Permission scope map + `larc auth suggest/check/login`
 - [x] Phase 2A: 24 Claude Code skills (all translated to English)
-- [ ] **Phase 0 (retroactive)**: Fix lark-cli command alignment in `lib/*.sh`
-- [ ] Phase 2B: Multi-agent YAML batch registration
-- [ ] Phase 2C: `larc agent register` from YAML
+- [x] **Phase 0 (retroactive)**: Fix lark-cli command alignment in `lib/*.sh`
+- [x] Phase 2B: Multi-agent YAML batch registration
+- [x] Phase 2C: `larc agent register` from YAML
 - [ ] Phase 3: MergeGate integration (`lib/mergegate.sh`)
 - [ ] Phase 4: Knowledge graph via Lark Wiki `@mention` / `[[link]]`
 

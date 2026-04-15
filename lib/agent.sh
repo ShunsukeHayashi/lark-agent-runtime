@@ -20,13 +20,144 @@ cmd_agent() {
   esac
 }
 
+# ── Batch registration from YAML ─────────────────────────────────────────────
+# Intercept 'larc agent register --from <file>' before _agent_register sees it
+_agent_register() {
+  # Fast path: check for --from flag before normal parsing
+  local yaml_file="" dry_run=false remaining_args=()
+  local args=("$@")
+  local i=0
+  while [[ $i -lt ${#args[@]} ]]; do
+    case "${args[$i]}" in
+      --from)
+        i=$((i+1))
+        yaml_file="${args[$i]:-}"
+        ;;
+      --dry-run)
+        dry_run=true
+        ;;
+      *)
+        remaining_args+=("${args[$i]}")
+        ;;
+    esac
+    i=$((i+1))
+  done
+
+  if [[ -n "$yaml_file" ]]; then
+    [[ ! -f "$yaml_file" ]] && { log_error "File not found: $yaml_file"; return 1; }
+    _agent_register_from_yaml "$yaml_file" "$dry_run"
+    return $?
+  fi
+  # Normal single-agent registration
+  _agent_register_one "${remaining_args[@]+"${remaining_args[@]}"}"
+}
+_agent_register_from_yaml() {
+  local yaml_file="$1"
+  local dry_run="${2:-false}"
+  log_head "Batch agent registration from $yaml_file${dry_run:+ (dry-run)}"
+
+  local agents_json
+  agents_json=$(python3 - "$yaml_file" <<'PY'
+import sys, json
+try:
+    import yaml
+    with open(sys.argv[1]) as f:
+        data = yaml.safe_load(f) or {}
+except ImportError:
+    import re, sys as _sys
+    print("[register] pyyaml not found; using regex fallback", file=_sys.stderr)
+    with open(sys.argv[1]) as f:
+        raw = f.read()
+    # Minimal YAML parse: extract id/name/model/workspace/chat_id/scopes blocks
+    blocks = re.split(r'\n(?=\s*- id:)', raw)
+    agents = []
+    for block in blocks:
+        id_m = re.search(r'id:\s*(\S+)', block)
+        name_m = re.search(r'name:\s*"?([^"\n]+)"?', block)
+        if id_m and name_m:
+            model_m = re.search(r'model:\s*(\S+)', block)
+            ws_m = re.search(r'workspace:\s*(\S+)', block)
+            chat_m = re.search(r'chat_id:\s*(\S+)', block)
+            scopes = re.findall(r'-\s+([\w:]+)', block)
+            agents.append({
+                "id": id_m.group(1), "name": name_m.group(1).strip(),
+                "model": model_m.group(1) if model_m else "claude-sonnet-4-6",
+                "workspace": ws_m.group(1) if ws_m else "",
+                "chat_id": chat_m.group(1) if chat_m else "",
+                "scopes": scopes,
+            })
+    data = {"agents": agents}
+
+agents = data.get("agents") or []
+print(json.dumps(agents, ensure_ascii=False))
+PY
+)
+
+  # Emit all agents as one delimited block (one python call total)
+  # Use ASCII unit separator \x01 (non-whitespace) so empty fields are not collapsed by bash read
+  local all_fields_tsv
+  all_fields_tsv=$(echo "$agents_json" | python3 -c "
+import json, sys
+SEP = '\x01'
+agents = json.load(sys.stdin)
+for d in agents:
+    print(SEP.join([
+        d.get('id',''),
+        d.get('name',''),
+        d.get('model','claude-sonnet-4-6'),
+        d.get('workspace',''),
+        d.get('chat_id',''),
+        ','.join(d.get('scopes',[])),
+    ]))
+")
+  local total ok_count fail_count
+  total=$(echo "$all_fields_tsv" | grep -c .)
+  ok_count=0; fail_count=0
+  local idx=0
+
+  local _orig_ifs="$IFS"
+  while IFS=$'\x01' read -r aid aname amodel aworkspace achat ascopes; do
+    idx=$((idx+1))
+
+    [[ -z "$aid" || -z "$aname" ]] && { log_warn "Skipping entry $idx: missing id or name"; fail_count=$((fail_count+1)); continue; }
+
+    if [[ "$dry_run" == "true" ]]; then
+      log_info "[$idx/$total] dry-run: would register $aid ($aname) model=$amodel"
+      [[ -n "$aworkspace" ]] && log_info "          workspace=$aworkspace"
+      [[ -n "$achat" ]]      && log_info "          chat_id=$achat"
+      [[ -n "$ascopes" ]]    && log_info "          scopes=$ascopes"
+      ok_count=$((ok_count+1))
+      continue
+    fi
+
+    log_info "[$idx/$total] Registering: $aid ($aname)"
+    local reg_args=(--id "$aid" --name "$aname" --model "$amodel")
+    [[ -n "$aworkspace" ]] && reg_args+=(--workspace "$aworkspace")
+    [[ -n "$achat" ]]      && reg_args+=(--chat "$achat")
+    [[ -n "$ascopes" ]]    && reg_args+=(--scopes "$ascopes")
+
+    if _agent_register_one "${reg_args[@]}" 2>&1; then
+      ok_count=$((ok_count+1))
+    else
+      log_warn "Registration failed for $aid"
+      fail_count=$((fail_count+1))
+    fi
+  done <<< "$all_fields_tsv"
+  IFS="$_orig_ifs"
+
+  echo ""
+  log_ok "Batch complete: $ok_count/$total registered, $fail_count failed"
+}
+
 _agent_help() {
   cat <<EOF
 
 Usage: larc agent <list|register|show|remove>
 
   larc agent list
-  larc agent register --id finance-bot --name "Finance Agent" [--model claude-sonnet-4-6] [--workspace "Finance ops"] [--chat oc_xxx]
+  larc agent register --id <id> --name <name> [--model M] [--workspace W] [--chat oc_xxx] [--scopes s1,s2]
+  larc agent register --from <agents.yaml>           Batch register from YAML file
+  larc agent register --from <agents.yaml> --dry-run Preview without registering
   larc agent show <agent_id>
   larc agent remove <agent_id>
 
@@ -92,7 +223,7 @@ _agent_list_local() {
   fi
 }
 
-_agent_register() {
+_agent_register_one() {
   log_head "Register agent"
 
   local agent_id="" name="" model="" workspace="" chat_id="" scopes=""
@@ -144,17 +275,19 @@ _agent_register() {
     table_id=$(_get_or_create_agents_table)
 
     local record_json
-    record_json=$(printf '{
-      "agent_id": "%s",
-      "name": "%s",
-      "model": "%s",
-      "workspace": "%s",
-      "chat_id": "%s",
-      "drive_folder": "%s",
-      "scopes": "%s",
-      "status": "active",
-      "registered_at": "%s"
-    }' "$agent_id" "$name" "$model" "$workspace" "$chat_id" "$folder_token" "$scopes" "$(date -u +%Y-%m-%dT%H:%M:%SZ)")
+    record_json=$(python3 -c "
+import json, sys
+print(json.dumps({
+    'agent_id':      sys.argv[1],
+    'name':          sys.argv[2],
+    'model':         sys.argv[3],
+    'workspace':     sys.argv[4],
+    'chat_id':       sys.argv[5],
+    'drive_folder':  sys.argv[6],
+    'scopes':        sys.argv[7],
+    'status':        'active',
+    'registered_at': sys.argv[8],
+}))" "$agent_id" "$name" "$model" "$workspace" "$chat_id" "$folder_token" "$scopes" "$(date -u +%Y-%m-%dT%H:%M:%SZ)")
 
     # Find existing record_id for this agent_id
     local existing_record_id

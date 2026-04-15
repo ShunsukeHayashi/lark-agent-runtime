@@ -465,6 +465,29 @@ tools:
         required: false
         description: "Token for pagination."
 
+  # ===== OCR Tools =====
+  - name: ocr_image
+    kind: lark-api-call
+    source: lark_api_source
+    description: "Extract text from an image using Lark OCR API. Returns text_list array. Use for receipts, invoices, handwritten notes, or any image containing text. Requires base64-encoded image."
+    endpoint: "POST /open-apis/optical_char_recognition/v1/image/basic_recognize"
+    parameters:
+      - name: "image"
+        type: "string"
+        required: true
+        description: "Base64-encoded image data (JPEG/PNG). Max size: 4MB."
+
+  - name: download_image_from_message
+    kind: lark-api-call
+    source: lark_api_source
+    description: "Download an image sent to Lark IM bot by image_key. Returns binary image data for OCR processing."
+    endpoint: "GET /open-apis/im/v1/images/{image_key}"
+    parameters:
+      - name: "image_key"
+        type: "string"
+        required: true
+        description: "image_key extracted from the Lark message content (msg_type=image)."
+
   # ===== Approval Tools =====
   - name: create_approval_instance
     kind: lark-api-call
@@ -517,6 +540,8 @@ tools:
 toolsets:
   # Complete business assistant with all capabilities
   lark_business_assistant:
+    - ocr_image
+    - download_image_from_message
     - create_calendar_event
     - update_calendar_event
     - delete_calendar_event
