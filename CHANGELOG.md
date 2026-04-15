@@ -6,6 +6,22 @@ The format is intentionally lightweight while the project is still in incubation
 
 ---
 
+## 2026-04-15 (unreleased)
+
+### Improved error surfacing for lark-cli failures
+
+Previously, `lark-cli` errors (typically `keychain Get failed: keychain access blocked` when running over SSH or from a sandboxed session) were swallowed by `2>/dev/null`, causing two misleading UX outcomes:
+
+- `larc status` displayed `Base: unreachable` and `User: null` with no reason
+- `larc ingress context` / agent registration printed a generic `Table creation failed`
+
+Now both paths capture the structured `error.message` and `error.hint` from `lark-cli` and surface them to the user. `larc status` additionally falls back to the cached `LARC_LARK_USER_NAME` from `config.env` when the live check fails, marking it as cached.
+
+- Fixes #6 (bug: larc status masks keychain errors as "unreachable")
+- Fixes #7 (bug: ingress context misreports keychain failure as "Table creation failed")
+
+---
+
 ## 2026-04-15
 
 ### OpenClaw-first positioning clarified

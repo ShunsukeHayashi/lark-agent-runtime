@@ -857,9 +857,19 @@ cmd_status() {
 
   # lark-cli connection check
   echo -e "${BOLD}Lark connection:${RESET}"
-  local identity
-  identity=$(lark-cli auth status 2>&1 | jq -r '.userName' 2>/dev/null || echo "not connected")
-  echo -e "  User: $identity"
+  local auth_json identity auth_err_msg
+  auth_json=$(lark-cli auth status 2>&1 || true)
+  identity=$(echo "$auth_json" | jq -r '.userName // empty' 2>/dev/null)
+  auth_err_msg=$(echo "$auth_json"  | jq -r '.error.message // empty' 2>/dev/null)
+  if [[ -n "$identity" && "$identity" != "null" ]]; then
+    echo -e "  User: $identity"
+  elif [[ -n "${LARC_LARK_USER_NAME:-}" ]]; then
+    echo -e "  User: ${LARC_LARK_USER_NAME} ${YELLOW}(cached; live check unavailable)${RESET}"
+    [[ -n "$auth_err_msg" ]] && echo -e "        ${YELLOW}reason:${RESET} $auth_err_msg"
+  else
+    echo -e "  User: ${YELLOW}not connected${RESET}"
+    [[ -n "$auth_err_msg" ]] && echo -e "        ${YELLOW}reason:${RESET} $auth_err_msg"
+  fi
 
   # Drive folder check
   if [[ -n "$LARC_DRIVE_FOLDER_TOKEN" ]]; then
@@ -869,12 +879,17 @@ cmd_status() {
   fi
 
   if [[ -n "${LARC_BASE_APP_TOKEN:-}" ]]; then
-    local base_ok
-    base_ok=$(lark-cli base +table-list --base-token "$LARC_BASE_APP_TOKEN" --jq '.ok' 2>/dev/null || echo "false")
+    local base_json base_ok base_err_msg base_err_hint
+    base_json=$(lark-cli base +table-list --base-token "$LARC_BASE_APP_TOKEN" 2>&1 || true)
+    base_ok=$(echo "$base_json"       | jq -r '.ok // false'            2>/dev/null)
+    base_err_msg=$(echo "$base_json"  | jq -r '.error.message // empty' 2>/dev/null)
+    base_err_hint=$(echo "$base_json" | jq -r '.error.hint // empty'    2>/dev/null)
     if [[ "$base_ok" == "true" ]]; then
       echo -e "  Base:         ${GREEN}connected${RESET} ($LARC_BASE_APP_TOKEN)"
     else
       echo -e "  Base:         ${YELLOW}unreachable${RESET} ($LARC_BASE_APP_TOKEN)"
+      [[ -n "$base_err_msg"  ]] && echo -e "                ${YELLOW}reason:${RESET} $base_err_msg"
+      [[ -n "$base_err_hint" ]] && echo -e "                ${YELLOW}hint:${RESET}   $base_err_hint"
     fi
   else
     echo -e "  Base:         ${RED}not set${RESET}"
