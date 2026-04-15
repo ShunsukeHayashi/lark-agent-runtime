@@ -57,7 +57,12 @@ _im_poller_loop() {
   local allow_from="${LARC_ALLOW_FROM:-}"
   local seen_file="$DAEMON_SEEN_DIR/seen-${agent_id}.txt"
 
-  log_head "LARC IM poller starting (agent=$agent_id, interval=${interval}s)"
+  # Get bot's own open_id once at startup to filter outbound echo messages
+  local bot_open_id=""
+  bot_open_id=$(lark-cli api GET /open-apis/bot/v3/info --as bot 2>/dev/null \
+    | python3 -c "import json,sys; print(json.load(sys.stdin).get('bot',{}).get('open_id',''))" 2>/dev/null || echo "")
+
+  log_head "LARC IM poller starting (agent=$agent_id, interval=${interval}s, bot=$bot_open_id)"
 
   touch "$seen_file"
 
@@ -83,11 +88,12 @@ _im_poller_loop() {
     python3 <<PY || true
 import json, sys, subprocess, os
 
-seen_file  = "$seen_file"
-agent_id   = "$agent_id"
+seen_file      = "$seen_file"
+agent_id       = "$agent_id"
 allow_from_raw = "$allow_from"
-msgs_file  = "$tmp_msgs"
-allow_set  = set(x.strip() for x in allow_from_raw.split(",") if x.strip())
+bot_open_id    = "$bot_open_id"
+msgs_file      = "$tmp_msgs"
+allow_set      = set(x.strip() for x in allow_from_raw.split(",") if x.strip())
 
 try:
     try:
@@ -111,9 +117,19 @@ try:
         msg_id  = msg.get("message_id", "")
         sender  = msg.get("sender", {}).get("id", "") or \
                   msg.get("sender", {}).get("sender_id", {}).get("open_id", "")
+        sender_type = msg.get("sender", {}).get("sender_type", "") or \
+                      msg.get("sender", {}).get("type", "")
         deleted = msg.get("deleted", False)
 
         if not msg_id or msg_id in seen or deleted:
+            continue
+
+        # Skip the bot's own outbound messages to prevent echo loop
+        if bot_open_id and sender == bot_open_id:
+            new_ids.append(msg_id)
+            continue
+        if sender_type in ("app", "bot"):
+            new_ids.append(msg_id)
             continue
 
         if allow_set and sender not in allow_set:
@@ -247,15 +263,15 @@ cmd_daemon() {
       echo "────────────────────────────────────"
 
       if _daemon_is_running "$IM_PID_FILE"; then
-        echo -e "  IM poller:  ${_GREEN}running${_RESET} (PID $(cat "$IM_PID_FILE"))"
+        echo -e "  IM poller:  ${_LARC_LOG_GREEN}running${_LARC_LOG_RESET} (PID $(cat "$IM_PID_FILE"))"
       else
-        echo -e "  IM poller:  ${_RED}stopped${_RESET}"
+        echo -e "  IM poller:  ${_LARC_LOG_RED}stopped${_LARC_LOG_RESET}"
       fi
 
       if _daemon_is_running "$WORKER_PID_FILE"; then
-        echo -e "  Worker:     ${_GREEN}running${_RESET} (PID $(cat "$WORKER_PID_FILE"))"
+        echo -e "  Worker:     ${_LARC_LOG_GREEN}running${_LARC_LOG_RESET} (PID $(cat "$WORKER_PID_FILE"))"
       else
-        echo -e "  Worker:     ${_RED}stopped${_RESET}"
+        echo -e "  Worker:     ${_LARC_LOG_RED}stopped${_LARC_LOG_RESET}"
       fi
 
       # Show queue stats

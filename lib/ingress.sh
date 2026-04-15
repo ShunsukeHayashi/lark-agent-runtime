@@ -437,6 +437,21 @@ _ingress_openclaw() {
     fi
   fi
 
+  if [[ "$execute" == "true" ]]; then
+    local current_status
+    current_status=$(python3 - "$queue_json" <<'PY'
+import json, sys
+d = json.loads(sys.argv[1])
+print(d.get("status", ""))
+PY
+)
+    case "$current_status" in
+      pending|pending_preview|delegated)
+        queue_json=$(_ingress_prepare_claimed_queue_item "$queue_json" "$agent_id")
+        ;;
+    esac
+  fi
+
   local payload_json
   payload_json=$(_ingress_build_openclaw_payload "$queue_json" "$days" "$local_mode")
 
@@ -543,8 +558,10 @@ PY
     return 0
   fi
 
-  local claimed_json
-  claimed_json=$(_ingress_claim_queue_item "$queue_json" "$agent_id")
+  local claimed_json="$queue_json"
+  if [[ "$dry_run" != "true" ]]; then
+    claimed_json=$(_ingress_prepare_claimed_queue_item "$queue_json" "$agent_id")
+  fi
 
   if [[ "$dry_run" == "true" ]]; then
     log_info "Dry-run: next actionable item for $agent_id"
@@ -559,28 +576,6 @@ d = json.loads(sys.argv[1])
 print(d.get("queue_id", ""))
 PY
 )
-  # Ensure item exists in local JSONL (may have come from Base only)
-  local existing_local
-  existing_local=$(_ingress_get_local_queue_item "$queue_id")
-  if [[ -z "$existing_local" ]]; then
-    # Write to local so execute-stub / done / fail can find it
-    local raw_agent_id
-    raw_agent_id=$(python3 - "$claimed_json" <<'PY'
-import json, sys
-d = json.loads(sys.argv[1])
-print(d.get("agent_id") or "main")
-PY
-)
-    _ingress_write_local "$raw_agent_id" "$claimed_json"
-  else
-    _ingress_replace_local_queue_item "$queue_id" "$claimed_json"
-  fi
-
-  if [[ -n "$LARC_BASE_APP_TOKEN" ]]; then
-    _ingress_write_base "$claimed_json"
-    _ingress_write_audit_log "$claimed_json" "in_progress"
-  fi
-
   log_ok "Claimed queue item $queue_id for $agent_id"
   _ingress_render_bundle "run-once" "$claimed_json" "$days"
 }
@@ -2087,6 +2082,40 @@ print(json.dumps(d, ensure_ascii=False))
 PY
 }
 
+_ingress_prepare_claimed_queue_item() {
+  local queue_json="$1"
+  local worker_agent_id="$2"
+  local claimed_json queue_id existing_local raw_agent_id
+
+  claimed_json=$(_ingress_claim_queue_item "$queue_json" "$worker_agent_id")
+  queue_id=$(python3 - "$claimed_json" <<'PY'
+import json, sys
+d = json.loads(sys.argv[1])
+print(d.get("queue_id", ""))
+PY
+)
+
+  existing_local=$(_ingress_get_local_queue_item "$queue_id")
+  if [[ -z "$existing_local" ]]; then
+    raw_agent_id=$(python3 - "$claimed_json" <<'PY'
+import json, sys
+d = json.loads(sys.argv[1])
+print(d.get("agent_id") or "main")
+PY
+)
+    _ingress_write_local "$raw_agent_id" "$claimed_json"
+  else
+    _ingress_replace_local_queue_item "$queue_id" "$claimed_json"
+  fi
+
+  if [[ -n "${LARC_BASE_APP_TOKEN:-}" ]]; then
+    _ingress_write_base "$claimed_json"
+    _ingress_write_audit_log "$claimed_json" "in_progress"
+  fi
+
+  printf '%s\n' "$claimed_json"
+}
+
 _ingress_select_best_agent() {
   local queue_json="$1"
   python3 - "$queue_json" "$SCRIPT_DIR/agents.yaml" <<'PY'
@@ -2314,9 +2343,14 @@ if normalized_fields:
 prompt_lines.extend([
     "",
     "Execution rules:",
-    "- Prefer official openclaw-lark tools for Feishu/Lark operations.",
+    "- Use LARC commands for all Lark/Feishu operations (larc send, larc task, larc memory, etc.).",
+    "  Do NOT rely on openclaw-lark plugin tools — use larc CLI directly instead.",
     "- Use LARC commands for permission, gate, queue, and lifecycle updates.",
     "- Do not bypass approval requirements.",
+    "",
+    "Mandatory reply step (always run after completing the task):",
+    f'  larc ingress done --queue-id {queue_id} --note "<one-line summary>"',
+    f'  larc send "<human-readable reply to the user>"',
     "",
     "Recommended operator flow:",
     *operator_steps,
