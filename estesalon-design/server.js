@@ -146,20 +146,31 @@ function msToDateStr(ms) {
   return new Date(ms).toLocaleDateString('ja-JP', { year: 'numeric', month: '2-digit', day: '2-digit' });
 }
 
+// YYYY/MM/DD string from a Date object (used for Lark date comparison)
+function toYMD(d) {
+  return `${d.getFullYear()}/${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')}`;
+}
+
+// YYYY-MM string from a Date object
+function toYM(d) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+}
+
+// Extract the first value from Lark's array-or-scalar field format
+function firstVal(field) {
+  return Array.isArray(field) ? field[0] : field || '';
+}
+
 function isSameDay(ms, dateStr) {
   if (!ms) return false;
-  const d = new Date(ms);
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  const normalized = `${y}/${m}/${day}`;
+  const normalized = toYMD(new Date(ms));
+  const [y, m, day] = normalized.split('/');
   return dateStr.replace(/-/g, '/') === normalized || dateStr === `${y}-${m}-${day}`;
 }
 
 function isSameMonth(ms, yyyyMM) {
   if (!ms) return false;
-  const d = new Date(ms);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}` === yyyyMM;
+  return toYM(new Date(ms)) === yyyyMM;
 }
 
 function getLarkConfig(env = process.env) {
@@ -233,20 +244,21 @@ async function larkApi(method, apiPath, { data, fetchImpl = global.fetch, env = 
 }
 
 async function getRecords(tableId, pageSize = 100, deps = {}) {
-  const data = await larkApi(
-    'GET',
-    `/open-apis/bitable/v1/apps/${BASE_TOKEN}/tables/${tableId}/records?page_size=${pageSize}`,
-    deps
-  );
-
-  return data.items?.map((record) => ({ _id: record.record_id, ...record.fields })) ?? [];
+  const allItems = [];
+  let pageToken = '';
+  do {
+    const url = `/open-apis/bitable/v1/apps/${BASE_TOKEN}/tables/${tableId}/records?page_size=${pageSize}${pageToken ? `&page_token=${encodeURIComponent(pageToken)}` : ''}`;
+    const data = await larkApi('GET', url, deps);
+    (data.items ?? []).forEach((record) => allItems.push({ _id: record.record_id, ...record.fields }));
+    pageToken = data.has_more ? (data.page_token ?? '') : '';
+  } while (pageToken);
+  return allItems;
 }
 
 async function getReservations({ date }, deps = {}) {
   try {
     const now = new Date();
-    const targetDate =
-      date || `${now.getFullYear()}/${String(now.getMonth() + 1).padStart(2, '0')}/${String(now.getDate()).padStart(2, '0')}`;
+    const targetDate = date || toYMD(now);
 
     const records = await getRecords(TBL_BOOKING, 100, deps);
     const filtered = records.filter((record) => isSameDay(record['予約日時'], targetDate));
@@ -269,7 +281,7 @@ async function getReservations({ date }, deps = {}) {
             customer: record['お客様のお名前'] || '(名前不明)',
             menu: menuName,
             price: record['税込合計'] ? `¥${Number(record['税込合計']).toLocaleString()}` : '',
-            status: Array.isArray(record['ステータス']) ? record['ステータス'][0] : record['ステータス'] || '',
+            status: firstVal(record['ステータス']),
             note: record['カルテメモ'] || record['アレルギー・ご要望'] || ''
           };
         })
@@ -300,7 +312,7 @@ async function searchCustomer({ name }, deps = {}) {
       count: matched.length,
       customers: matched.map((record) => ({
         name: record['氏名'] || '',
-        rank: Array.isArray(record['顧客ランク']) ? record['顧客ランク'][0] : record['顧客ランク'] || '',
+        rank: firstVal(record['顧客ランク']),
         visits: record['来店回数'] || 0,
         total_amount: record['累計購入金額'] ? `¥${Number(record['累計購入金額']).toLocaleString()}` : '¥0',
         last_visit: msToDateStr(record['最終来店日']),
@@ -308,7 +320,7 @@ async function searchCustomer({ name }, deps = {}) {
         allergy: record['アレルギー・特記事項'] || '',
         memo: record['スタッフメモ'] || '',
         course: record['検討中コース'] || '',
-        status: Array.isArray(record['ステータス']) ? record['ステータス'][0] : record['ステータス'] || ''
+        status: firstVal(record['ステータス'])
       }))
     };
   } catch (error) {
@@ -354,12 +366,10 @@ async function getSalesReport({ period }, deps = {}) {
     let label = '';
 
     if (period === 'today') {
-      const today = `${now.getFullYear()}/${String(now.getMonth() + 1).padStart(2, '0')}/${String(now.getDate()).padStart(2, '0')}`;
-      target = records.filter((record) => isSameDay(record['予約日時'], today));
+      target = records.filter((record) => isSameDay(record['予約日時'], toYMD(now)));
       label = '本日';
     } else if (period === 'month') {
-      const yyyyMM = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-      target = records.filter((record) => isSameMonth(record['予約日時'], yyyyMM));
+      target = records.filter((record) => isSameMonth(record['予約日時'], toYM(now)));
       label = `${now.getMonth() + 1}月（${now.getFullYear()}年）`;
     } else if (period === 'week') {
       const weekAgoMs = now.getTime() - 7 * 24 * 60 * 60 * 1000;
@@ -399,7 +409,7 @@ async function getFollowupList({ days = 90 }, deps = {}) {
       })
       .map((record) => ({
         name: record['氏名'] || '',
-        rank: Array.isArray(record['顧客ランク']) ? record['顧客ランク'][0] : record['顧客ランク'] || '',
+        rank: firstVal(record['顧客ランク']),
         last_visit: msToDateStr(record['最終来店日']),
         days_ago: Math.floor((now - record['最終来店日']) / (24 * 60 * 60 * 1000))
       }))

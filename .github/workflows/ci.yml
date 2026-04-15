@@ -1,0 +1,22 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Verify shell syntax
+        run: bash -n bin/larc scripts/install.sh scripts/auth-suggest-check.sh
+
+      - name: Verify auth-suggest regression cases
+        run: bash scripts/auth-suggest-check.sh --verify

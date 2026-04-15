@@ -47,7 +47,7 @@ cases=(
   "1|expense report + approval|2|create expense report and request approval"
   "2|read doc + update wiki|3|read a document and update the wiki page"
   "3|create crm + follow-up|5|create crm record and send a follow-up message"
-  "4|update customer record|1|update the customer record after the meeting"
+  "4|update customer record|3|update the customer record after the meeting"
   "5|route expense + notify mgr|3|route expense to approval and notify the manager"
   "6|upload to drive + wiki|3|upload the contract file to drive and update the wiki with the key terms"
   "7|crm lead + schedule meeting|5|create a lead record and schedule a follow-up meeting"

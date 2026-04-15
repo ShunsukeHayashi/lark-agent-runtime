@@ -88,15 +88,16 @@ appropriate identity.
 | Scope | Why |
 |---|---|
 | `base:record:readonly` | Read before update to verify record exists |
+| `bitable:app` | App-level access is required to modify a Bitable app |
+| `bitable:record` | Record update permission is required for the write path |
 
-**Note:** This case intentionally produces fewer scopes than Case 3. No IM send,
-no explicit CRM create verb — `update_base_record` is the right task type.
-`bitable:record` may also be needed depending on the update method; currently
-reported as minimum.
+**Note:** This case intentionally produces fewer scopes than Case 3. No IM send
+and no CRM creation flow are involved, but an actual update still needs the
+Bitable write scopes in addition to the pre-read.
 
 **Authority path:** user
 
-**Status:** ✅ passing (1 scope minimum; `bitable:record` acceptable addition)
+**Status:** ✅ passing (3 scopes)
 
 ---
 
@@ -219,7 +220,7 @@ Expected output (minimum scope counts):
 [2] create expense report and request approval
 [3] read a document and update the wiki page
 [5] create crm record and send a follow-up message
-[1] update the customer record after the meeting
+[3] update the customer record after the meeting
 [3] route expense to approval and notify the manager
 [3] upload the contract file to drive and update the wiki with the key terms
 [5] create a lead record and schedule a follow-up meeting

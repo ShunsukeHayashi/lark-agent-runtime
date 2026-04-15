@@ -2,7 +2,8 @@
 
 > Permission-first runtime for AI agents that work inside Lark
 
-[![version](https://img.shields.io/badge/version-0.1.0-blue)](bin/larc)
+[![version](https://img.shields.io/badge/version-0.2.0-blue)](bin/larc)
+[![CI](https://github.com/ShunsukeHayashi/lark-agent-runtime/actions/workflows/ci.yml/badge.svg)](https://github.com/ShunsukeHayashi/lark-agent-runtime/actions/workflows/ci.yml)
 [![license](https://img.shields.io/badge/license-MIT-green)](#license)
 [![lark-cli](https://img.shields.io/badge/requires-lark--cli-orange)](https://github.com/larksuite/cli)
 
@@ -190,6 +191,22 @@ scripts/
 - Full OpenClaw CLI compatibility layer
 - Knowledge graph link extraction from document content
 - Trilingual open-source release (English / Chinese / Japanese)
+
+---
+
+## Verification
+
+For lightweight local verification before opening a PR:
+
+```bash
+# Shell syntax checks for entrypoints and helper scripts
+bash -n bin/larc scripts/install.sh scripts/auth-suggest-check.sh
+
+# Permission-intelligence regression checks
+bash scripts/auth-suggest-check.sh --verify
+```
+
+These checks are also run in GitHub Actions.
 
 ---
 

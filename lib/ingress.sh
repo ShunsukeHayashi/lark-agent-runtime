@@ -2642,15 +2642,14 @@ _ensure_table_fields() {
   # Results are cached per table for 24h to avoid redundant API calls on every enqueue.
   local base_token="$1" table_id="$2"
   shift 2
-  local cache_dir="${LARC_CACHE_DIR:-$HOME/.larc/cache}/fields"
-  local cache_file="${cache_dir}/${base_token}_${table_id}"
+  local cache_file="${LARC_CACHE_DIR:-$HOME/.larc/cache}/fields/${base_token}/${table_id}"
 
   # Skip if verified within the last 24 hours
   if [[ -f "$cache_file" ]] && find "$cache_file" -mtime -1 2>/dev/null | grep -q .; then
     return 0
   fi
 
-  mkdir -p "$cache_dir"
+  mkdir -p "$(dirname "$cache_file")"
   for field_name in "$@"; do
     lark-cli base +field-create \
       --base-token "$base_token" \
