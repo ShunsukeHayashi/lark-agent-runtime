@@ -143,7 +143,7 @@ cmd_quickstart() {
   echo ""
 
   # ── Step 1: Verify lark-cli auth ─────────────────────────────────────────
-  _qs_head "Step 1/6 — Lark 認証確認"
+  _qs_head "Step 1/7 — Lark 認証確認"
   local auth_json user_name user_oid token_status
   auth_json=$(lark-cli auth status 2>/dev/null || echo "{}")
   user_name=$(echo "$auth_json"    | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('userName',''))" 2>/dev/null)
@@ -162,7 +162,7 @@ cmd_quickstart() {
   _qs_ok "認証済み: ${user_name}"
 
   # ── Step 2: Check for existing LARC setup ────────────────────────────────
-  _qs_head "Step 2/6 — 既存 LARC 設定の検出"
+  _qs_head "Step 2/7 — 既存 LARC 設定の検出"
   mkdir -p "$LARC_HOME" "$LARC_CACHE"
 
   local existing_ok=false ws_token="" wd_token="" base_token=""
@@ -185,7 +185,7 @@ cmd_quickstart() {
   fi
 
   # ── Step 3: Create Drive folder structure ─────────────────────────────────
-  _qs_head "Step 3/6 — Lark Drive フォルダ構築"
+  _qs_head "Step 3/7 — Lark Drive フォルダ構築"
   _qs_info "既存フォルダ・ファイルには一切影響しません"
 
   if [[ "$existing_ok" == "true" && -n "$ws_token" ]]; then
@@ -216,7 +216,7 @@ cmd_quickstart() {
   fi
 
   # ── Step 4: Create LARC-memory Base ───────────────────────────────────────
-  _qs_head "Step 4/6 — LARC-memory Base 構築"
+  _qs_head "Step 4/7 — LARC-memory Base 構築"
 
   local queue_tbl="" logs_tbl=""
   if [[ "$existing_ok" == "true" && -n "$base_token" ]]; then
@@ -262,7 +262,7 @@ cmd_quickstart() {
   fi
 
   # ── Step 5: Create identity docs ─────────────────────────────────────────
-  _qs_head "Step 5/6 — アイデンティティドキュメント作成"
+  _qs_head "Step 5/7 — アイデンティティドキュメント作成"
 
   local today
   today=$(date +%Y-%m-%d)
@@ -352,7 +352,7 @@ for f in d.get('data',{}).get('files',[]):
   fi
 
   # ── Step 6: Write config ──────────────────────────────────────────────────
-  _qs_head "Step 6/6 — 設定ファイル生成"
+  _qs_head "Step 6/7 — 設定ファイル生成"
 
   local chat_id="${LARC_IM_CHAT_ID:-}"
 
@@ -388,6 +388,29 @@ IDXEOF
 
     # Reload
     set -a; source "$LARC_CONFIG"; set +a
+  fi
+
+  # ── Step 7: Register main agent ──────────────────────────────────────────
+  _qs_head "Step 7/7 — メインエージェント登録"
+
+  if [[ "$dry_run" == "true" ]]; then
+    _qs_dryrun "LARC-memory に 'main' エージェントを登録する"
+  else
+    local existing_agent
+    existing_agent=$(larc agent list 2>/dev/null | grep "^main\b" | head -1 || echo "")
+    if [[ -n "$existing_agent" ]]; then
+      _qs_skip "main エージェント既登録"
+    else
+      larc agent register \
+        --id   main \
+        --name "Main Agent" \
+        --model "claude-sonnet-4-6" \
+        --workspace "General-purpose Lark workspace agent" \
+        --chat  "${chat_id:-}" \
+        >/dev/null 2>&1 \
+        && _qs_ok "main エージェント登録完了" \
+        || _qs_fail "エージェント登録失敗（後で 'larc agent register' で再実行可）"
+    fi
   fi
 
   # ── Final: Bootstrap verification ────────────────────────────────────────

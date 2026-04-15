@@ -50,7 +50,7 @@ The current `lib/*.sh` files must use **actual lark-cli shortcut commands**, not
 
 ### Scope Map (`config/scope-map.json`)
 
-Structure:
+**32 task types** (v0.2.0). Structure:
 ```json
 {
   "tasks": {
@@ -113,15 +113,36 @@ Skills: `lark-base` · `lark-calendar` · `lark-doc` · `lark-drive` · `lark-ev
 
 ## Development Roadmap
 
+### Milestone 1 — Claude Code → LARC ✅ COMPLETE
+
+Claude Code controls LARC locally; no OpenClaw dependency required.
+
+**Verified E2E flow:**
+```
+larc quickstart (7 steps, idempotent)
+  → larc bootstrap --agent main
+  → larc ingress enqueue --text "..." --source claude-code
+  → larc ingress run-once (Base-first pickup)
+  → larc ingress done --queue-id <id>
+  → Lark IM completion notification
+```
+
 - [x] Phase 1A: Core CLI dispatch (`larc init/bootstrap/memory/send/task/approve/agent/status`)
 - [x] Phase 1B: Drive workspace setup + Base table provisioning
 - [x] Phase 1C: Permission scope map + `larc auth suggest/check/login`
-- [x] Phase 2A: 24 Claude Code skills (all translated to English)
+- [x] Phase 2A: 25 Claude Code skills (all in English; lark-project in Japanese)
 - [x] **Phase 0 (retroactive)**: Fix lark-cli command alignment in `lib/*.sh`
 - [x] Phase 2B: Multi-agent YAML batch registration
 - [x] Phase 2C: `larc agent register` from YAML
+- [x] **Milestone 1**: Base-first queue pickup; `larc quickstart` 7-step automated onboarding
 - [ ] Phase 3: MergeGate integration (`lib/mergegate.sh`)
 - [ ] Phase 4: Knowledge graph via Lark Wiki `@mention` / `[[link]]`
+
+### Milestone 2 — OpenClaw → LARC (next)
+
+- Default model: Codex (OpenAI OAuth login)
+- `openclaw-lark` plugin for Lark API calls
+- `larc ingress openclaw` as the connection bridge
 
 ## Common Commands
 

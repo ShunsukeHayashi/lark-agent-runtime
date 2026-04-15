@@ -60,7 +60,34 @@ fi
 
 echo ""
 
-# ── 2. Symlink larc binary ───────────────────────────────────────────────────
+# ── 2. Install Claude Code skills ────────────────────────────────────────────
+
+CLAUDE_SKILLS_SRC="$LARC_REPO_DIR/.claude/skills"
+CLAUDE_SKILLS_DST="${CLAUDE_SKILLS_DIR:-$HOME/.claude/skills}"
+
+_info "Installing Claude Code skills..."
+
+if [[ ! -d "$CLAUDE_SKILLS_SRC" ]]; then
+  _warn "No skills directory found at $CLAUDE_SKILLS_SRC (skipping)"
+else
+  mkdir -p "$CLAUDE_SKILLS_DST"
+  skill_count=0
+  for skill_dir in "$CLAUDE_SKILLS_SRC"/*/; do
+    skill_name=$(basename "$skill_dir")
+    dst="$CLAUDE_SKILLS_DST/$skill_name"
+    if [[ -d "$dst" ]]; then
+      # Update existing: copy new/changed files only
+      cp -r "$skill_dir/." "$dst/" 2>/dev/null && skill_count=$((skill_count+1))
+    else
+      cp -r "$skill_dir" "$dst" && skill_count=$((skill_count+1))
+    fi
+  done
+  _ok "$skill_count skills installed → $CLAUDE_SKILLS_DST"
+fi
+
+echo ""
+
+# ── 3. Symlink larc binary ───────────────────────────────────────────────────
 
 LARC_BIN="$LARC_REPO_DIR/bin/larc"
 
