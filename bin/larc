@@ -278,33 +278,43 @@ except Exception:
     ws_token="(dry-run)"
     wd_token="(dry-run)"
   else
-    # Create folders in Drive root.
-    # folder_token="" means root directory (per lark-cli schema).
-    # Required scope: space:folder:create (NOT drive:drive).
-    # Do NOT fetch root_folder/meta first — it triggers unnecessary permission checks.
+    # Create folders using bot identity (--as bot).
+    # drive:drive is granted to the bot app, NOT to the user OAuth token.
+    # After creation, share each folder with the logged-in user so it appears
+    # in their Drive. Requires docs:permission.member:create scope on the bot.
 
-    _qs_info "larc-workspace フォルダを作成中..."
+    # Helper: share a folder with the current user (full edit access)
+    _qs_share_folder() {
+      local folder_token="$1" open_id="$2"
+      lark-cli drive permission.members create \
+        --as bot \
+        --params "{\"token\":\"${folder_token}\",\"type\":\"folder\"}" \
+        --data "{\"member_type\":\"openid\",\"member_id\":\"${open_id}\",\"perm\":\"full_access\",\"type\":\"user\"}" \
+        >/dev/null 2>&1
+    }
+
+    _qs_info "larc-workspace フォルダを作成中 (bot identity)..."
     local ws_result
     ws_result=$(lark-cli drive files create_folder \
+      --as bot \
       --data '{"name":"larc-workspace","folder_token":""}' 2>&1)
     ws_token=$(echo "$ws_result" | python3 -c \
       "import sys,json; d=json.load(sys.stdin); print(d.get('data',{}).get('token',''))" 2>/dev/null)
     if [[ -z "$ws_token" ]]; then
-      _qs_fail "larc-workspace 作成失敗"
-      echo ""
-      echo -e "  ${_W}エラー詳細:${_E} $ws_result"
-      echo ""
-      echo -e "  ${_W}【確認事項】${_E}"
-      echo -e "  Developer Console → Permissions & Scopes で"
-      echo -e "  ${_C}space:folder:create${_E} が追加・公開済みか確認してください"
-      echo -e "  → ${_C}https://open.larksuite.com/app${_E}"
+      _qs_fail "larc-workspace 作成失敗: $ws_result"
       exit 1
     fi
     _qs_ok "larc-workspace 作成: $ws_token"
+    if [[ -n "$user_oid" ]]; then
+      _qs_share_folder "$ws_token" "$user_oid" \
+        && _qs_ok "  → ${user_name} に編集権限を付与" \
+        || _qs_info "  → 権限付与スキップ（後で手動共有可）"
+    fi
 
-    _qs_info "larc-workdir フォルダを作成中..."
+    _qs_info "larc-workdir フォルダを作成中 (bot identity)..."
     local wd_result
     wd_result=$(lark-cli drive files create_folder \
+      --as bot \
       --data '{"name":"larc-workdir","folder_token":""}' 2>&1)
     wd_token=$(echo "$wd_result" | python3 -c \
       "import sys,json; d=json.load(sys.stdin); print(d.get('data',{}).get('token',''))" 2>/dev/null)
@@ -313,6 +323,11 @@ except Exception:
       exit 1
     fi
     _qs_ok "larc-workdir  作成: $wd_token"
+    if [[ -n "$user_oid" ]]; then
+      _qs_share_folder "$wd_token" "$user_oid" \
+        && _qs_ok "  → ${user_name} に編集権限を付与" \
+        || _qs_info "  → 権限付与スキップ（後で手動共有可）"
+    fi
   fi
 
   # ── Step 4: Create LARC-memory Base ───────────────────────────────────────
