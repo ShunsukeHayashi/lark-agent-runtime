@@ -19,7 +19,8 @@ LARC_VERSION="0.2.0"
 LARC_REPO_URL="https://github.com/ShunsukeHayashi/lark-agent-runtime.git"
 SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
 LIB_DIR="$SCRIPT_DIR/lib"
-export LIB_DIR LARC_HOME LARC_CACHE LARC_CONFIG LARC_TENANT_ID
+_LARC_SCENARIO_PY="$LIB_DIR/ingress_scenario.py"
+export LIB_DIR _LARC_SCENARIO_PY LARC_HOME LARC_CACHE LARC_CONFIG LARC_TENANT_ID
 
 # Multi-tenant: each tenant gets an isolated directory under ~/.larc/tenants/<id>/
 # Set LARC_TENANT_ID=default for single-tenant (legacy) operation
