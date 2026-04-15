@@ -138,8 +138,17 @@ PY
 _billing_stripe_report() {
   local stripe_key="${STRIPE_SECRET_KEY:-}"
   local sub_item="${STRIPE_SUBSCRIPTION_ITEM_ID:-}"
+  local force=false
   local current_month
   current_month=$(date +%Y-%m)
+
+  # Parse --force flag
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --force) force=true; shift ;;
+      *) shift ;;
+    esac
+  done
 
   if [[ -z "$stripe_key" ]]; then
     log_warn "STRIPE_SECRET_KEY not set — skipping Stripe report"
@@ -148,6 +157,36 @@ _billing_stripe_report() {
   if [[ -z "$sub_item" ]]; then
     log_warn "STRIPE_SUBSCRIPTION_ITEM_ID not set — skipping Stripe report"
     return 0
+  fi
+
+  # Idempotency guard: skip if this month was already reported (unless --force)
+  if [[ "$force" != "true" ]]; then
+    local reports_file="$BILLING_DIR/stripe-reports.jsonl"
+    if [[ -f "$reports_file" ]]; then
+      local already_reported
+      already_reported=$(python3 - "$reports_file" "$current_month" <<'PY'
+import json, sys
+report_file, month = sys.argv[1:3]
+try:
+    with open(report_file) as f:
+        for line in f:
+            line = line.strip()
+            if not line: continue
+            d = json.loads(line)
+            if d.get("month") == month:
+                print(f"{d['count']} executions reported at {d['reported_at']}")
+                raise SystemExit(0)
+except SystemExit:
+    raise
+except Exception:
+    pass
+PY
+)
+      if [[ -n "$already_reported" ]]; then
+        log_info "Stripe already reported for $current_month: $already_reported (use --force to re-report)"
+        return 0
+      fi
+    fi
   fi
 
   # Count this month's executions
@@ -288,7 +327,7 @@ PY
       ;;
 
     report)
-      _billing_stripe_report
+      _billing_stripe_report "$@"
       ;;
 
     record)
@@ -305,7 +344,8 @@ PY
       echo ""
       echo "  larc billing usage [N]     Show last N months of execution counts (default: 3)"
       echo "  larc billing check         Exit 0 if under quota, 1 if exceeded"
-      echo "  larc billing report        Push this month's usage to Stripe"
+      echo "  larc billing report        Push this month's usage to Stripe (idempotent; skips if already reported)"
+      echo "  larc billing report --force Re-report even if this month was already reported"
       echo ""
       echo "  Environment variables:"
       echo "    LARC_MONTHLY_QUOTA          Max executions per month (unset = unlimited)"

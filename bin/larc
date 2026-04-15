@@ -112,6 +112,7 @@ cmd_approve()   { source "$LIB_DIR/approve.sh";   cmd_approve "$@"; }
 cmd_agent()     { source "$LIB_DIR/agent.sh";     cmd_agent "$@"; }
 cmd_auth()      { source "$LIB_DIR/auth.sh";      cmd_auth "$@"; }
 cmd_kg()         { source "$LIB_DIR/knowledge-graph.sh"; cmd_kg "$@"; }
+cmd_wiki()       { source "$LIB_DIR/wiki.sh"; cmd_wiki "$@"; }
 cmd_mergegate()  { source "$LIB_DIR/ingress.sh"; source "$LIB_DIR/approve.sh"; source "$LIB_DIR/mergegate.sh"; cmd_mergegate "$@"; }
 cmd_ingress()   { source "$LIB_DIR/memory.sh"; source "$LIB_DIR/send.sh"; source "$LIB_DIR/ingress.sh"; cmd_ingress "$@"; }
 cmd_daemon()    { source "$LIB_DIR/worker.sh"; source "$LIB_DIR/daemon.sh"; cmd_daemon "$@"; }
@@ -995,6 +996,8 @@ ${BOLD}Commands:${RESET}
                           --agent <id>  Target agent (default: main)
                           --timeout <N> Minutes before in_progress is considered stale (default: 60)
                           --dry-run     Preview without writing
+  ${CYAN}wiki add-member${RESET}       Add user to Wiki space; handles external-user 131005 error
+  ${CYAN}wiki open-sharing${RESET}     Set Wiki open_sharing level (no_access|tenant_readable|anyone_readable)
   ${CYAN}kg build${RESET} [--with-links] Traverse Lark Wiki and index node graph into Base
   ${CYAN}kg query${RESET} "<concept>"  Keyword search over indexed graph; show matches + neighbors
   ${CYAN}kg show${RESET} <token>       Show node details, tree neighbors, and semantic edges
@@ -1371,6 +1374,7 @@ main() {
     auth)       shift; require_lark_cli; cmd_auth "$@" ;;
     ingress)    shift; require_lark_cli; cmd_ingress "$@" ;;
     kg)         shift; require_lark_cli; cmd_kg "$@" ;;
+    wiki)       shift; require_lark_cli; cmd_wiki "$@" ;;
     mergegate|mg) shift; cmd_mergegate "$@" ;;
     daemon)     shift; cmd_daemon "$@" ;;
     webhook)    shift; cmd_webhook "$@" ;;
