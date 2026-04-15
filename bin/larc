@@ -147,8 +147,11 @@ cmd_quickstart() {
   _qs_head "Step 1/7 — Lark 認証確認"
 
   # Sub-check 1a: Is lark-cli configured with an app?
+  # Use `config show` (exists in v1.0.11+); `config list` does not exist.
+  # Output is a flat JSON {"appId":"cli_...","brand":"lark",...}.
+  # Also handle future array format {"apps":[{"appId":"..."},...]} defensively.
   local config_check app_id_configured=""
-  config_check=$(lark-cli config list 2>/dev/null || echo "")
+  config_check=$(lark-cli config show 2>/dev/null || echo "")
   app_id_configured=$(echo "$config_check" | python3 -c "
 import sys, json
 try:
@@ -156,6 +159,8 @@ try:
     apps = d.get('apps', [])
     if apps:
         print(apps[0].get('appId', ''))
+    else:
+        print(d.get('appId', ''))
 except Exception:
     pass
 " 2>/dev/null || echo "")
@@ -232,10 +237,24 @@ except Exception:
     ws_token="(dry-run)"
     wd_token="(dry-run)"
   else
+    # Get root folder token (required by create_folder API)
+    _qs_info "ルートフォルダトークンを取得中..."
+    local root_token root_meta
+    root_meta=$(lark-cli api GET /open-apis/drive/explorer/v2/root_folder/meta 2>/dev/null || echo "")
+    root_token=$(echo "$root_meta" | python3 -c \
+      "import sys,json; print(json.load(sys.stdin).get('data',{}).get('token',''))" 2>/dev/null || echo "")
+    if [[ -z "$root_token" ]]; then
+      _qs_fail "ルートフォルダトークンの取得に失敗しました"
+      echo -e "  ${_B}drive:drive スコープが付与されているか確認してください${_E}"
+      echo -e "  ${_B}（Lark Developer Console → Permissions & Scopes → drive:drive）${_E}"
+      exit 1
+    fi
+    _qs_ok "ルートフォルダ: $root_token"
+
     _qs_info "larc-workspace フォルダを作成中..."
     local ws_result
     ws_result=$(lark-cli drive files create_folder \
-      --data '{"name":"larc-workspace"}' 2>&1)
+      --data "{\"name\":\"larc-workspace\",\"folder_token\":\"$root_token\"}" 2>&1)
     ws_token=$(echo "$ws_result" | python3 -c \
       "import sys,json; d=json.load(sys.stdin); print(d.get('data',{}).get('token',''))" 2>/dev/null)
     [[ -z "$ws_token" ]] && { _qs_fail "作成失敗: $ws_result"; exit 1; }
@@ -244,7 +263,7 @@ except Exception:
     _qs_info "larc-workdir フォルダを作成中..."
     local wd_result
     wd_result=$(lark-cli drive files create_folder \
-      --data '{"name":"larc-workdir"}' 2>&1)
+      --data "{\"name\":\"larc-workdir\",\"folder_token\":\"$root_token\"}" 2>&1)
     wd_token=$(echo "$wd_result" | python3 -c \
       "import sys,json; d=json.load(sys.stdin); print(d.get('data',{}).get('token',''))" 2>/dev/null)
     [[ -z "$wd_token" ]] && { _qs_fail "作成失敗: $wd_result"; exit 1; }
