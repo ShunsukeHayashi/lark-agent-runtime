@@ -379,6 +379,19 @@ _ingress_next() {
   local queue_json=""
   if [[ -n "${LARC_BASE_APP_TOKEN:-}" ]]; then
     queue_json=$(_ingress_find_next_base_queue_item "$agent_id")
+    # Guard against Base/local desync: if local copy is already terminal, skip
+    if [[ -n "$queue_json" ]]; then
+      local _base_qid _local_json _local_status
+      _base_qid=$(python3 -c "import json,sys; print(json.loads(sys.argv[1]).get('queue_id',''))" "$queue_json" 2>/dev/null || echo "")
+      if [[ -n "$_base_qid" ]]; then
+        _local_json=$(_ingress_get_local_queue_item "$_base_qid")
+        _local_status=$(python3 -c "import json,sys; print(json.loads(sys.argv[1]).get('status',''))" "$_local_json" 2>/dev/null || echo "")
+        if [[ "$_local_status" =~ ^(done|failed|partial|cancelled)$ ]]; then
+          log_warn "Base/local desync: $_base_qid is locally $_local_status but Base shows pending — skipping Base result"
+          queue_json=""
+        fi
+      fi
+    fi
   fi
   [[ -z "$queue_json" ]] && queue_json=$(_ingress_find_next_local_queue_item "$agent_id")
 
@@ -2343,9 +2356,8 @@ if normalized_fields:
 prompt_lines.extend([
     "",
     "Execution rules:",
-    "- Use LARC commands for all Lark/Feishu operations (larc send, larc task, larc memory, etc.).",
-    "  Do NOT rely on openclaw-lark plugin tools — use larc CLI directly instead.",
-    "- Use LARC commands for permission, gate, queue, and lifecycle updates.",
+    "- Prefer the official openclaw-lark plugin for atomic Lark/Feishu operations.",
+    "- Use LARC commands for permission, gate, queue, lifecycle updates, and governed write-back steps.",
     "- Do not bypass approval requirements.",
     "",
     "Mandatory reply step (always run after completing the task):",
@@ -2799,7 +2811,7 @@ _get_or_create_queue_table() {
   _ensure_table_fields "$LARC_BASE_APP_TOKEN" "$table_id" \
     queue_id agent_id source sender event_id message_text task_types scopes \
     authority gate risk status created_at assigned_agent_id worker_agent_id \
-    started_at updated_at execution_note completed_at
+    started_at updated_at execution_note completed_at last_transition_note
 
   echo "$table_id"
 }

@@ -88,7 +88,8 @@ larc quickstart
 larc status
 ```
 
-→ 詳細ガイド: [docs/quickstart-ja.md](docs/quickstart-ja.md)  
+→ 詳細ガイド: [docs/quickstart-ja.md](docs/quickstart-ja.md)
+→ OpenClaw 統合: [docs/openclaw-integration.md](docs/openclaw-integration.md)
 → Lark アプリ設定（テスト担当者向け）: [docs/lark-app-setup.md](docs/lark-app-setup.md)
 
 ---
@@ -98,10 +99,10 @@ larc status
 | モード | 動作 | 状態 |
 |---|---|---|
 | **Supervised** | OpenClaw + Claude Code が手動で `larc ingress run-once` を呼ぶ | ✅ 安定 |
-| **OpenClaw-assisted autonomous** | OpenClaw が `larc ingress openclaw --execute` を呼ぶ。LARC がゲート・キュー・監査を担当 | ✅ 安定 |
+| **OpenClaw-assisted autonomous** | OpenClaw が `larc ingress openclaw --execute` を呼ぶ。公式 `openclaw-lark` が原子的な Lark 操作を行い、LARC がゲート・キュー・監査を担当 | ✅ 安定 |
 | **Experimental IM loop** | `larc daemon start` — IM ポーラーがメッセージをエンキューし、worker が OpenClaw に自動ディスパッチ | 🧪 実験的 |
 
-> **IM デーモンループは実験段階です。** 本番ワークフローには supervised または OpenClaw-assisted モードを使用してください。
+> **IM デーモンループは実験段階です。** 本番ワークフローには supervised または OpenClaw-assisted モードを使用してください。主要オンボーディング導線としては案内しません。
 
 ---
 
@@ -123,7 +124,7 @@ larc status
 
 - IM デーモンループ（`larc daemon start`）— echo loop と再起動の安定性を現在改善中
 - bot token による `larc send` 通知 — 修正済み（2026-04-15）
-- OpenClaw Lark ネイティブプラグイン（`extensions/lark/`）— 現 SDK と非互換のため、LARC は代わりに `lark-cli` を直接使用
+- OpenClaw の plugin / runtime 組み合わせは環境ごとの確認がまだ必要。ただし推奨経路は `official openclaw-lark plugin + LARC`
 
 ---
 

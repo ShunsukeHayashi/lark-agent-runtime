@@ -1,26 +1,32 @@
-# LARC クイックスタート — テストユーザー向けガイド
+# LARC クイックスタート — OpenClaw 前提ガイド
 
-> **対象**: Lark（飛書）を使っている方で、AI エージェントをローカル PC から試したい方  
-> **前提**: MacOS / Linux、Lark アカウント、Claude Code インストール済み
+> **対象**: OpenClaw から Lark 仕事フローを扱いたい方
+> **前提**: macOS / Linux、Lark アカウント、OpenClaw 利用環境、Lark アプリ認証情報
 
 ---
 
 ## 概要
 
-LARC（Lark Agent Runtime CLI）は、OpenClaw と Lark IM を接続する Bridge ランタイムです。
+LARC（Lark Agent Runtime CLI）は、OpenClaw の下で Lark 実行を統制する runtime です。
 
 ```
-Lark IM メッセージ
-    ↓ LARC daemon（IM poller）が検知
-larc ingress enqueue
-    ↓ worker が pickup
-openclaw agent（タスク実行）
-    ↓ larc send で返信
-Lark IM に返信
+OpenClaw Agent
+    ↓ official openclaw-lark plugin
+Lark の原子的な操作
+    ↓
+LARC
+    - auth suggest
+    - approve gate
+    - queue / delegation
+    - memory / audit
+    ↓
+Lark tenant surfaces
 ```
 
-> **Lark プラグイン（extensions/lark/）は不要です。**  
-> LARC が lark-cli 経由で直接 Lark API を呼ぶため、OpenClaw の Lark ネイティブプラグインがなくても完全に動作します。
+LARC 単体の「常駐 IM ボット」を先に立てるのではなく、`OpenClaw Agent -> official openclaw-lark plugin + LARC` を主経路として使います。
+
+> **重要**: `larc daemon start` による IM 自動ループはまだ experimental です。
+> テストユーザー導線では、まず OpenClaw から LARC bundle を使う運用を案内してください。
 
 ---
 
@@ -34,10 +40,15 @@ which openclaw
 
 # OpenClaw に LARC ランタイムスキルをインストール
 bash scripts/install-openclaw-larc-runtime-skill.sh
+
+# 確認
+openclaw skills list | rg larc-runtime
 ```
 
 > **LARC はスタンドアロンのエージェントではありません。**  
 > OpenClaw が実行主体であり、LARC は Lark 側の権限・キュー・監査・文脈取得を担う実行レイヤーです。
+>
+> **別途必要**: OpenClaw 側では公式 `openclaw-lark` プラグインが使える状態にしておいてください。LARC はその代替ではなく、実行統制レイヤーです。
 
 その他の前提確認：
 
@@ -126,7 +137,7 @@ larc quickstart
 ## Step 4 — 動作確認
 
 ```bash
-# 状態確認（接続・デーモン・キュー統計を一覧表示）
+# 状態確認（接続・OpenClaw 検出・キュー統計を一覧表示）
 larc status
 
 # ブートストラップ（identity ドキュメントを読み込む）
@@ -140,36 +151,43 @@ larc ingress enqueue \
 
 # キューを確認
 larc ingress list --agent main
+
+# OpenClaw に渡す bundle を表示
+larc ingress openclaw --agent main --days 14
 ```
 
 ---
 
-## Step 5 — デーモン起動（自動ループ）
+## Step 5 — 推奨運用（OpenClaw 補助）
 
-OpenClaw がインストール済みの場合：
+推奨フローは、OpenClaw から LARC bundle を読み、Lark 操作は公式 `openclaw-lark` プラグインで行い、状態更新は LARC に返す形です。
+
+```bash
+# queue を OpenClaw 向けに整形
+larc ingress openclaw --queue-id <id> --agent main --days 14
+
+# OpenClaw へ直接 dispatch する場合
+larc ingress openclaw --queue-id <id> --execute
+```
+
+LARC 側で重視するのは次です。
+
+- `auth suggest` で必要権限を説明する
+- `approve gate` で実行ゲートを決める
+- `ingress` で queue / delegation / done / fail を管理する
+- `memory` と audit に結果を残す
+
+---
+
+## Step 6 — experimental 自動ループ
+
+`larc daemon start` はまだ experimental です。テストや検証用には使えますが、現時点ではこれを主要オンボーディング導線として案内しません。
 
 ```bash
 larc daemon start --agent main --interval 30
-```
-
-これだけで以下のループが完全自動で動きます：
-
-```
-Lark IM メッセージ
-    ↓ 自動（30秒ごとにポーリング）
-キュー登録
-    ↓ 自動（worker が pickup）
-openclaw agent 実行
-    ↓ 自動（larc send で返信）
-Lark IM に返信
-```
-
-### デーモン管理
-
-```bash
-larc daemon status   # 状態確認
-larc daemon logs     # ログ確認
-larc daemon stop     # 停止
+larc daemon status
+larc daemon logs
+larc daemon stop
 ```
 
 ---
@@ -178,8 +196,9 @@ larc daemon stop     # 停止
 
 | モード | 動作 | 状態 |
 |--------|------|------|
-| **Supervised** | Claude Code が手動で `larc ingress run-once` を呼ぶ → バンドルを確認して実行 | ✅ 安定 |
-| **OpenClaw-assisted** | OpenClaw が `larc ingress openclaw --execute` を呼ぶ → ゲート・監査は LARC が担当 | ✅ 安定 |
+| **recommended** | OpenClaw + official openclaw-lark plugin + LARC | OpenClaw が実行主体、LARC が権限・ゲート・queue を統制 | ✅ 推奨 |
+| **Supervised** | OpenClaw / Claude Code + LARC | `larc ingress openclaw` や `run-once` で bundle を確認しながら進める | ✅ 安定 |
+| **OpenClaw-assisted** | OpenClaw が `larc ingress openclaw --execute` を呼ぶ。公式 `openclaw-lark` が原子的な Lark 操作を行い、LARC がゲート・監査を担当 | ✅ 安定 |
 | **Experimental IM loop** | `larc daemon start` — IM メッセージを自動エンキューして OpenClaw に自動ディスパッチ | 🧪 実験的 |
 
 > **IM デーモンループは実験段階です。** 本番用途には Supervised または OpenClaw-assisted を使用してください。
@@ -188,20 +207,19 @@ larc daemon stop     # 停止
 
 ## 日常的な使い方
 
-### Supervised モード（Claude Code のみ）
+### 推奨モード（OpenClaw 前提）
 
 ```bash
 larc ingress enqueue --text "先月の経費レポートを作成してください" --agent main
-larc ingress run-once --agent main
+larc ingress openclaw --agent main --days 14
 ```
 
-### Autonomous モード（デーモン稼働中）
-
-Lark IM にメッセージを送るだけ。以降は自動です。
+### supervised 補助実行
 
 ```bash
-# 単発実行（デーモン外で手動実行する場合）
-larc ingress openclaw --execute --agent main
+larc ingress run-once --agent main
+larc ingress execute-stub --queue-id <id>
+larc ingress execute-apply --queue-id <id> --dry-run
 ```
 
 ### メモリ管理
@@ -235,25 +253,19 @@ larc ingress recover --agent main        # スタックしたアイテムを pen
 larc ingress list --agent main           # 状態を確認
 ```
 
-### Lark IM に返信が来ない
+### OpenClaw から先に進まない
 
 ```bash
-# デーモンが稼働しているか確認
-larc daemon status
-
-# OpenClaw が認識されているか確認
-larc status   # OpenClaw: installed (openclaw) と表示されれば OK
-
-# ワーカーログを確認
-larc daemon logs worker
+openclaw skills list | rg larc-runtime
+larc status
+larc ingress openclaw --agent main --days 14
 ```
 
-### IM ポーラーが自分のメッセージをエンキューしてしまう（echo loop）
-
-デーモンを再起動してください。起動時にボット自身の open_id を自動取得してフィルタします：
+### experimental 自動ループで IM が不安定
 
 ```bash
 larc daemon stop && larc daemon start --agent main
+larc daemon logs
 ```
 
 ---
@@ -261,14 +273,14 @@ larc daemon stop && larc daemon start --agent main
 ## アーキテクチャ
 
 ```
-Lark IM
-    ↓ IM poller（30秒ごと）
-larc ingress enqueue   → Lark Base: agent_queue (pending)
-    ↓ worker
-larc ingress openclaw  → openclaw agent（LLM実行）
-                       → larc send（Lark IM 返信）
-                       → larc ingress done → Lark Base: agent_queue (done)
-                                           → Lark Base: agent_logs
+OpenClaw Agent
+    ↓ official openclaw-lark plugin
+Lark atomic operations
+    ↓
+LARC
+    → auth suggest / approve gate
+    → agent_queue / agent_logs
+    → delegation / memory / audit
 ```
 
 ---

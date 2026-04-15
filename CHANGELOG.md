@@ -8,21 +8,26 @@ The format is intentionally lightweight while the project is still in incubation
 
 ## 2026-04-15
 
-### Autonomous loop — Bridge mode fully operational
+### OpenClaw-first positioning clarified
 
-Complete end-to-end autonomous loop confirmed working without the OpenClaw Lark plugin:
+The public guidance now consistently treats LARC as:
 
-- **IM poller echo loop fix**: daemon now fetches bot's own `open_id` at startup and skips outbound messages, preventing infinite re-enqueue
-- **openclaw reply path fix**: the prompt sent to `openclaw agent` now explicitly instructs `larc send` + `larc ingress done` as the mandatory reply step, removing dependency on the broken `extensions/lark/` plugin
+- a governed runtime layer under OpenClaw
+- used together with the official `openclaw-lark` plugin for atomic Lark operations
+- not yet positioned as a standalone fully autonomous IM bot runtime
+
+### Runtime and queue work
+
 - **`larc ingress recover`**: new command resets stale `in_progress` items back to `pending`; worker auto-runs it at startup
 - **`larc status`**: now shows Base connectivity, OpenClaw install state, daemon process status, and queue stats in one command
 - **`memory search` pagination**: handles `has_more` correctly across large tables
 - **`runtime-common.sh`**: extracted shared `larc_load_runtime_config()` and `larc_detect_openclaw_cmd()` used by daemon, worker, billing
 
-### Onboarding docs updated
+### Onboarding and integration docs corrected
 
-- `docs/quickstart-ja.md`: rewritten to reflect Bridge mode (no Lark plugin required), autonomous loop steps, and new troubleshooting entries
-- `docs/openclaw-integration.md`: clarified that `extensions/lark/` is not used; LARC uses `larc send` (lark-cli) for Lark IM replies
+- `README.md`, `README.ja.md`, `README.zh-CN.md`: repositioned the main path as `OpenClaw Agent -> official openclaw-lark plugin + LARC`
+- `docs/quickstart-ja.md`: rewritten around OpenClaw-assisted onboarding; daemon-driven IM loop is now documented as experimental
+- `docs/openclaw-integration.md`: rewritten to describe the plugin-first execution model and LARC's governance role
 
 ---
 

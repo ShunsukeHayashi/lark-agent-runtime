@@ -16,19 +16,19 @@
 
 ## LARC 是什么
 
-**LARC** 是一个面向在 Lark 内工作的 AI Agent 的、以权限管理为核心的运行时环境。
+**LARC** 是 [OpenClaw](https://openclaw.dev) Agent 的 Lark 执行与治理层。
 
-如果说 Claude Code 是编码 Agent 的一部分执行环境，那么 LARC 就是飞书内办公 Agent 的执行环境。
+OpenClaw 负责 Agent 推理与执行。LARC 负责让 OpenClaw 以受控、可审计、权限清晰的方式接入 Lark 的企业表面。
 
-它不是一个“连接飞书 API 的普通 CLI”。它的目标是把 Lark 本身变成 Agent 的运行表面。
+```
+OpenClaw Agent（LLM 执行）
+    ↓  larc ingress openclaw
+LARC（权限 · 队列 · 审计 · 上下文）
+    ↓  lark-cli
+Lark API — Drive / Base / IM / Approval / Wiki
+```
 
-它尝试把 OpenClaw 风格的运行方式迁移到飞书原生能力上：
-
-- Drive 作为 disclosure chain 存储面
-- Base 作为 memory / registry
-- IM 作为执行与协作表面
-- Approval 作为执行控制
-- Wiki 作为知识与上下文表面
+如果 OpenClaw 是 Agent 本体，LARC 就是护栏：负责应用执行门控、跟踪 authority、管理任务队列，并把结果回写到 Lark。
 
 ---
 
@@ -63,42 +63,63 @@ LARC 的切入点是 `permission-first`：
 | `larc bootstrap` | 从 Drive 读取 `SOUL.md → USER.md → MEMORY.md → HEARTBEAT.md` |
 | `larc auth suggest` | 从自然语言任务推断所需 scope 和 authority |
 | `larc approve gate` | 在执行前检查 none / preview / approval 门控要求 |
+| `larc ingress openclaw` | 为 OpenClaw 构建并派发下一步受治理的动作 bundle |
+| `larc ingress recover` | 在 worker 崩溃后重置停滞的 in-progress 队列项 |
 | `larc agent register` | 将 Agent 注册到 Lark Base，并支持 YAML 批量注册 |
 | `larc kg build` / `larc kg query` | 索引 Lark Wiki 节点图，并返回带邻居上下文的概念查询结果 |
-| `larc memory` | 将日常记忆同步到 Base |
-| `larc ingress` | 提供 enqueue、approve/resume、delegate 与 worker loop 等队列处理面 |
-| `larc send` / `larc task` | 提供消息发送和任务操作的基本执行路径 |
-| Approval 支持 | 区分审批实例创建与审批任务执行 |
+| `larc memory` | 将日常记忆同步到 Base，支持完整分页与关键词搜索 |
+| `larc status` | 统一显示 Base 连通性、OpenClaw 安装状态、daemon 状态与队列统计 |
 | Claude Code skills | 在 `.claude/skills/` 中提供 Lark 相关技能集 |
 
 ---
 
 ## 快速开始
 
-```bash
-# 1. 安装 lark-cli
-npm install -g @larksuite/cli
+### 前提条件
 
-# 2. 安装 LARC（自动下载到 ~/.larc/runtime/，请勿直接编辑该目录）
+```bash
+which openclaw    # OpenClaw — Agent 执行引擎
+which lark-cli    # lark-cli — npm install -g @larksuite/cli
+which python3     # Python 3.8+
+```
+
+> **先准备 OpenClaw。** LARC 不是独立 Agent，而是 OpenClaw Agent 的 runtime layer。
+> 请先把 LARC runtime skill 安装到 OpenClaw：`bash scripts/install-openclaw-larc-runtime-skill.sh`
+
+### 安装 LARC
+
+```bash
+# 安装 LARC（自动下载到 ~/.larc/runtime/）
 curl -fsSL https://raw.githubusercontent.com/ShunsukeHayashi/lark-agent-runtime/main/scripts/install.sh | bash
 
-# 3. 配置飞书应用凭据
-lark-cli config init \
-  --app-id   <App ID> \
-  --app-secret-stdin \
-  --brand    lark
-
-# 4. 用飞书账号登录
+# 配置飞书应用凭据
+lark-cli config init --app-id <App ID> --app-secret-stdin --brand lark
 lark-cli auth login
 
-# 5. 一键完成环境配置（创建 Drive 文件夹、Base 表、注册 Agent）
+# 一键完成工作区配置
 larc quickstart
+
+# 验证状态
+larc status
 ```
 
 > **注意**：LARC 自动安装到 `~/.larc/runtime/`，请勿直接编辑该目录内的文件。升级请使用 `larc update`。
 
-→ 完整指南：[docs/quickstart-ja.md](docs/quickstart-ja.md)  
+→ 完整指南：[docs/quickstart-ja.md](docs/quickstart-ja.md)
+→ OpenClaw 集成：[docs/openclaw-integration.md](docs/openclaw-integration.md)
 → Lark 应用设置（面向协调者）：[docs/lark-app-setup.md](docs/lark-app-setup.md)
+
+---
+
+## 运行模式
+
+| 模式 | 运行方式 | 状态 |
+|---|---|---|
+| **Supervised** | OpenClaw + Claude Code 手动调用 `larc ingress run-once` | ✅ 稳定 |
+| **OpenClaw-assisted autonomous** | OpenClaw 调用 `larc ingress openclaw --execute`；官方 `openclaw-lark` 负责原子 Lark 操作，LARC 负责门控/队列/审计 | ✅ 稳定 |
+| **Experimental IM loop** | `larc daemon start`：IM poller 自动入队，worker 自动派发到 OpenClaw | 🧪 实验性 |
+
+> **IM daemon loop 仍是实验性功能。** 生产或正式试点请优先使用 supervised 或 OpenClaw-assisted 模式。
 
 ---
 
@@ -115,6 +136,7 @@ larc quickstart
 | E — 知识图谱 | 知识空间 BFS 遍历；37 个节点已索引；关键词查询返回匹配节点及相邻节点 |
 
 尚在实验或规划中：
+- 从 IM 收到消息到自动回复的 daemon 驱动全自动循环
 - MergeGate 集成（受控执行审查）
 - 完整 OpenClaw CLI 兼容层
 - 基于文档内容的知识图谱链接提取（当前为层级结构）
@@ -122,10 +144,10 @@ larc quickstart
 
 重要补充：
 
-- LARC 已经是一个可运行的、面向飞书 Agent work 的 runtime surface
-- 但现阶段它仍然主要是供 Claude Code 等上层 Agent 使用的 supervised runtime
+- LARC 已经是可运行的飞书 Agent work runtime surface
+- 但当前应主要被视为 OpenClaw 之下的 governed runtime
 - 当前最自然的主路径是 `OpenClaw Agent -> official openclaw-lark plugin + LARC`
-- Lark IM / webhook bot ingress 更适合作为后续可选入口，而不是当前的核心必经路径
+- Lark IM / webhook bot ingress 更适合作为后续可选入口，目前仍属 experimental
 
 更多背景请看：
 

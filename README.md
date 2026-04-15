@@ -88,7 +88,8 @@ larc quickstart
 larc status
 ```
 
-→ Full guide: [docs/quickstart-ja.md](docs/quickstart-ja.md)  
+→ Full guide: [docs/quickstart-ja.md](docs/quickstart-ja.md)
+→ OpenClaw integration: [docs/openclaw-integration.md](docs/openclaw-integration.md)
 → Lark app setup (for coordinators): [docs/lark-app-setup.md](docs/lark-app-setup.md)
 
 ---
@@ -98,10 +99,10 @@ larc status
 | Mode | What runs | Status |
 |---|---|---|
 | **Supervised** | OpenClaw + Claude Code manually calls `larc ingress run-once` | ✅ Stable |
-| **OpenClaw-assisted autonomous** | OpenClaw calls `larc ingress openclaw --execute`; LARC handles gate/queue/audit | ✅ Stable |
+| **OpenClaw-assisted autonomous** | OpenClaw calls `larc ingress openclaw --execute`; official `openclaw-lark` handles atomic Lark actions; LARC handles gate/queue/audit | ✅ Stable |
 | **Experimental IM loop** | `larc daemon start` — IM poller enqueues messages, worker dispatches to OpenClaw automatically | 🧪 Experimental |
 
-> **The IM daemon loop is experimental.** Use supervised or OpenClaw-assisted mode for production workflows. The daemon is useful for testing and low-stakes automation.
+> **The IM daemon loop is experimental.** Use supervised or OpenClaw-assisted mode for production workflows. The daemon is useful for testing and low-stakes automation, not as the primary onboarding path.
 
 ---
 
@@ -123,7 +124,7 @@ larc status
 
 - IM daemon loop (`larc daemon start`) — echo loop and restart reliability still being hardened
 - `larc send` notifications via bot token — just fixed (2026-04-15)
-- OpenClaw Lark native plugin (`extensions/lark/`) — currently incompatible with current SDK; LARC uses `lark-cli` directly instead
+- OpenClaw plugin/runtime combinations may still need setup verification per environment; the recommended path remains `official openclaw-lark plugin + LARC`
 
 ---
 
