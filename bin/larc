@@ -111,7 +111,8 @@ cmd_task()      { source "$LIB_DIR/task.sh";      cmd_task "$@"; }
 cmd_approve()   { source "$LIB_DIR/approve.sh";   cmd_approve "$@"; }
 cmd_agent()     { source "$LIB_DIR/agent.sh";     cmd_agent "$@"; }
 cmd_auth()      { source "$LIB_DIR/auth.sh";      cmd_auth "$@"; }
-cmd_kg()        { source "$LIB_DIR/knowledge-graph.sh"; cmd_kg "$@"; }
+cmd_kg()         { source "$LIB_DIR/knowledge-graph.sh"; cmd_kg "$@"; }
+cmd_mergegate()  { source "$LIB_DIR/ingress.sh"; source "$LIB_DIR/approve.sh"; source "$LIB_DIR/mergegate.sh"; cmd_mergegate "$@"; }
 cmd_ingress()   { source "$LIB_DIR/memory.sh"; source "$LIB_DIR/send.sh"; source "$LIB_DIR/ingress.sh"; cmd_ingress "$@"; }
 cmd_daemon()    { source "$LIB_DIR/worker.sh"; source "$LIB_DIR/daemon.sh"; cmd_daemon "$@"; }
 cmd_webhook()   { source "$LIB_DIR/webhook.sh"; cmd_webhook "$@"; }
@@ -1367,6 +1368,7 @@ main() {
     auth)       shift; require_lark_cli; cmd_auth "$@" ;;
     ingress)    shift; require_lark_cli; cmd_ingress "$@" ;;
     kg)         shift; require_lark_cli; cmd_kg "$@" ;;
+    mergegate|mg) shift; cmd_mergegate "$@" ;;
     daemon)     shift; cmd_daemon "$@" ;;
     webhook)    shift; cmd_webhook "$@" ;;
     worker)     shift; cmd_worker "$@" ;;
