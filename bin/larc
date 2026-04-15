@@ -865,7 +865,6 @@ cmd_status() {
     echo -e "  Drive folder: ${RED}not set${RESET} (run 'larc init')"
   fi
 
-  # Base connectivity
   if [[ -n "${LARC_BASE_APP_TOKEN:-}" ]]; then
     local base_ok
     base_ok=$(lark-cli base +table-list --base-token "$LARC_BASE_APP_TOKEN" --jq '.ok' 2>/dev/null || echo "false")
@@ -878,57 +877,50 @@ cmd_status() {
     echo -e "  Base:         ${RED}not set${RESET}"
   fi
 
-  # OpenClaw detection
-  local _claw_cmd=""
-  if command -v openclaw &>/dev/null; then
-    _claw_cmd="openclaw"
-  elif command -v open-claw &>/dev/null; then
-    _claw_cmd="open-claw"
-  fi
+  local _claw_cmd
+  _claw_cmd=$(source "$LIB_DIR/runtime-common.sh" 2>/dev/null && larc_detect_openclaw_cmd || echo "")
   if [[ -n "$_claw_cmd" ]]; then
     echo -e "  OpenClaw:     ${GREEN}installed${RESET} ($_claw_cmd)"
   else
     echo -e "  OpenClaw:     ${YELLOW}not installed${RESET} (supervised mode only)"
   fi
 
-  # Daemon status
   echo ""
   echo -e "${BOLD}Daemon:${RESET}"
   local _pid_dir="${LARC_HOME:-$HOME/.larc}/run"
-  local _im_pid="$_pid_dir/im-poller.pid"
-  local _wk_pid="$_pid_dir/worker.pid"
-  if [[ -f "$_im_pid" ]] && kill -0 "$(cat "$_im_pid")" 2>/dev/null; then
-    echo -e "  IM poller: ${GREEN}running${RESET} (PID $(cat "$_im_pid"))"
-  else
-    echo -e "  IM poller: ${RED}stopped${RESET}"
-  fi
-  if [[ -f "$_wk_pid" ]] && kill -0 "$(cat "$_wk_pid")" 2>/dev/null; then
-    echo -e "  Worker:    ${GREEN}running${RESET} (PID $(cat "$_wk_pid"))"
-  else
-    echo -e "  Worker:    ${RED}stopped${RESET}"
-  fi
+  local _pid
+  for _entry in "IM poller:im-poller.pid" "Worker:worker.pid"; do
+    local _label="${_entry%%:*}"
+    local _pid_file="$_pid_dir/${_entry##*:}"
+    if [[ -f "$_pid_file" ]]; then
+      _pid=$(cat "$_pid_file")
+      if kill -0 "$_pid" 2>/dev/null; then
+        echo -e "  $_label: ${GREEN}running${RESET} (PID $_pid)"
+      else
+        echo -e "  $_label: ${RED}stopped${RESET}"
+      fi
+    else
+      echo -e "  $_label: ${RED}stopped${RESET}"
+    fi
+  done
 
-  # Queue stats from local cache
   local queue_file="${LARC_HOME:-$HOME/.larc}/cache/queue/main.jsonl"
   if [[ -f "$queue_file" ]]; then
-    local _pending _done _failed _total
-    _total=$(wc -l < "$queue_file" | tr -d ' ')
-    _pending=$(python3 -c "
-import json
-lines=open('$queue_file').readlines()
-print(sum(1 for l in lines if l.strip() and json.loads(l).get('status','') in {'pending','pending_preview','in_progress'}))
-" 2>/dev/null || echo 0)
-    _done=$(python3 -c "
-import json
-lines=open('$queue_file').readlines()
-print(sum(1 for l in lines if l.strip() and json.loads(l).get('status','') == 'done'))
-" 2>/dev/null || echo 0)
-    _failed=$(python3 -c "
-import json
-lines=open('$queue_file').readlines()
-print(sum(1 for l in lines if l.strip() and json.loads(l).get('status','') == 'failed'))
-" 2>/dev/null || echo 0)
-    echo -e "  Queue (main): total=$_total  active=$_pending  done=$_done  failed=$_failed"
+    local _stats
+    _stats=$(python3 - "$queue_file" <<'PY'
+import json, sys, collections
+counts = collections.Counter()
+with open(sys.argv[1]) as f:
+    for line in f:
+        line = line.strip()
+        if line:
+            counts[json.loads(line).get('status', '')] += 1
+active = counts['pending'] + counts['pending_preview'] + counts['in_progress']
+total = sum(counts.values())
+print(f"total={total}  active={active}  done={counts['done']}  failed={counts['failed']}")
+PY
+2>/dev/null || echo "")
+    [[ -n "$_stats" ]] && echo -e "  Queue (main): $_stats"
   fi
 
   # Cache state
