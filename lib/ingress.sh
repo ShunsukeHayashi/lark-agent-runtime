@@ -1631,12 +1631,12 @@ print(json.dumps(row, ensure_ascii=False))
 PY
 )
 
-  local audit_out
+  local audit_out audit_rc
   audit_out=$(lark-cli base +record-upsert \
     --base-token "$LARC_BASE_APP_TOKEN" \
     --table-id "$table_id" \
-    --json "$audit_record" 2>&1)
-  if [[ $? -eq 0 ]]; then
+    --json "$audit_record" 2>&1) || audit_rc=$?
+  if [[ "${audit_rc:-0}" -eq 0 ]]; then
     log_ok "Audit log written to agent_logs"
   else
     log_warn "Audit log write failed: $audit_out"
@@ -2625,30 +2625,40 @@ print(json.dumps(d, ensure_ascii=False))
 PY
 )
 
-  local upsert_out
+  local upsert_out upsert_rc
   upsert_out=$(lark-cli base +record-upsert \
     --base-token "$LARC_BASE_APP_TOKEN" \
     --table-id "$table_id" \
-    --json "$base_json" 2>&1)
-  if [[ $? -eq 0 ]]; then
+    --json "$base_json" 2>&1) || upsert_rc=$?
+  if [[ "${upsert_rc:-0}" -eq 0 ]]; then
     log_ok "Queue item recorded in Lark Base"
   else
     log_warn "Base queue write failed: $upsert_out"
   fi
 }
 
-_get_or_create_queue_table() {
-  # Honor pinned table ID from env (prevents wrong-Base selection)
-  if [[ -n "${LARC_QUEUE_TABLE_ID:-}" ]]; then
-    echo "$LARC_QUEUE_TABLE_ID"
-    return 0
-  fi
+_ensure_table_fields() {
+  # Ensure required fields exist on a table (idempotent — errors on duplicates are ignored)
+  local base_token="$1" table_id="$2"
+  shift 2
+  for field_name in "$@"; do
+    lark-cli base +field-create \
+      --base-token "$base_token" \
+      --table-id "$table_id" \
+      --json "{\"name\":\"$field_name\",\"type\":\"text\"}" \
+      >/dev/null 2>&1 || true
+  done
+}
 
-  local table_id
-  table_id=$(lark-cli base +table-list \
-    --base-token "$LARC_BASE_APP_TOKEN" \
-    --jq '.data.tables[] | select(.name == "agent_queue") | .id' \
-    2>/dev/null | head -1 || echo "")
+_get_or_create_queue_table() {
+  local table_id="${LARC_QUEUE_TABLE_ID:-}"
+
+  if [[ -z "$table_id" ]]; then
+    table_id=$(lark-cli base +table-list \
+      --base-token "$LARC_BASE_APP_TOKEN" \
+      --jq '.data.tables[] | select(.name == "agent_queue") | .id' \
+      2>/dev/null | head -1 || echo "")
+  fi
 
   if [[ -z "$table_id" ]]; then
     log_info "Creating agent_queue table..."
@@ -2660,30 +2670,24 @@ _get_or_create_queue_table() {
     log_ok "agent_queue table created: $table_id"
   fi
 
-  [[ -n "$table_id" ]] && {
-    for field_name in \
-      queue_id agent_id source sender event_id message_text task_types scopes authority gate risk status created_at \
-      assigned_agent_id worker_agent_id started_at updated_at execution_note completed_at; do
-      lark-cli base +field-create --base-token "$LARC_BASE_APP_TOKEN" --table-id "$table_id" \
-        --json "{\"name\":\"$field_name\",\"type\":\"text\"}" >/dev/null 2>&1 || true
-    done
-  }
+  # Always ensure fields exist — even when table ID was pinned in config.env
+  _ensure_table_fields "$LARC_BASE_APP_TOKEN" "$table_id" \
+    queue_id agent_id source sender event_id message_text task_types scopes \
+    authority gate risk status created_at assigned_agent_id worker_agent_id \
+    started_at updated_at execution_note completed_at
 
   echo "$table_id"
 }
 
 _get_or_create_logs_table() {
-  # Honor pinned table ID from env (prevents wrong-Base selection)
-  if [[ -n "${LARC_LOG_TABLE_ID:-}" ]]; then
-    echo "$LARC_LOG_TABLE_ID"
-    return 0
-  fi
+  local table_id="${LARC_LOG_TABLE_ID:-}"
 
-  local table_id
-  table_id=$(lark-cli base +table-list \
-    --base-token "$LARC_BASE_APP_TOKEN" \
-    --jq '.data.tables[] | select(.name == "agent_logs") | .id' \
-    2>/dev/null | head -1 || echo "")
+  if [[ -z "$table_id" ]]; then
+    table_id=$(lark-cli base +table-list \
+      --base-token "$LARC_BASE_APP_TOKEN" \
+      --jq '.data.tables[] | select(.name == "agent_logs") | .id' \
+      2>/dev/null | head -1 || echo "")
+  fi
 
   if [[ -z "$table_id" ]]; then
     log_info "Creating agent_logs table..."
@@ -2695,12 +2699,10 @@ _get_or_create_logs_table() {
     log_ok "agent_logs table created: $table_id"
   fi
 
-  [[ -n "$table_id" ]] && {
-    for field_name in log_at agent_id queue_id source sender task_types gate status execution_note started_at completed_at message_text; do
-      lark-cli base +field-create --base-token "$LARC_BASE_APP_TOKEN" --table-id "$table_id" \
-        --json "{\"name\":\"$field_name\",\"type\":\"text\"}" >/dev/null 2>&1 || true
-    done
-  }
+  # Always ensure fields exist — even when table ID was pinned in config.env
+  _ensure_table_fields "$LARC_BASE_APP_TOKEN" "$table_id" \
+    log_at agent_id queue_id source sender task_types gate status \
+    execution_note started_at completed_at message_text
 
   echo "$table_id"
 }
