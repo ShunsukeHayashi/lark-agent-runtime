@@ -375,8 +375,14 @@ _ingress_next() {
     esac
   done
 
-  local queue_json
-  queue_json=$(_ingress_find_next_local_queue_item "$agent_id")
+  # Mirror run-once: check Lark Base first so the daemon picks up tasks
+  # enqueued from other sessions or the Lark IM bot.
+  local queue_json=""
+  if [[ -n "${LARC_BASE_APP_TOKEN:-}" ]]; then
+    queue_json=$(_ingress_find_next_base_queue_item "$agent_id")
+  fi
+  [[ -z "$queue_json" ]] && queue_json=$(_ingress_find_next_local_queue_item "$agent_id")
+
   if [[ -z "$queue_json" ]]; then
     [[ "$raw_json" == "true" ]] || echo "(no actionable queue item for $agent_id)"
     return 0
