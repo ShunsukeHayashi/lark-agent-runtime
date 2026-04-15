@@ -496,7 +496,11 @@ _ingress_run_once() {
   local queue_json
   if [[ -n "$queue_id" ]]; then
     queue_json=$(_ingress_get_local_queue_item "$queue_id")
-    [[ -z "$queue_json" ]] && { log_error "Queue item not found locally: $queue_id"; return 1; }
+    if [[ -z "$queue_json" ]]; then
+      log_info "Not found locally; checking Lark Base for $queue_id..."
+      queue_json=$(_ingress_get_base_queue_item "$queue_id")
+    fi
+    [[ -z "$queue_json" ]] && { log_error "Queue item not found (local or Base): $queue_id"; return 1; }
     local current_status effective_agent
     current_status=$(python3 - "$queue_json" <<'PY'
 import json, sys
@@ -521,7 +525,13 @@ PY
     esac
     agent_id="$effective_agent"
   else
-    queue_json=$(_ingress_find_next_local_queue_item "$agent_id")
+    # Base-first: try Lark Base, fall back to local JSONL
+    if [[ -n "${LARC_BASE_APP_TOKEN:-}" ]]; then
+      queue_json=$(_ingress_find_next_base_queue_item "$agent_id")
+    fi
+    if [[ -z "$queue_json" ]]; then
+      queue_json=$(_ingress_find_next_local_queue_item "$agent_id")
+    fi
   fi
   if [[ -z "$queue_json" ]]; then
     echo "(no actionable queue item for $agent_id)"
@@ -544,7 +554,23 @@ d = json.loads(sys.argv[1])
 print(d.get("queue_id", ""))
 PY
 )
-  _ingress_replace_local_queue_item "$queue_id" "$claimed_json"
+  # Ensure item exists in local JSONL (may have come from Base only)
+  local existing_local
+  existing_local=$(_ingress_get_local_queue_item "$queue_id")
+  if [[ -z "$existing_local" ]]; then
+    # Write to local so execute-stub / done / fail can find it
+    local raw_agent_id
+    raw_agent_id=$(python3 - "$claimed_json" <<'PY'
+import json, sys
+d = json.loads(sys.argv[1])
+print(d.get("agent_id") or "main")
+PY
+)
+    _ingress_write_local "$raw_agent_id" "$claimed_json"
+  else
+    _ingress_replace_local_queue_item "$queue_id" "$claimed_json"
+  fi
+
   if [[ -n "$LARC_BASE_APP_TOKEN" ]]; then
     _ingress_write_base "$claimed_json"
     _ingress_write_audit_log "$claimed_json" "in_progress"
@@ -1720,6 +1746,150 @@ for name in os.listdir(queue_dir):
                 f.write(json.dumps(row, ensure_ascii=False) + "\n")
         raise SystemExit(0)
 raise SystemExit(1)
+PY
+}
+
+_ingress_base_record_list() {
+  # Returns all rows from a Base table as JSON array of dicts (columnar format decoded).
+  # Handles +record-list response: {data:{fields:[...], data:[[...],...]}}
+  local table_id="$1"
+  [[ -z "${LARC_BASE_APP_TOKEN:-}" ]] && echo "[]" && return 0
+
+  local raw
+  raw=$(lark-cli base +record-list \
+    --base-token "$LARC_BASE_APP_TOKEN" \
+    --table-id "$table_id" \
+    2>/dev/null) || { echo "[]"; return 0; }
+
+  python3 - "$raw" <<'PY'
+import json, sys
+
+raw = sys.argv[1]
+try:
+    data = json.loads(raw)
+except Exception:
+    print("[]"); sys.exit(0)
+
+inner = data.get("data", {}) or {}
+fields = inner.get("fields", [])
+rows   = inner.get("data", [])
+
+if not fields or not rows:
+    print("[]"); sys.exit(0)
+
+result = []
+for row in rows:
+    d = {}
+    for i, fname in enumerate(fields):
+        d[fname] = row[i] if i < len(row) else None
+    result.append(d)
+
+print(json.dumps(result, ensure_ascii=False))
+PY
+}
+
+_ingress_find_next_base_queue_item() {
+  # Query Lark Base agent_queue for next actionable item.
+  local agent_id="$1"
+  [[ -z "${LARC_BASE_APP_TOKEN:-}" ]] && return 0
+
+  local table_id="${LARC_QUEUE_TABLE_ID:-}"
+  if [[ -z "$table_id" ]]; then
+    table_id=$(_get_or_create_queue_table 2>/dev/null) || return 0
+  fi
+  [[ -z "$table_id" ]] && return 0
+
+  local all_rows
+  all_rows=$(_ingress_base_record_list "$table_id")
+
+  python3 - "$all_rows" "$agent_id" <<'PY'
+import json, sys
+from datetime import datetime, timezone
+
+all_rows_raw, agent_id = sys.argv[1], sys.argv[2]
+
+def parse_ts(value):
+    if not value:
+        return datetime.max.replace(tzinfo=timezone.utc)
+    for candidate in (str(value), str(value).replace("Z", "+00:00")):
+        try:
+            return datetime.fromisoformat(candidate)
+        except ValueError:
+            pass
+    return datetime.max.replace(tzinfo=timezone.utc)
+
+try:
+    all_rows = json.loads(all_rows_raw)
+except Exception:
+    sys.exit(0)
+
+items = []
+for d in all_rows:
+    status   = d.get("status") or ""
+    assigned = d.get("assigned_agent_id") or ""
+    owner    = d.get("agent_id") or "main"
+
+    if agent_id == "main":
+        if status not in {"pending", "pending_preview"}:
+            continue
+        if assigned:
+            continue
+        if owner != "main":
+            continue
+    else:
+        if status != "delegated":
+            continue
+        if assigned != agent_id:
+            continue
+
+    # Convert comma-separated strings back to arrays
+    for list_field in ("task_types", "scopes"):
+        val = d.get(list_field) or ""
+        if isinstance(val, str):
+            d[list_field] = [x.strip() for x in val.split(",") if x.strip()]
+        elif val is None:
+            d[list_field] = []
+    items.append(d)
+
+items.sort(key=lambda d: parse_ts(d.get("created_at")))
+if items:
+    print(json.dumps(items[0], ensure_ascii=False))
+PY
+}
+
+_ingress_get_base_queue_item() {
+  # Fetch a specific queue item from Lark Base by queue_id.
+  local queue_id="$1"
+  [[ -z "${LARC_BASE_APP_TOKEN:-}" ]] && return 0
+
+  local table_id="${LARC_QUEUE_TABLE_ID:-}"
+  if [[ -z "$table_id" ]]; then
+    table_id=$(_get_or_create_queue_table 2>/dev/null) || return 0
+  fi
+  [[ -z "$table_id" ]] && return 0
+
+  local all_rows
+  all_rows=$(_ingress_base_record_list "$table_id")
+
+  python3 - "$all_rows" "$queue_id" <<'PY'
+import json, sys
+
+all_rows_raw, queue_id = sys.argv[1], sys.argv[2]
+try:
+    all_rows = json.loads(all_rows_raw)
+except Exception:
+    sys.exit(0)
+
+for d in all_rows:
+    if d.get("queue_id") == queue_id:
+        for list_field in ("task_types", "scopes"):
+            val = d.get(list_field) or ""
+            if isinstance(val, str):
+                d[list_field] = [x.strip() for x in val.split(",") if x.strip()]
+            elif val is None:
+                d[list_field] = []
+        print(json.dumps(d, ensure_ascii=False))
+        raise SystemExit(0)
 PY
 }
 
