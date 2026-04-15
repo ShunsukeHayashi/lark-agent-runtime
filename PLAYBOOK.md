@@ -463,3 +463,140 @@ larc bootstrap --agent main
 # 4. エージェント登録テスト
 larc agent register
 ```
+
+---
+
+## Current Status — 2026-04-16
+
+### アクティブなマイルストーン
+
+- **core-ux** — `larc status` / `ingress context` のエラーサーフェス改善（PR #10 review 中）
+- **windows-support** — macOS 以外での実行可能化（PR #19, #20, #21, #23 review 中）
+- **operational-resilience** — failed キュー triage ヘルパー（#8 未着手）
+
+### タスク台帳
+
+実行待ち・実行中のタスクは `tasks.json` に集約した。各エージェントはタスクを claim する前に `locked_by` + `lock_expires_at` を書き込むこと。stale lock（now > lock_expires_at）は誰でも奪える。
+
+```bash
+# 現在のタスク状態を見る
+jq '.tasks[] | [.id, .status, .title, .locked_by] | @tsv' tasks.json -r
+
+# ロックを取得してタスクを進める（手動例）
+jq --arg now "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+   --arg exp "$(date -u -v+60M +%Y-%m-%dT%H:%M:%SZ 2>/dev/null \
+               || date -u -d '+60 minutes' +%Y-%m-%dT%H:%M:%SZ)" \
+   --arg me "claude" --arg id "T-008" \
+   '.tasks |= map(if .id == $id then
+      .locked_by = $me | .lock_expires_at = $exp | .status = "in_progress"
+    else . end)' tasks.json > tasks.json.tmp && mv tasks.json.tmp tasks.json
+
+# 完了時にロック解放
+jq --arg id "T-008" \
+   '.tasks |= map(if .id == $id then
+      .locked_by = null | .lock_expires_at = null | .status = "done"
+    else . end)' tasks.json > tasks.json.tmp && mv tasks.json.tmp tasks.json
+```
+
+### ステータス遷移
+
+```
+pending → in_progress → review → done
+             │              │
+             └────────→ blocked ←──┘
+```
+
+- `pending` : 未着手、誰でも claim できる
+- `in_progress` : claim 済み。`locked_by` が所有者
+- `review` : PR 作成済み、オーナー/CI レビュー待ち
+- `blocked` : 外部依存（ハードウェア・オーナー判断）待ち
+- `done` : マージ済み＋動作確認済み
+
+---
+
+## Windows Support Milestone — プレイブック
+
+GitHub milestone: [Windows Support](../../milestone/1)
+Tracking issue: #9
+
+### ゴール
+
+LARC を **macOS 以外でも安定動作**させる。native PowerShell 書き換えは out-of-scope。推奨ランタイムは順に：
+
+1. **Git Bash** (Git for Windows 経由) — 既存のシェルスクリプトがほぼそのまま動く
+2. **WSL2** — Linux として扱われる。`$HOME` が Windows と分離される点に注意
+3. **PowerShell ランチャー** (`bin/larc.ps1`) — 内部で bash を exec する薄いラッパー
+
+### フェーズ別ロードマップ
+
+| Phase | 内容 | タスク | 状態 |
+|---|---|---|---|
+| W1 | **エラー可視化** — keychain / Python の失敗理由をユーザーに見せる | T-001, T-005 | 🟡 review |
+| W2 | **ポータブル化** — BSD/GNU 両対応のヘルパーで call site を差し替える | T-002 | 🟡 review |
+| W3 | **CI** — windows-latest を matrix に入れて退行を自動検知する | T-003 | 🟡 review |
+| W4 | **PS1 ランチャー** — PowerShell から直接 `larc` を打てるようにする | T-004 | 🟡 review |
+| W5 | **残 BSD/POSIX 固有ロジック** — fcntl / kill -0 / PID ファイル / daemon | T-006 | 🔴 pending |
+| W6 | **実機検証** — AAI (Windows 11) で Git Bash / WSL 両方 smoke test | T-008 | 🔴 pending |
+| W7 | **ドキュメント** — Windows 向けインストールガイド | T-007 | 🔴 pending |
+
+### W6 実機テスト計画（AAI, Windows 11 build 26200.8037）
+
+**前提**: read-only モード。daemon 起動しない。Base 書き込みしない。
+
+**対象コマンド**:
+```bash
+# 最小疎通
+larc --help
+larc status
+larc auth suggest "経費精算と承認申請を作成"
+
+# ingress 読み取り
+larc ingress list --status pending --limit 5
+larc ingress list --status failed --limit 5
+
+# キャッシュ読み取り
+larc memory search --query "test" --days 7  # network 要らなければ
+```
+
+**対象環境**:
+1. Git Bash (`C:\Program Files\Git\bin\bash.exe` 経由)
+2. WSL2 (`bash.exe` 経由)
+3. PowerShell + `bin/larc.ps1` （#21 マージ後）
+
+**記録先**: GitHub issue #9 にコメント追記。失敗は該当サブ issue にも反映。
+
+### Phase 間の依存関係
+
+```
+W1 (core-ux)  ─┐
+               ├─→ W6 (AAI smoke test) ─→ W7 (docs)
+W2 (portable) ─┤
+W3 (CI)       ─┤   ← W3 は常時並列、他を block しない
+W4 (PS1)      ─┤
+W5 (residual) ─┘
+```
+
+W1-W4 がマージされれば W6 が走れる。W5 はそれと並列で進む。
+
+### W5 残タスクの詳細（T-006）
+
+`lib/billing.sh` の `fcntl.flock` が Unix-only。Windows Python には存在しない。対応案：
+
+```python
+# 現状
+import fcntl
+fcntl.flock(f.fileno(), fcntl.LOCK_EX)
+
+# 提案（cross-platform）
+try:
+    import fcntl
+    def _lock(f):   fcntl.flock(f.fileno(), fcntl.LOCK_EX)
+    def _unlock(f): fcntl.flock(f.fileno(), fcntl.LOCK_UN)
+except ImportError:
+    import msvcrt
+    def _lock(f):   msvcrt.locking(f.fileno(), msvcrt.LK_LOCK, 1)
+    def _unlock(f): msvcrt.locking(f.fileno(), msvcrt.LK_UNLCK, 1)
+```
+
+`daemon.sh` / `webhook.sh` の `kill -0` + PID ファイルは Windows Git Bash で部分的に動くが、`nohup` 相当が弱い。Windows 本格対応は **Scheduled Task** か **NSSM** を使うパスをドキュメント化する方向で整理する（ツール内蔵の detach は最小限）。
+
