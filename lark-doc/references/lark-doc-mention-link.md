@@ -83,12 +83,12 @@ python3 scripts/lark-mention-link.py audit
 
 ---
 
-## テナント固定情報（みやびGK）
+## テナント固定情報
 
 ```
-テナントドメイン: miyabi-g-k.jp.larksuite.com
+テナントドメイン: your-tenant.jp.larksuite.com
 obj_type (docx): 22
-URL形式: https://miyabi-g-k.jp.larksuite.com/docx/<token>
+URL形式: https://your-tenant.jp.larksuite.com/docx/<token>
 ```
 
 ---

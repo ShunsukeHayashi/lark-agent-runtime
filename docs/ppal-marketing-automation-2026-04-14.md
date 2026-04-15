@@ -14,14 +14,14 @@ The purpose is to normalize those user-facing words into the governed Lark runti
 
 ## PPAL Base Defaults
 
-- `base_token`: `QRonbSCrBajWRtsZYrTjtUsep0d`
-- `user_table_id`: `tbl4sJd5HVE7u47v`
-- `cv_table_id`: `tbliH8JqoIWGgt9X`
-- `metrics_table_id`: `tblR58a8UANR4nC2`
-- `source_table_id`: `tbli5hWHQKH8AQxb`
-- `default_hotlist_view_id`: `vewvyNaZRz`
-- `default_all_users_view_id`: `vew1AT1P1m`
-- `ssot_doc_url`: `https://www.larksuite.com/docx/BhN3d92LrohAokxqh2WjWEmRphh`
+- `base_token`: `REPLACE_BASE_TOKEN`
+- `user_table_id`: `REPLACE_USER_TABLE_ID`
+- `cv_table_id`: `REPLACE_CV_TABLE_ID`
+- `metrics_table_id`: `REPLACE_METRICS_TABLE_ID`
+- `source_table_id`: `REPLACE_SOURCE_TABLE_ID`
+- `default_hotlist_view_id`: `REPLACE_PRIORITY_VIEW_ID`
+- `default_all_users_view_id`: `REPLACE_DEFAULT_VIEW_ID`
+- `ssot_doc_url`: `https://example.com/replace-with-ssot-doc-url`
 - `output_folder_token`: `LARC_DRIVE_FOLDER_TOKEN` (auto-injected from runtime config)
 
 ## What LARC Does

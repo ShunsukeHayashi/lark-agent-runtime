@@ -35,10 +35,10 @@ live 実行に必要なのはこの 2 つです。
 - `approval_code`
 - 申請者の user id か open id
 
-この環境では user open id はすでに確認済みです。
+live 実行前に user open id を確認してください。
 
 ```text
-ou_a832c0fb41861056c9dc0d9789c69b88
+ou_REPLACE_WITH_REQUESTER_OPEN_ID
 ```
 
 ## 4. approval_code を保存する
@@ -76,7 +76,7 @@ larc approve scaffold-package --approval-code YOUR_APPROVAL_CODE --output-dir ./
 ```bash
 scripts/approval-check.sh \
   --approval-code YOUR_APPROVAL_CODE \
-  --user-id ou_a832c0fb41861056c9dc0d9789c69b88
+  --user-id ou_REPLACE_WITH_REQUESTER_OPEN_ID
 ```
 
 入力イメージが欲しい場合は [examples/approval/minimal](../examples/approval/minimal) や [examples/approval/purchase-request](../examples/approval/purchase-request) のサンプルも参照できます。
@@ -86,7 +86,7 @@ scripts/approval-check.sh \
 ```bash
 scripts/approval-check.sh \
   --approval-code YOUR_APPROVAL_CODE \
-  --user-id ou_a832c0fb41861056c9dc0d9789c69b88 \
+  --user-id ou_REPLACE_WITH_REQUESTER_OPEN_ID \
   --live
 ```
 

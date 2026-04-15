@@ -10,32 +10,25 @@ Lark ドキュメントの text_run URL を mention_doc に変換するスクリ
     python3 scripts/lark-mention-link.py fix <doc_id>    # mention_docに変換
     python3 scripts/lark-mention-link.py audit           # 全ドキュメントをスキャン
 
-みやびGKテナント設定:
-    TENANT = "https://miyabi-g-k.jp.larksuite.com/docx"
+テナント設定:
+    TENANT = "https://your-tenant.jp.larksuite.com/docx"
     OBJ_TYPE = 22  # docx固定
 """
 
-import subprocess
 import json
+import os
+import subprocess
 import sys
 
 # ===== テナント設定 =====
-TENANT = "https://miyabi-g-k.jp.larksuite.com/docx"
+TENANT = os.getenv("LARK_MENTION_TENANT_URL", "https://your-tenant.jp.larksuite.com/docx")
 OBJ_TYPE = 22  # docx固定
 
-# ===== みやびナレッジグラフ ドキュメントマップ =====
+# ===== ドキュメントマップ（必要に応じて置き換える）=====
 DOCS = {
-    "CG26dL5geo7TCSxoAUGjLbDRpsc": "【インデックス】みやびナレッジグラフ — 地図",
-    "PsYzdraTioQaSyxMw1njEGfmpse": "SOUL — エージェントアイデンティティ・原則",
-    "JhovdiWUuoSEN3xX9JgjAPzwpff": "USER — ユーザープロフィール",
-    "LJoLd8L25oL00vxrUYTjdlR5p3f": "MEMORY — 長期記憶",
-    "BtB6dDp5VoTXwmxeJUhj6uXtp6b": "HEARTBEAT — システム現在状態",
-    "VHvDdNpUjo2jKAxbBfPjSiBnp3f": "LARC技術基盤 — permission-first設計の根拠",
-    "JfuadlXTmoVOloxU60sjpleApAh": "みやびAI導入支援事業 — 戦略ナレッジベース",
-    "IGcVdyGb6ozLaLx9MKHjgEsdpsg": "AI業務導入 権限設計診断シート",
-    "MCAfdZQ3LopTV8xPqGrj0LxspBf": "AIエージェント導入支援 提案書テンプレート",
-    "RDctdO04Vo4IqdxwqyrjFP69pcg": "note記事下書き — AIに鍵を全部渡していませんか",
-    "UeZKd12q0oudDVxpfGYjHe0Vp5b": "X投稿スレッド案 — note記事連動",
+    "REPLACE_WITH_INDEX_DOC_TOKEN": "Index document",
+    "REPLACE_WITH_SOURCE_DOC_TOKEN": "Source document",
+    "REPLACE_WITH_TARGET_DOC_TOKEN": "Target document",
 }
 
 # ===== コア関数 =====
@@ -167,6 +160,9 @@ def cmd_fix(doc_id: str):
 
 def cmd_audit():
     """全ドキュメントをスキャンして text_run URL を検出・レポート"""
+    if any(key.startswith("REPLACE_WITH_") for key in DOCS):
+        print("DOCS マップを実テナント向けに設定してから audit を実行してください。")
+        sys.exit(1)
     print("=" * 60)
     print("Lark ナレッジグラフ 監査レポート")
     print("=" * 60)
@@ -188,6 +184,9 @@ def cmd_audit():
 
 def cmd_fix_all():
     """全ドキュメントの text_run URL を一括修正"""
+    if any(key.startswith("REPLACE_WITH_") for key in DOCS):
+        print("DOCS マップを実テナント向けに設定してから fix-all を実行してください。")
+        sys.exit(1)
     print("🔧 全ドキュメント一括修正")
     total_success = 0
     total_fail = 0

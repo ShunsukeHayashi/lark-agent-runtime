@@ -692,13 +692,13 @@ def extract_fields(scenario_id, text):
 
     if scenario_id == "ppal_marketing_ops":
         lower = text.lower()
-        fields["base_token"] = "QRonbSCrBajWRtsZYrTjtUsep0d"
-        fields["user_table_id"] = "tbl4sJd5HVE7u47v"
-        fields["cv_table_id"] = "tbliH8JqoIWGgt9X"
-        fields["metrics_table_id"] = "tblR58a8UANR4nC2"
-        fields["source_table_id"] = "tbli5hWHQKH8AQxb"
-        fields["default_view_id"] = "vewvyNaZRz" if re.search(r"hot|follow.?up|priority|urgent", lower) else "vew1AT1P1m"
-        fields["ssot_doc_url"] = "https://www.larksuite.com/docx/BhN3d92LrohAokxqh2WjWEmRphh"
+        fields["base_token"] = "REPLACE_BASE_TOKEN"
+        fields["user_table_id"] = "REPLACE_USER_TABLE_ID"
+        fields["cv_table_id"] = "REPLACE_CV_TABLE_ID"
+        fields["metrics_table_id"] = "REPLACE_METRICS_TABLE_ID"
+        fields["source_table_id"] = "REPLACE_SOURCE_TABLE_ID"
+        fields["default_view_id"] = "REPLACE_PRIORITY_VIEW_ID" if re.search(r"hot|follow.?up|priority|urgent", lower) else "REPLACE_DEFAULT_VIEW_ID"
+        fields["ssot_doc_url"] = "https://example.com/replace-with-ssot-doc-url"
         fields["output_folder_token"] = drive_folder_token
         fields["output_folder_strategy"] = "larc_workspace_default" if fields["output_folder_token"] else ""
         systems = []
@@ -930,13 +930,13 @@ def extract_fields(scenario_id, text):
 
     if scenario_id == "ppal_marketing_ops":
         lower = text.lower()
-        fields["base_token"] = "QRonbSCrBajWRtsZYrTjtUsep0d"
-        fields["user_table_id"] = "tbl4sJd5HVE7u47v"
-        fields["cv_table_id"] = "tbliH8JqoIWGgt9X"
-        fields["metrics_table_id"] = "tblR58a8UANR4nC2"
-        fields["source_table_id"] = "tbli5hWHQKH8AQxb"
-        fields["default_view_id"] = "vewvyNaZRz" if re.search(r"hot|follow.?up|priority|urgent", lower) else "vew1AT1P1m"
-        fields["ssot_doc_url"] = "https://www.larksuite.com/docx/BhN3d92LrohAokxqh2WjWEmRphh"
+        fields["base_token"] = "REPLACE_BASE_TOKEN"
+        fields["user_table_id"] = "REPLACE_USER_TABLE_ID"
+        fields["cv_table_id"] = "REPLACE_CV_TABLE_ID"
+        fields["metrics_table_id"] = "REPLACE_METRICS_TABLE_ID"
+        fields["source_table_id"] = "REPLACE_SOURCE_TABLE_ID"
+        fields["default_view_id"] = "REPLACE_PRIORITY_VIEW_ID" if re.search(r"hot|follow.?up|priority|urgent", lower) else "REPLACE_DEFAULT_VIEW_ID"
+        fields["ssot_doc_url"] = "https://example.com/replace-with-ssot-doc-url"
         fields["output_folder_token"] = drive_folder_token
         fields["output_folder_strategy"] = "larc_workspace_default" if fields["output_folder_token"] else ""
         systems = []
@@ -2278,13 +2278,13 @@ def extract_normalized_fields(scenario_id, text):
     if "slack" in lower:
         normalization.append("Slack -> Lark IM")
     return {
-        "base_token": "QRonbSCrBajWRtsZYrTjtUsep0d",
-        "user_table_id": "tbl4sJd5HVE7u47v",
-        "cv_table_id": "tbliH8JqoIWGgt9X",
-        "metrics_table_id": "tblR58a8UANR4nC2",
-        "source_table_id": "tbli5hWHQKH8AQxb",
-        "default_view_id": "vewvyNaZRz" if re.search(r"hot|follow.?up|priority|urgent", lower) else "vew1AT1P1m",
-        "ssot_doc_url": "https://www.larksuite.com/docx/BhN3d92LrohAokxqh2WjWEmRphh",
+        "base_token": "REPLACE_BASE_TOKEN",
+        "user_table_id": "REPLACE_USER_TABLE_ID",
+        "cv_table_id": "REPLACE_CV_TABLE_ID",
+        "metrics_table_id": "REPLACE_METRICS_TABLE_ID",
+        "source_table_id": "REPLACE_SOURCE_TABLE_ID",
+        "default_view_id": "REPLACE_PRIORITY_VIEW_ID" if re.search(r"hot|follow.?up|priority|urgent", lower) else "REPLACE_DEFAULT_VIEW_ID",
+        "ssot_doc_url": "https://example.com/replace-with-ssot-doc-url",
         "output_folder_token": drive_folder_token,
         "output_folder_strategy": "larc_workspace_default" if drive_folder_token else "",
         "normalization": normalization or ["PPAL Base", "Lark Docs/Wiki", "Lark IM"],

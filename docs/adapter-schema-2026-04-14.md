@@ -110,12 +110,12 @@ Every scenario should resolve these fields before real execution:
   - `feishu_update_doc`
   - `feishu_im_user_message`
 - `default_context`:
-  - `base_token=QRonbSCrBajWRtsZYrTjtUsep0d`
-  - `user_table_id=tbl4sJd5HVE7u47v`
-  - `cv_table_id=tbliH8JqoIWGgt9X`
-  - `metrics_table_id=tblR58a8UANR4nC2`
-  - `source_table_id=tbli5hWHQKH8AQxb`
-  - `ssot_doc_url=https://www.larksuite.com/docx/BhN3d92LrohAokxqh2WjWEmRphh`
+  - `base_token=REPLACE_BASE_TOKEN`
+  - `user_table_id=REPLACE_USER_TABLE_ID`
+  - `cv_table_id=REPLACE_CV_TABLE_ID`
+  - `metrics_table_id=REPLACE_METRICS_TABLE_ID`
+  - `source_table_id=REPLACE_SOURCE_TABLE_ID`
+  - `ssot_doc_url=https://example.com/replace-with-ssot-doc-url`
 - `required_fields`:
   - `campaign_goal`
 - `blocked_if_missing`:

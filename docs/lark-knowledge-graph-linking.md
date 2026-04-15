@@ -1,5 +1,5 @@
 # Lark ナレッジグラフ リンキング スキル
-### みやびドキュメント群の相関図・被リンク管理
+### Lark ドキュメント群の相関図・被リンク管理
 
 > 作成：2026-04-14
 > 目的：Larkドキュメント間を mention_doc で接続し、相関図・情報探索経路を維持するためのルールと手順
@@ -75,7 +75,7 @@ def get_url_blocks(doc_id):
         if item.get("block_type") == 2:
             for el in item.get("text", {}).get("elements", []):
                 content = el.get("text_run", {}).get("content", "")
-                if "miyabi-g-k.jp.larksuite.com/docx/" in content:
+                if "your-tenant.jp.larksuite.com/docx/" in content:
                     token = content.split("/docx/")[-1].strip()
                     found.append((item["block_id"], token))
     return found
@@ -84,7 +84,7 @@ def get_url_blocks(doc_id):
 ### Step 2：text_run → mention_doc に変換
 
 ```python
-TENANT = "https://miyabi-g-k.jp.larksuite.com/docx"
+TENANT = "https://your-tenant.jp.larksuite.com/docx"
 
 def patch_mention(doc_id, block_id, token, title):
     body = json.dumps({
@@ -183,25 +183,25 @@ for doc_id, title in DOCS.items():
 
 ---
 
-## みやびナレッジグラフ 現在の構成（2026-04-14）
+## ナレッジグラフ構成例（2026-04-14）
 
-### ドキュメント一覧（全11件）
+### ドキュメント一覧（例）
 
 | Layer | ドキュメント | doc_id |
 |---|---|---|
-| INDEX | 【インデックス】みやびナレッジグラフ — 地図 | CG26dL5geo7TCSxoAUGjLbDRpsc |
-| -1 | SOUL — エージェントアイデンティティ・原則 | PsYzdraTioQaSyxMw1njEGfmpse |
-| -1 | USER — ユーザープロフィール | JhovdiWUuoSEN3xX9JgjAPzwpff |
-| -1 | MEMORY — 長期記憶 | LJoLd8L25oL00vxrUYTjdlR5p3f |
-| -1 | HEARTBEAT — システム現在状態 | BtB6dDp5VoTXwmxeJUhj6uXtp6b |
-| 0 | LARC技術基盤 — permission-first設計の根拠 | VHvDdNpUjo2jKAxbBfPjSiBnp3f |
-| 1 | みやびAI導入支援事業 — 戦略ナレッジベース | JfuadlXTmoVOloxU60sjpleApAh |
-| 2 | AI業務導入 権限設計診断シート | IGcVdyGb6ozLaLx9MKHjgEsdpsg |
-| 2 | AIエージェント導入支援 提案書テンプレート | MCAfdZQ3LopTV8xPqGrj0LxspBf |
-| 3 | note記事下書き — AIに鍵を全部渡していませんか | RDctdO04Vo4IqdxwqyrjFP69pcg |
-| 3 | X投稿スレッド案 — note記事連動 | UeZKd12q0oudDVxpfGYjHe0Vp5b |
+| INDEX | Index document | REPLACE_WITH_INDEX_DOC_TOKEN |
+| -1 | SOUL | REPLACE_WITH_SOUL_DOC_TOKEN |
+| -1 | USER | REPLACE_WITH_USER_DOC_TOKEN |
+| -1 | MEMORY | REPLACE_WITH_MEMORY_DOC_TOKEN |
+| -1 | HEARTBEAT | REPLACE_WITH_HEARTBEAT_DOC_TOKEN |
+| 0 | Technical foundation | REPLACE_WITH_TECH_DOC_TOKEN |
+| 1 | Strategy document | REPLACE_WITH_STRATEGY_DOC_TOKEN |
+| 2 | Diagnostic sheet | REPLACE_WITH_DIAGNOSTIC_DOC_TOKEN |
+| 2 | Proposal template | REPLACE_WITH_PROPOSAL_DOC_TOKEN |
+| 3 | Article draft | REPLACE_WITH_ARTICLE_DOC_TOKEN |
+| 3 | Social post draft | REPLACE_WITH_SOCIAL_DOC_TOKEN |
 
-※ 除外（テスト/評価用）：LARC要件テスト / LARC-eval-test / LARC-eval-1776113139
+※ 実運用では、自組織の doc token 一覧に置き換えてください。
 
 ### エッジ一覧（方向・種別付き、全39本）
 
@@ -267,8 +267,8 @@ XPOST → INDEX       [帰還]
 ### テナント固定情報
 
 ```
-テナントドメイン: miyabi-g-k.jp.larksuite.com
-フォルダトークン: WRf8fJaN9lW35vdabukj8z9Epsc
+テナントドメイン: your-tenant.jp.larksuite.com
+フォルダトークン: REPLACE_WITH_FOLDER_TOKEN
 obj_type (docx): 22
 ```
 

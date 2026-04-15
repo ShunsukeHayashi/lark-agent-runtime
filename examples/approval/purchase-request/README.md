@@ -33,7 +33,7 @@ larc approve scaffold-package \
 ```bash
 scripts/approval-check.sh \
   --approval-code YOUR_APPROVAL_CODE \
-  --user-id ou_a832c0fb41861056c9dc0d9789c69b88 \
+  --user-id ou_REPLACE_WITH_REQUESTER_OPEN_ID \
   --form-file ./approval-work/form.json \
   --payload-file ./approval-work/extra.json
 ```
@@ -43,7 +43,7 @@ scripts/approval-check.sh \
 ```bash
 scripts/approval-check.sh \
   --approval-code YOUR_APPROVAL_CODE \
-  --user-id ou_a832c0fb41861056c9dc0d9789c69b88 \
+  --user-id ou_REPLACE_WITH_REQUESTER_OPEN_ID \
   --form-file ./approval-work/form.json \
   --payload-file ./approval-work/extra.json \
   --live
