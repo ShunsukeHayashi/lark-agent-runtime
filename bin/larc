@@ -995,9 +995,12 @@ ${BOLD}Commands:${RESET}
                           --agent <id>  Target agent (default: main)
                           --timeout <N> Minutes before in_progress is considered stale (default: 60)
                           --dry-run     Preview without writing
-  ${CYAN}kg build${RESET}              Traverse Lark Wiki and index node graph into Base
+  ${CYAN}kg build${RESET} [--with-links] Traverse Lark Wiki and index node graph into Base
   ${CYAN}kg query${RESET} "<concept>"  Keyword search over indexed graph; show matches + neighbors
-  ${CYAN}kg show${RESET} <token>       Show node details and neighbors from local cache
+  ${CYAN}kg show${RESET} <token>       Show node details, tree neighbors, and semantic edges
+  ${CYAN}kg scan-links${RESET} <token> Scan a docx node for outgoing mention_doc links
+  ${CYAN}kg build-edges${RESET}        Scan all docx nodes and update the edge index
+  ${CYAN}kg link${RESET} <f> <t>       Insert mention_doc block from <f> to <t>
   ${CYAN}daemon start${RESET}          Start IM poller + queue worker in background
                           --agent <id>    Agent ID (default: main)
                           --interval <s>  Poll interval in seconds (default: 30)
