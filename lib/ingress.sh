@@ -379,17 +379,36 @@ _ingress_next() {
   local queue_json=""
   if [[ -n "${LARC_BASE_APP_TOKEN:-}" ]]; then
     queue_json=$(_ingress_find_next_base_queue_item "$agent_id")
-    # Guard against Base/local desync: if local copy is already terminal, skip
     if [[ -n "$queue_json" ]]; then
-      local _base_qid _local_json _local_status
-      _base_qid=$(python3 -c "import json,sys; print(json.loads(sys.argv[1]).get('queue_id',''))" "$queue_json" 2>/dev/null || echo "")
-      if [[ -n "$_base_qid" ]]; then
-        _local_json=$(_ingress_get_local_queue_item "$_base_qid")
-        _local_status=$(python3 -c "import json,sys; print(json.loads(sys.argv[1]).get('status',''))" "$_local_json" 2>/dev/null || echo "")
-        if [[ "$_local_status" =~ ^(done|failed|partial|cancelled)$ ]]; then
-          log_warn "Base/local desync: $_base_qid is locally $_local_status but Base shows pending — skipping Base result"
-          queue_json=""
-        fi
+      local _desync_check
+      _desync_check=$(python3 - "$queue_json" "$LARC_CACHE/queue" <<'PY'
+import json, os, sys
+d = json.loads(sys.argv[1])
+qid = d.get("queue_id", "")
+queue_dir = sys.argv[2]
+if qid and os.path.isdir(queue_dir):
+    for name in os.listdir(queue_dir):
+        if not name.endswith(".jsonl"):
+            continue
+        with open(os.path.join(queue_dir, name), encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                row = json.loads(line)
+                if row.get("queue_id") == qid:
+                    local_status = row.get("status", "")
+                    if local_status in {"done", "failed", "partial", "cancelled"}:
+                        print(f"{qid}\t{local_status}")
+                    raise SystemExit(0)
+PY
+      )
+      if [[ -n "$_desync_check" ]]; then
+        local _dsync_qid _dsync_status
+        _dsync_qid=${_desync_check%%$'\t'*}
+        _dsync_status=${_desync_check##*$'\t'}
+        log_warn "Base/local desync: $_dsync_qid is locally $_dsync_status but Base shows pending — skipping"
+        queue_json=""
       fi
     fi
   fi
@@ -757,8 +776,10 @@ def extract_fields(scenario_id, text):
         ]
         missing_runtime_fields = [name for name in required_runtime_fields if not fields.get(name)]
         if missing_runtime_fields:
-            missing.extend(name for name in missing_runtime_fields if name not in missing)
-            blocked.extend(name for name in missing_runtime_fields if name not in blocked)
+            _missing_set = set(missing)
+            _blocked_set = set(blocked)
+            missing.extend(n for n in missing_runtime_fields if n not in _missing_set)
+            blocked.extend(n for n in missing_runtime_fields if n not in _blocked_set)
             ask_user = ask_user or (
                 "Scenario runtime defaults are not configured. Set "
                 "LARC_SCENARIO_BASE_TOKEN, LARC_SCENARIO_USER_TABLE_ID, LARC_SCENARIO_CV_TABLE_ID, "
@@ -1021,8 +1042,10 @@ def extract_fields(scenario_id, text):
         ]
         missing_runtime_fields = [name for name in required_runtime_fields if not fields.get(name)]
         if missing_runtime_fields:
-            missing.extend(name for name in missing_runtime_fields if name not in missing)
-            blocked.extend(name for name in missing_runtime_fields if name not in blocked)
+            _missing_set = set(missing)
+            _blocked_set = set(blocked)
+            missing.extend(n for n in missing_runtime_fields if n not in _missing_set)
+            blocked.extend(n for n in missing_runtime_fields if n not in _blocked_set)
             ask_user = ask_user or (
                 "Scenario runtime defaults are not configured. Set "
                 "LARC_SCENARIO_BASE_TOKEN, LARC_SCENARIO_USER_TABLE_ID, LARC_SCENARIO_CV_TABLE_ID, "

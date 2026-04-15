@@ -20,9 +20,12 @@ _worker_poll_once() {
   [[ -z "$next_json" ]] && return 0
 
   local gate status queue_id
-  gate=$(echo "$next_json" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('gate','none'))" 2>/dev/null || echo "none")
-  status=$(echo "$next_json" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('status',''))" 2>/dev/null || echo "")
-  queue_id=$(echo "$next_json" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('queue_id',''))" 2>/dev/null || echo "")
+  IFS=$'\t' read -r gate status queue_id < <(python3 - "$next_json" <<'PY'
+import json, sys
+d = json.loads(sys.argv[1])
+print(d.get("gate", "none") + "\t" + d.get("status", "") + "\t" + d.get("queue_id", ""))
+PY
+  ) || { gate="none"; status=""; queue_id=""; }
 
   [[ -z "$queue_id" ]] && return 0
 
