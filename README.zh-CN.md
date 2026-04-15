@@ -2,6 +2,11 @@
 
 > 面向在 Lark 内工作的 AI Agent 的、以权限管理为核心的运行时环境
 
+[![version](https://img.shields.io/badge/version-0.2.0-blue)](bin/larc)
+[![CI](https://github.com/ShunsukeHayashi/lark-agent-runtime/actions/workflows/ci.yml/badge.svg)](https://github.com/ShunsukeHayashi/lark-agent-runtime/actions/workflows/ci.yml)
+[![license](https://img.shields.io/badge/license-MIT-green)](#license)
+[![lark-cli](https://img.shields.io/badge/requires-lark--cli-orange)](https://github.com/larksuite/cli)
+
 [English](README.md) | 简体中文 | [日本語](README.ja.md)
 
 正式名称: `Lark Agent Runtime`
@@ -57,7 +62,11 @@ LARC 的切入点是 `permission-first`：
 |------|------|
 | `larc bootstrap` | 从 Drive 读取 `SOUL.md → USER.md → MEMORY.md → HEARTBEAT.md` |
 | `larc auth suggest` | 从自然语言任务推断所需 scope 和 authority |
+| `larc approve gate` | 在执行前检查 none / preview / approval 门控要求 |
+| `larc agent register` | 将 Agent 注册到 Lark Base，并支持 YAML 批量注册 |
+| `larc kg build` / `larc kg query` | 索引 Lark Wiki 节点图，并返回带邻居上下文的概念查询结果 |
 | `larc memory` | 将日常记忆同步到 Base |
+| `larc ingress` | 提供 enqueue、approve/resume、delegate 与 worker loop 等队列处理面 |
 | `larc send` / `larc task` | 提供消息发送和任务操作的基本执行路径 |
 | Approval 支持 | 区分审批实例创建与审批任务执行 |
 | Claude Code skills | 在 `.claude/skills/` 中提供 Lark 相关技能集 |
@@ -87,6 +96,9 @@ larc quickstart
 ```
 
 > **注意**：LARC 自动安装到 `~/.larc/runtime/`，请勿直接编辑该目录内的文件。升级请使用 `larc update`。
+
+→ 完整指南：[docs/quickstart-ja.md](docs/quickstart-ja.md)  
+→ Lark 应用设置（面向协调者）：[docs/lark-app-setup.md](docs/lark-app-setup.md)
 
 ---
 
@@ -125,6 +137,22 @@ larc quickstart
 - [docs/auth-suggest-cases.md](docs/auth-suggest-cases.md)
 - [CONTRIBUTING.md](CONTRIBUTING.md)
 - [docs/terminology-glossary.zh-CN.md](docs/terminology-glossary.zh-CN.md)
+
+---
+
+## 验证
+
+在提交 PR 之前可以先做轻量本地验证：
+
+```bash
+# 检查入口脚本与辅助脚本的 shell 语法
+bash -n bin/larc scripts/install.sh scripts/auth-suggest-check.sh
+
+# 检查 permission-intelligence 回归用例
+bash scripts/auth-suggest-check.sh --verify
+```
+
+这些检查也会在 GitHub Actions 中自动运行。
 
 ---
 

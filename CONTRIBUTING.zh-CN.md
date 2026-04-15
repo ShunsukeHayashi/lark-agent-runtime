@@ -108,6 +108,22 @@ LARC 仍然处于 incubation 阶段。
 
 ---
 
+## 验证建议
+
+在提交 PR 之前，至少建议先运行下面两项轻量检查：
+
+```bash
+# 检查入口脚本与辅助脚本的 shell 语法
+bash -n bin/larc scripts/install.sh scripts/auth-suggest-check.sh
+
+# 检查 permission-intelligence 回归用例
+bash scripts/auth-suggest-check.sh --verify
+```
+
+如果没有运行测试，也请在 PR 里明确说明原因。
+
+---
+
 ## 当前高价值空白区
 
 - 提升 `auth suggest` 的最小权限精度

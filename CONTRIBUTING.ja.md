@@ -108,6 +108,22 @@ PR は小さく、焦点を絞るのが理想です。
 
 ---
 
+## 検証の目安
+
+PR 前の軽量な確認として、少なくとも次を推奨します。
+
+```bash
+# エントリポイントと補助スクリプトの構文確認
+bash -n bin/larc scripts/install.sh scripts/auth-suggest-check.sh
+
+# permission-intelligence の回帰確認
+bash scripts/auth-suggest-check.sh --verify
+```
+
+テスト未実施なら、その理由も PR に書いてください。
+
+---
+
 ## 価値の高い未解決領域
 
 - `auth suggest` の最小権限精度向上
