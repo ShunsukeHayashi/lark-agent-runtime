@@ -39,8 +39,8 @@ _worker_poll_once() {
         return 0
       fi
       # Route to openclaw if available, otherwise fall back to run-once (supervised mode)
-      local run_out run_rc=0
-      if command -v openclaw &>/dev/null || command -v open-claw &>/dev/null; then
+      local run_out="" run_rc=0
+      if [[ -n "${LARC_OPENCLAW_CMD:-}" ]]; then
         log_info "Dispatching $queue_id via openclaw (gate=$gate)"
         run_out=$(larc ingress openclaw --queue-id "$queue_id" --agent "$agent_id" --days 14 --execute 2>&1)
         run_rc=$?
@@ -93,7 +93,16 @@ cmd_worker() {
     esac
   done
 
-  log_head "LARC worker starting (agent=$agent_id, interval=${interval}s)"
+  # Detect openclaw once at startup — avoid PATH search on every 30s poll cycle
+  local _openclaw_cmd=""
+  if command -v openclaw &>/dev/null; then
+    _openclaw_cmd="openclaw"
+  elif command -v open-claw &>/dev/null; then
+    _openclaw_cmd="open-claw"
+  fi
+  export LARC_OPENCLAW_CMD="$_openclaw_cmd"
+
+  log_head "LARC worker starting (agent=$agent_id, interval=${interval}s, openclaw=${_openclaw_cmd:-none})"
 
   while true; do
     _worker_poll_once "$agent_id" || true
