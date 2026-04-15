@@ -1,16 +1,17 @@
 # LARC Release Readiness Assessment
 
-> Snapshot assessment for initial open-source release readiness as of 2026-04-14.
-> Updated after Phases A–E completion and release hygiene sweep.
+> Snapshot assessment for initial open-source release readiness as of 2026-04-15.
+> Updated after OpenClaw-first guidance alignment and tenant hygiene remediation.
 
 ---
 
 ## Overall Verdict
 
-Previous verdict: `HOLD` → Updated verdict: `CLOSE`
+Current verdict: `PREVIEW READY`
 
-All five implementation phases are complete and live-verified against a real Lark tenant.
-The remaining blocker is a single commit to freeze the 0.1.0 file set.
+The repository is now suitable for an initial preview release.
+Public-facing docs are aligned to the OpenClaw-first story, and the tenant hygiene sweep has been completed.
+The remaining work is release packaging, not a security or narrative blocker.
 
 ---
 
@@ -18,15 +19,15 @@ The remaining blocker is a single commit to freeze the 0.1.0 file set.
 
 | Area | Status | Notes |
 |---|---|---|
-| Product story | `GO` | Trilingual README updated to reflect Phases A–E; distinguishes proven vs. experimental |
-| Naming and brand hygiene | `GO` | `crm-assets/ppal-*` and `miyabi-*` excluded via `.gitignore`; no external brand naming in public docs |
+| Product story | `GO` | Trilingual README updated to reflect the OpenClaw-first runtime story and distinguish stable vs. experimental paths |
+| Naming and brand hygiene | `GO` | Public docs now position LARC as the governed Lark runtime layer for OpenClaw; internal naming no longer drives the release story |
 | License presence | `GO` | `LICENSE` exists and matches the MIT label in README |
-| Secret and tenant hygiene | `HOLD` | Grep sweep clean; `oc_1234567890abcdef` in lark-doc is a placeholder. Re-run sweep on final commit. |
-| Trilingual documentation | `GO` | README, CONTRIBUTING, glossary in English, Chinese, and Japanese — all updated to Phase E state |
+| Secret and tenant hygiene | `GO` | Tenant-specific open_id, table/view IDs, doc tokens, and fixed tenant URLs were replaced with placeholders or env-driven examples |
+| Trilingual documentation | `GO` | README and contribution guides in English, Chinese, and Japanese are aligned to the same OpenClaw-first meaning |
 | Permission credibility | `GO` | 8 regression cases passing; authority explanation in CLI output; gate policy in `config/gate-policy.json` |
-| Implementation completeness | `GO` | Phases A–E complete: runtime / permission intelligence / agents / approval gates / knowledge graph |
-| Repo cleanliness | `HOLD` | New files untracked (gate-policy.json, knowledge-graph.sh, agents.yaml). One commit needed to freeze 0.1.0. |
-| Public release packaging | `HOLD` | File set is now determined; commit + tag is the remaining action. |
+| Implementation completeness | `GO` | Runtime, permission intelligence, queue/agent flow, and OpenClaw handoff path are present; IM daemon loop remains explicitly experimental |
+| Repo cleanliness | `GO` | Hygiene fixes are committed and the remaining work is packaging, not tree cleanup |
+| Public release packaging | `HOLD` | Release note, version tag, and publish decision are still pending |
 
 ---
 
@@ -71,30 +72,25 @@ The repo now clearly says:
 
 ---
 
-## Blocking Issues
+## Remaining Work
 
-### 1. Working tree is still mixed
+### 1. Release packaging is not finished
 
-The repository still contains:
+The technical and documentation blockers are cleared, but the release still needs:
 
-- staged concept changes mixed with implementation changes
-- parallel work artifacts
-- renamed legacy files not yet bundled into a clean initial release slice
+- a preview-oriented version/tag decision
+- a concise release note
+- the final publish action
 
-This means the current tree is not yet a clean public release candidate.
+### 2. Experimental scope must stay explicit
 
-### 2. The release boundary is still fuzzy
+The repository is ready for a `preview` or `beta` style release, not for a “fully stable autonomous IM bot” claim.
 
-There is not yet a clearly frozen answer to:
+This must remain explicit in:
 
-- which docs are in the public initial cut
-- which legacy assets remain included
-- which implementation changes belong to `0.1.0`
-- which files should stay private for a later wave
-
-### 3. Final hygiene sweep still needs to be run as a release action
-
-The release checklist exists, but it has not yet been executed as a formal pre-release pass with the final file set frozen.
+- the GitHub Release body
+- any launch announcement
+- future README edits
 
 ---
 
@@ -102,45 +98,45 @@ The release checklist exists, but it has not yet been executed as a formal pre-r
 
 ### Step 1
 
-Create a public-release candidate slice.
+Freeze the release wording and version label.
 
 Goal:
 
-- decide which files are part of the initial public opening
-- separate them from ongoing internal or parallel work
+- choose `preview` or `beta`
+- decide the release tag name
 
 ### Step 2
 
-Run the release checklist against that frozen slice.
-
-Goal:
-
-- mark each section as `GO`, `HOLD`, or `NOT READY`
-- remove ambiguity before changing visibility
-
-### Step 3
-
-Prepare a minimal release note for the initial opening.
+Prepare the release note.
 
 Goal:
 
 - explain what LARC is
-- explain what is already working
-- explain what is still experimental
+- explain what is stable
+- explain what remains experimental
+
+### Step 3
+
+Publish the release.
+
+Goal:
+
+- create the tag
+- publish the GitHub Release
 
 ---
 
 ## Recommendation
 
-Do not change repository visibility yet.
+The repo no longer has a security- or narrative-level blocker for a preview release.
 
 Instead:
 
-1. freeze the initial public file set
-2. run the release checklist one more time
-3. then re-evaluate the repo as a true release candidate
+1. choose the preview release label
+2. write the release note
+3. publish the preview release
 
-At the current pace, this looks close rather than far.
+For a stable release, autonomous IM loop behavior still needs more production hardening.
 
 For a docs-first opening assessment, see:
 
