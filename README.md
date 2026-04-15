@@ -91,6 +91,7 @@ larc status
 → Full guide: [docs/quickstart-ja.md](docs/quickstart-ja.md)
 → OpenClaw integration: [docs/openclaw-integration.md](docs/openclaw-integration.md)
 → Lark app setup (for coordinators): [docs/lark-app-setup.md](docs/lark-app-setup.md)
+→ Windows install: [docs/install-windows.md](docs/install-windows.md)
 
 ---
 
