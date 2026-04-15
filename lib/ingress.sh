@@ -24,6 +24,7 @@ cmd_ingress() {
     handoff) _ingress_handoff "$@" ;;
     done)    _ingress_done "$@" ;;
     fail)    _ingress_fail "$@" ;;
+    recover) _ingress_recover "$@" ;;
     verify)  _ingress_verify "$@" ;;
     help|--help|-h) _ingress_help ;;
     *)
@@ -1446,6 +1447,94 @@ _ingress_done() {
 
   [[ -z "$queue_id" ]] && { log_error "Usage: larc ingress done --queue-id <id> [--note <text>] [--dry-run]"; return 1; }
   _ingress_complete "$queue_id" "done" "$note" "$dry_run"
+}
+
+_ingress_recover() {
+  local agent_id="main"
+  local timeout_minutes=60
+  local dry_run=false
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --agent)   agent_id="$2"; shift 2 ;;
+      --timeout) timeout_minutes="$2"; shift 2 ;;
+      --dry-run) dry_run=true; shift ;;
+      *) log_warn "Unknown option: $1"; shift ;;
+    esac
+  done
+
+  local queue_file="${LARC_HOME:-$HOME/.larc}/cache/queue/${agent_id}.jsonl"
+  [[ ! -f "$queue_file" ]] && { log_info "No queue file for agent '$agent_id'"; return 0; }
+
+  log_head "ingress recover — agent=$agent_id timeout=${timeout_minutes}m dry_run=$dry_run"
+
+  local recovered_ids
+  recovered_ids=$(python3 - "$queue_file" "$agent_id" "$timeout_minutes" <<'PY'
+import json, sys
+from datetime import datetime, timedelta, timezone
+
+queue_file = sys.argv[1]
+agent_id = sys.argv[2]
+timeout_min = int(sys.argv[3])
+cutoff = datetime.now(timezone.utc) - timedelta(minutes=timeout_min)
+
+with open(queue_file) as f:
+    lines = f.readlines()
+
+stale = []
+for line in lines:
+    line = line.strip()
+    if not line:
+        continue
+    d = json.loads(line)
+    if d.get("status") != "in_progress":
+        continue
+    started = d.get("started_at", "")
+    try:
+        started_dt = datetime.strptime(started, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+    except ValueError:
+        stale.append(d["queue_id"])
+        continue
+    if started_dt < cutoff:
+        stale.append(d["queue_id"])
+
+for qid in stale:
+    print(qid)
+PY
+)
+
+  if [[ -z "$recovered_ids" ]]; then
+    log_ok "No stale in_progress items found (timeout=${timeout_minutes}m)"
+    return 0
+  fi
+
+  local count=0
+  while IFS= read -r queue_id; do
+    [[ -z "$queue_id" ]] && continue
+    count=$((count + 1))
+    if [[ "$dry_run" == "true" ]]; then
+      log_info "[dry-run] would reset $queue_id → pending"
+    else
+      local item_json
+      item_json=$(_ingress_get_local_queue_item "$queue_id")
+      local updated_json
+      updated_json=$(python3 - "$item_json" <<'PY'
+import json, sys
+from datetime import datetime, timezone
+d = json.loads(sys.argv[1])
+d["status"] = "pending"
+d["started_at"] = None
+d["last_transition_note"] = "reset by recover (stale in_progress)"
+d["updated_at"] = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+print(json.dumps(d, ensure_ascii=False))
+PY
+)
+      _ingress_replace_local_queue_item "$queue_id" "$updated_json"
+      [[ -n "${LARC_BASE_APP_TOKEN:-}" ]] && _ingress_write_base "$updated_json" 2>/dev/null || true
+      log_info "Reset $queue_id → pending"
+    fi
+  done <<< "$recovered_ids"
+
+  log_ok "Recovered $count stale item(s)"
 }
 
 _ingress_fail() {

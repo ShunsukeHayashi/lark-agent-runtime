@@ -997,6 +997,10 @@ ${BOLD}Commands:${RESET}
   ${CYAN}ingress handoff${RESET}       Build an agent handoff bundle for a delegated queue item
   ${CYAN}ingress done${RESET}          Mark a delegated or pending queue item as completed
   ${CYAN}ingress fail${RESET}          Mark a delegated or pending queue item as failed
+  ${CYAN}ingress recover${RESET}       Reset stale in_progress items back to pending
+                          --agent <id>  Target agent (default: main)
+                          --timeout <N> Minutes before in_progress is considered stale (default: 60)
+                          --dry-run     Preview without writing
   ${CYAN}kg build${RESET}              Traverse Lark Wiki and index node graph into Base
   ${CYAN}kg query${RESET} "<concept>"  Keyword search over indexed graph; show matches + neighbors
   ${CYAN}kg show${RESET} <token>       Show node details and neighbors from local cache

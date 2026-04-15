@@ -7,13 +7,7 @@ set -uo pipefail
 _WORKER_SH_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${_WORKER_SH_DIR}/runtime-common.sh"
 
-# Self-contained log functions (worker runs in subprocesses without bin/larc's env)
-_BLUE='\033[0;34m'; _GREEN='\033[0;32m'; _YELLOW='\033[1;33m'
-_CYAN='\033[0;36m'; _BOLD='\033[1m'; _RESET='\033[0m'
-type log_head &>/dev/null || { log_head() { echo -e "\n${_BOLD}${_CYAN}▶ $*${_RESET}"; }; }
-type log_info &>/dev/null || { log_info() { echo -e "${_BLUE}[larc]${_RESET} $*"; }; }
-type log_ok   &>/dev/null || { log_ok()   { echo -e "${_GREEN}[larc]${_RESET} $*"; }; }
-type log_warn &>/dev/null || { log_warn() { echo -e "${_YELLOW}[larc]${_RESET} $*"; }; }
+larc_init_fallback_logs
 
 # ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -100,6 +94,9 @@ cmd_worker() {
   export LARC_OPENCLAW_CMD="$_openclaw_cmd"
 
   log_head "LARC worker starting (agent=$agent_id, interval=${interval}s, openclaw=${_openclaw_cmd:-none})"
+
+  # Recover any items left in_progress from a previous crashed worker
+  larc ingress recover --agent "$agent_id" --timeout 60 2>/dev/null || true
 
   while true; do
     _worker_poll_once "$agent_id" || true
