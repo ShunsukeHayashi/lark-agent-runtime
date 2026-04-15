@@ -51,13 +51,30 @@ larc --help   # コマンド一覧が表示されれば OK
 
 ---
 
-## Step 2 — Lark 認証
+## Step 2 — lark-cli アプリ設定 + Lark 認証
+
+### 2-1. アプリ情報を入手
+
+テスト担当者から **App ID** と **App Secret** を受け取ってください。
+
+> テスト担当者の方はこちら → [Lark アプリ設定ガイド](lark-app-setup.md)
+
+### 2-2. lark-cli にアプリを登録
 
 ```bash
-# lark-cli でログイン（ブラウザが開きます）
-lark-cli auth login
+lark-cli config init \
+  --app-id   <受け取った App ID> \
+  --app-secret-stdin \
+  --brand    lark
+# → プロンプトが出たら App Secret を入力
+```
 
-# 認証確認
+### 2-3. Lark アカウントでログイン
+
+```bash
+lark-cli auth login   # ブラウザが開きます。Lark アカウントでログイン
+
+# 確認
 lark-cli auth status
 # → "tokenStatus": "valid" が表示されれば OK
 ```

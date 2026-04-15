@@ -144,6 +144,41 @@ cmd_quickstart() {
 
   # ── Step 1: Verify lark-cli auth ─────────────────────────────────────────
   _qs_head "Step 1/7 — Lark 認証確認"
+
+  # Sub-check 1a: Is lark-cli configured with an app?
+  local config_check app_id_configured=""
+  config_check=$(lark-cli config list 2>/dev/null || echo "")
+  app_id_configured=$(echo "$config_check" | python3 -c "
+import sys, json
+try:
+    d = json.load(sys.stdin)
+    apps = d.get('apps', [])
+    if apps:
+        print(apps[0].get('appId', ''))
+except Exception:
+    pass
+" 2>/dev/null || echo "")
+
+  if [[ -z "$app_id_configured" ]]; then
+    _qs_fail "lark-cli にアプリが設定されていません"
+    echo ""
+    echo -e "  ${_W}【Step 1】まず lark-cli にアプリを登録してください:${_E}"
+    echo ""
+    echo -e "    ${_C}lark-cli config init \\${_E}"
+    echo -e "      ${_C}--app-id   <テスト用 App ID> \\${_E}"
+    echo -e "      ${_C}--app-secret-stdin \\${_E}"
+    echo -e "      ${_C}--brand    lark${_E}"
+    echo ""
+    echo -e "  ${_B}App ID と App Secret はテスト担当者から入手してください${_E}"
+    echo -e "  ${_B}（Lark Developer Console → アプリ → 認証情報）${_E}"
+    echo ""
+    echo -e "  ${_W}【Step 2】その後:${_E}"
+    echo -e "    ${_C}lark-cli auth login${_E}   # ブラウザでログイン"
+    echo -e "    ${_C}larc quickstart${_E}        # このコマンドを再実行"
+    exit 1
+  fi
+
+  # Sub-check 1b: Is user logged in?
   local auth_json user_name user_oid token_status
   auth_json=$(lark-cli auth status 2>/dev/null || echo "{}")
   user_name=$(echo "$auth_json"    | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('userName',''))" 2>/dev/null)
@@ -151,15 +186,15 @@ cmd_quickstart() {
   token_status=$(echo "$auth_json" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('tokenStatus',''))" 2>/dev/null)
 
   if [[ "$token_status" != "valid" || -z "$user_name" ]]; then
-    _qs_fail "lark-cli が認証されていません"
+    _qs_fail "Lark アカウントにログインしていません（アプリ: ${app_id_configured}）"
     echo ""
     echo -e "  ${_W}解決方法:${_E}"
-    echo -e "    ${_C}lark-cli auth login${_E}   # Lark アカウントでログイン"
+    echo -e "    ${_C}lark-cli auth login${_E}   # ブラウザが開きます。Lark アカウントでログイン"
     echo ""
     echo -e "  ログイン後に再実行:  ${_C}larc quickstart${_E}"
     exit 1
   fi
-  _qs_ok "認証済み: ${user_name}"
+  _qs_ok "認証済み: ${user_name}  (app: ${app_id_configured})"
 
   # ── Step 2: Check for existing LARC setup ────────────────────────────────
   _qs_head "Step 2/7 — 既存 LARC 設定の検出"
