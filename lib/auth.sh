@@ -824,7 +824,17 @@ import sys
 try:
     raw = subprocess.check_output(["lark-cli", "auth", "status"], text=True)
     data = json.loads(raw)
-    expiry = data.get("tokenExpiry") or data.get("expiry") or data.get("expire_time", 0)
+    # lark-cli auth status returns ISO8601 string in "expiresAt"
+    expiry_raw = (data.get("expiresAt") or data.get("tokenExpiry")
+                  or data.get("expiry") or data.get("expire_time"))
+    expiry = 0
+    if expiry_raw:
+        if isinstance(expiry_raw, (int, float)):
+            expiry = int(expiry_raw)
+        else:
+            from datetime import datetime, timezone
+            dt = datetime.fromisoformat(str(expiry_raw))
+            expiry = int(dt.astimezone(timezone.utc).timestamp())
     identity = data.get("identity", "unknown")
     print(json.dumps({"expiry": expiry, "identity": identity}))
 except Exception as e:
