@@ -207,4 +207,44 @@ launchd / cron で定期実行。
 
 ---
 
-*Version: 1.0.0 | Created: 2026-04-16*
+---
+
+## 9. LARC リポジトリ内のファイル配置
+
+```
+larc/
+├── agents.yaml                          # task_os セクション（Meegle設定）
+├── config/
+│   ├── scope-map.json                   # 32タスクタイプ × スコープマッピング
+│   ├── gate-policy.json                 # リスクレベル × Gate制御
+│   └── task-os.env.example              # Meegle連携の環境変数テンプレート
+├── scripts/
+│   └── cron/
+│       ├── morning-check.sh             # 朝のルーティン（P0取得→音声→enqueue）
+│       ├── weekly-review.sh             # 週次レビュー（P0/P1昇降格→enqueue）
+│       └── monthly-review.sh            # 月次棚卸し（全件サマリー→enqueue）
+├── lib/
+│   ├── ingress.sh                       # タスクキュー管理（enqueue/done/fail）
+│   ├── worker.sh                        # 自動実行ワーカー
+│   ├── auth.sh                          # auth suggest/check/login
+│   └── ...                              # その他サブコマンド
+├── .claude/skills/
+│   ├── larc-runtime/SKILL.md            # v1.1.0 Meegle連携セクション含む
+│   ├── lark-project/SKILL.md            # LARC Task OS連携セクション含む
+│   └── lark-*/SKILL.md                  # 24 Lark API スキル
+├── docs/
+│   ├── task-os-template.md              # ← このファイル（設計全体像）
+│   └── ...                              # その他ドキュメント
+└── agent-workspace/templates/           # エージェントワークスペーステンプレート
+```
+
+### デプロイ時のファイルコピー先
+
+```
+scripts/cron/morning-check.sh  → ~/.larc/scripts/morning-check.sh
+scripts/cron/weekly-review.sh  → ~/.larc/scripts/weekly-review.sh
+scripts/cron/monthly-review.sh → ~/.larc/scripts/monthly-review.sh
+config/task-os.env.example     → ~/.larc/config.env に追記
+```
+
+*Version: 1.1.0 | Created: 2026-04-16 | Updated: 2026-04-16*
