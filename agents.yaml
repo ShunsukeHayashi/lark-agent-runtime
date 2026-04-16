@@ -25,6 +25,11 @@ agents:
     name: Main Agent
     model: claude-sonnet-4-6
     workspace: general back-office tasks
+    skills:
+      - larc-runtime
+      - lark-im
+      - lark-drive
+      - lark-base
     scopes:
       - docs:doc:readonly
       - im:message:send_as_bot
@@ -35,6 +40,11 @@ agents:
     name: Expense Processor
     model: claude-haiku-4-5
     workspace: finance and expense workflows
+    skills:
+      - larc-runtime
+      - lark-approval
+      - lark-base
+      - lark-im
     scopes:
       - base:record:created
       - approval:instance:write
@@ -44,6 +54,14 @@ agents:
     name: CRM Agent
     model: claude-sonnet-4-6
     workspace: sales and customer records
+    skills:
+      - larc-runtime
+      - lark-base
+      - lark-contact
+      - lark-im
+      - lark-calendar
+    best_practices: crm-assets/lark-base-best-practices.md
+    base_token: Zpl6bfi0uaoRBosu4KPjrWROpwh
     scopes:
       - base:record:created
       - base:record:readonly
@@ -55,6 +73,11 @@ agents:
     name: Document Agent
     model: claude-sonnet-4-6
     workspace: document and wiki management
+    skills:
+      - lark-doc
+      - lark-wiki
+      - lark-drive
+      - lark-slides
     scopes:
       - docs:doc:readonly
       - docs:doc
