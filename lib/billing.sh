@@ -36,13 +36,22 @@ record = {
     "queue_id": queue_id,
     "status": status,
 }
-import fcntl
+# Cross-platform exclusive file lock.
+# fcntl is Unix-only; msvcrt.locking covers Windows (stdlib, no extras).
+try:
+    import fcntl  # type: ignore
+    def _lock(fh):   fcntl.flock(fh.fileno(), fcntl.LOCK_EX)
+    def _unlock(fh): fcntl.flock(fh.fileno(), fcntl.LOCK_UN)
+except ImportError:  # Windows
+    import msvcrt    # type: ignore
+    def _lock(fh):   msvcrt.locking(fh.fileno(), msvcrt.LK_LOCK, 1)
+    def _unlock(fh): msvcrt.locking(fh.fileno(), msvcrt.LK_UNLCK, 1)
 with open(usage_file, "a", encoding="utf-8") as f:
-    fcntl.flock(f.fileno(), fcntl.LOCK_EX)
+    _lock(f)
     try:
         f.write(json.dumps(record, ensure_ascii=False) + "\n")
     finally:
-        fcntl.flock(f.fileno(), fcntl.LOCK_UN)
+        _unlock(f)
 PY
 }
 
