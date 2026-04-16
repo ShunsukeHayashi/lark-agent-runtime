@@ -5,6 +5,10 @@
 #   larc auth suggest "<task description>"
 #       Infer required Lark scopes from a task description and display them
 #
+#   larc auth router "<task description>"
+#       Intent-aware auth decision: returns user / bot / blocked + reason + min scopes
+#       3-rule logic: User-mandatory → External tenant DM blocked → Bot default
+#
 #   larc auth check [--task <task_type>] [--profile <profile_name>]
 #       Check current auth state and permission scopes
 #       If scopes are missing, runs lark-cli auth login --scope "..." to issue auth URL
@@ -18,6 +22,7 @@ cmd_auth() {
   local action="${1:-help}"; shift || true
   case "$action" in
     suggest) _auth_suggest "$@" ;;
+    router)  _auth_router "$@" ;;
     check)   _auth_check "$@" ;;
     login)   _auth_login "$@" ;;
     help|--help|-h) _auth_help ;;
@@ -35,6 +40,7 @@ _auth_help() {
 ${BOLD}larc auth${RESET} — Lark permission and scope management
 
 ${BOLD}Commands:${RESET}
+  ${CYAN}router${RESET} "<task description>"      Intent-aware decision: user / bot / blocked + min scopes
   ${CYAN}suggest${RESET} "<task description>"     Infer required scopes from task description
   ${CYAN}check${RESET} [--task <type>]            Check current permission state (suggests login if gaps found)
          [--profile <name>]
@@ -42,6 +48,8 @@ ${BOLD}Commands:${RESET}
          [--profile <name>]
 
 ${BOLD}Examples:${RESET}
+  larc auth router "send IM notification to team"
+  larc auth router "create calendar event for tomorrow"
   larc auth suggest "create expense report and route to approval flow"
   larc auth check
   larc auth check --task create_expense
@@ -50,6 +58,161 @@ ${BOLD}Examples:${RESET}
   larc auth login --profile backoffice_agent
 
 EOF
+}
+
+# ── auth router ──────────────────────────────────────────────────────────────
+# Intent-aware auth decision based on 3-rule logic from Auth Routing design doc:
+#   Rule 1 — User-mandatory: Calendar write / Approval instance / Approval task act → user
+#   Rule 2 — External tenant DM blocked: send DM to external tenant → blocked (error 230038)
+#   Rule 3 — Default → bot (tenant_access_token is sufficient)
+#
+# Meegle Story: #23312641 | GitHub Issue: #32
+# Design doc: https://miyabi-ai.larksuite.com/wiki/AxO6wFROninCFWknoDmjBTc0pRl
+
+_auth_router() {
+  local task_desc="${*}"
+
+  if [[ -z "$task_desc" ]]; then
+    log_error "Please provide a task description in quotes"
+    echo "  Example: larc auth router \"send IM notification to team\""
+    return 1
+  fi
+
+  local map_path
+  map_path="$(_load_scope_map)" || return 1
+
+  log_head "Auth routing decision: \"${task_desc}\""
+
+  python3 - "$map_path" "$task_desc" <<'PYEOF'
+import sys
+import json
+import re
+
+map_path = sys.argv[1]
+task_desc = sys.argv[2].lower()
+
+with open(map_path, "r", encoding="utf-8") as f:
+    scope_map = json.load(f)
+
+# ── Minimum scope sets (from PRD spec) ──────────────────────────────────────
+MIN_SCOPES = {
+    "bot_read":  ["im:message:readonly"],
+    "bot_send":  ["im:message:send_as_bot"],
+    "user_send": ["im:message"],
+    "base_write": ["bitable:app"],
+    "wiki_write": ["wiki:node:create"],
+    "calendar_write": ["calendar:calendar"],
+    "approval_create": ["approval:instance:write"],
+    "approval_act": ["approval:task:write"],
+}
+
+BOLD  = "\033[1m"
+GREEN = "\033[32m"
+YELLOW = "\033[33m"
+RED   = "\033[31m"
+CYAN  = "\033[36m"
+RESET = "\033[0m"
+
+# ── Rule 1: User-mandatory operations ───────────────────────────────────────
+# These operations MUST be attributed to a real named person.
+USER_MANDATORY_PATTERNS = [
+    (r"calendar|schedule\s+\w*\s*(?:meeting|event|call|appointment)|book\s+\w*\s*(?:room|meeting)",
+     "Calendar write requires user attribution", ["calendar:calendar"]),
+    (r"(?:submit|create|route)\s+\w*\s*approval|approval\s+(?:instance|flow|request)",
+     "Approval instance creation must be attributed to the submitter", ["approval:instance:write"]),
+    (r"(?:approve|reject|act\s+on)\s+\w*\s*approval|approval\s+task",
+     "Approval task action must be performed as the named approver", ["approval:task:write"]),
+    (r"on\s+behalf\s+of|as\s+the\s+user|user.?attributed",
+     "Explicitly requested user attribution", []),
+]
+
+# ── Rule 2: External tenant DM blocked ──────────────────────────────────────
+# Sending DMs to users in a different Lark tenant is blocked by Lark API.
+# Error 230038: "The operator does not have the permission to send messages."
+EXTERNAL_TENANT_PATTERNS = [
+    r"external\s+(?:user|tenant|organization|company|member)",
+    r"(?:user|member)\s+(?:from|at|in)\s+(?:another|different|other)\s+(?:tenant|org|company)",
+    r"cross.tenant|inter.tenant",
+    r"outside\s+(?:our|the)\s+(?:org|organization|tenant|company)",
+]
+
+# ── Rule 3: Bot default ──────────────────────────────────────────────────────
+# All other operations default to bot (tenant_access_token).
+BOT_SCOPE_PATTERNS = {
+    r"send\s+\w*\s*(?:message|notification|alert|chat)|notify": ["im:message:send_as_bot"],
+    r"read\s+\w*\s*message|message\s+history|chat\s+history": ["im:message:readonly"],
+    r"read\s+\w*\s*(?:doc|document)|view\s+\w*\s*doc": ["docs:doc:readonly"],
+    r"wiki|knowledge\s*base": ["wiki:wiki:readonly"],
+    r"(?:create|update|write)\s+\w*\s*wiki": ["wiki:node:create"],
+    r"base|bitable|crm|record": ["base:record:readonly"],
+    r"(?:create|add|insert)\s+\w*\s*record": ["bitable:app", "base:record:created"],
+    r"drive|upload\s+\w*\s*file": ["drive:file:create"],
+    r"read\s+\w*\s*drive|list\s+file": ["drive:drive:readonly"],
+}
+
+decision = None
+reason = ""
+required_scopes = []
+rule_applied = ""
+
+# Check Rule 2 first (hard block)
+for pattern in EXTERNAL_TENANT_PATTERNS:
+    if re.search(pattern, task_desc):
+        decision = "blocked"
+        reason = (
+            "External tenant DM is blocked by Lark API.\n"
+            "  Error 230038: operator does not have permission to send messages to external users.\n"
+            "  Workaround: invite external user as a guest, then use their open_id."
+        )
+        rule_applied = "Rule 2 — External tenant DM blocked"
+        required_scopes = []
+        break
+
+# Check Rule 1 (user-mandatory)
+if decision is None:
+    for pattern, r_reason, r_scopes in USER_MANDATORY_PATTERNS:
+        if re.search(pattern, task_desc):
+            decision = "user"
+            reason = r_reason
+            required_scopes = r_scopes
+            rule_applied = "Rule 1 — User-mandatory operation"
+            break
+
+# Rule 3 fallback (bot default)
+if decision is None:
+    decision = "bot"
+    rule_applied = "Rule 3 — Bot default"
+    reason = "This operation does not require user attribution; bot (tenant_access_token) is sufficient."
+    for pattern, scopes in BOT_SCOPE_PATTERNS.items():
+        if re.search(pattern, task_desc):
+            required_scopes.extend(scopes)
+    required_scopes = sorted(set(required_scopes)) or ["im:message:send_as_bot"]
+
+# ── Output ───────────────────────────────────────────────────────────────────
+decision_colors = {"user": GREEN, "bot": CYAN, "blocked": RED}
+dc = decision_colors.get(decision, "")
+
+print(f"\n  {BOLD}Auth decision:{RESET} {dc}{decision.upper()}{RESET}")
+print(f"  {BOLD}Rule applied:{RESET} {rule_applied}")
+print(f"  {BOLD}Reason:{RESET} {reason}")
+
+if required_scopes:
+    print(f"\n  {BOLD}Minimum required scopes:{RESET}")
+    for s in required_scopes:
+        print(f"    {s}")
+    scope_str = " ".join(required_scopes)
+    if decision != "blocked":
+        print(f"\n  To authorize:")
+        print(f"    larc auth login --scope \"{scope_str}\"")
+else:
+    if decision == "blocked":
+        print(f"\n  {RED}No authorization path available.{RESET}")
+        print(f"  See: docs/known-issues/lark-external-user-api-gap.md")
+
+print()
+PYEOF
+
+  return $?
 }
 
 # ── Load scope map ──────────────────────────────────────────────

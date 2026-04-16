@@ -226,3 +226,95 @@ Expected output (minimum scope counts):
 [5] create a lead record and schedule a follow-up meeting
 [2] read the attendance records and generate a timesheet report
 ```
+
+---
+
+## Auth Router Test Cases (`larc auth router`)
+
+> Tests for the intent-aware auth decision engine.
+> Each case has an input description, expected decision, and the rule applied.
+>
+> GitHub Issue: #32 | Meegle Story: #23312641
+
+### Router Case 1 — Bot default: IM notification
+
+**Task:** `send IM notification to team`
+
+**Expected decision:** `bot`  
+**Rule:** Rule 3 — Bot default  
+**Expected scopes:** `im:message:send_as_bot`
+
+**Status:** ✅ passing
+
+---
+
+### Router Case 2 — User-mandatory: Calendar write
+
+**Task:** `create calendar event for tomorrow`
+
+**Expected decision:** `user`  
+**Rule:** Rule 1 — User-mandatory operation  
+**Expected scopes:** `calendar:calendar`
+
+**Status:** ✅ passing
+
+---
+
+### Router Case 3 — Blocked: External tenant DM
+
+**Task:** `send DM to external user`
+
+**Expected decision:** `blocked`  
+**Rule:** Rule 2 — External tenant DM blocked  
+**Expected scopes:** none (blocked)  
+**Error:** 230038
+
+**Status:** ✅ passing
+
+---
+
+### Router Case 4 — User-mandatory: Approval submission
+
+**Task:** `submit expense approval request`
+
+**Expected decision:** `user`  
+**Rule:** Rule 1 — User-mandatory operation  
+**Expected scopes:** `approval:instance:write`
+
+**Status:** ✅ passing
+
+---
+
+### Router Case 5 — Bot default: Wiki read
+
+**Task:** `read the wiki page for onboarding`
+
+**Expected decision:** `bot`  
+**Rule:** Rule 3 — Bot default  
+**Expected scopes:** `wiki:wiki:readonly`
+
+**Status:** ✅ passing
+
+---
+
+### Router Regression Command
+
+```bash
+declare -A EXPECTED=(
+  ["send IM notification to team"]="BOT"
+  ["create calendar event for tomorrow"]="USER"
+  ["send DM to external user"]="BLOCKED"
+  ["submit expense approval request"]="USER"
+  ["read the wiki page for onboarding"]="BOT"
+)
+
+for desc in "${!EXPECTED[@]}"; do
+  result=$(larc auth router "$desc" 2>&1 | grep "Auth decision:" | awk '{print $3}')
+  expected="${EXPECTED[$desc]}"
+  if [[ "$result" == "$expected" ]]; then
+    echo "✅ [$result] $desc"
+  else
+    echo "❌ [$result vs $expected] $desc"
+  fi
+done
+```
