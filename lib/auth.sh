@@ -16,6 +16,10 @@
 #   larc auth login [--scope "<scope ...>"] [--profile <profile_name>]
 #       Start authorization for the given scopes and display the auth URL
 #
+#   larc auth refresh [--force]
+#       Check user_access_token expiry and auto-refresh if < 10 min remaining
+#       --force: refresh regardless of expiry time
+#
 # Scope mapping is defined in config/scope-map.json
 
 cmd_auth() {
@@ -25,6 +29,7 @@ cmd_auth() {
     router)  _auth_router "$@" ;;
     check)   _auth_check "$@" ;;
     login)   _auth_login "$@" ;;
+    refresh) _auth_refresh "$@" ;;
     help|--help|-h) _auth_help ;;
     *)
       log_error "Unknown subcommand: $action"
@@ -46,6 +51,7 @@ ${BOLD}Commands:${RESET}
          [--profile <name>]
   ${CYAN}login${RESET} [--scope "<scope ...>"]    Issue auth URL for specified scopes
          [--profile <name>]
+  ${CYAN}refresh${RESET} [--force]               Auto-refresh user_access_token if < 10 min remaining
 
 ${BOLD}Examples:${RESET}
   larc auth router "send IM notification to team"
@@ -56,6 +62,8 @@ ${BOLD}Examples:${RESET}
   larc auth check --profile writer
   larc auth login --scope "docs:document:copy base:record:create"
   larc auth login --profile backoffice_agent
+  larc auth refresh
+  larc auth refresh --force
 
 EOF
 }
@@ -786,5 +794,111 @@ for k, v in m.get('profiles',{}).items():
     echo -e "  You can also configure scopes directly in Lark Open Platform:"
     echo -e "    https://open.larksuite.com/app"
     return $exit_code
+  fi
+}
+
+# ── auth refresh ──────────────────────────────────────────────────────────────
+# Auto-refresh user_access_token when expiry is within 10 minutes.
+#
+# GitHub Issue: #34 | Meegle Story: #23312641
+
+_auth_refresh() {
+  local force=false
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --force) force=true; shift ;;
+      *) log_warn "Unknown option: $1"; shift ;;
+    esac
+  done
+
+  log_head "Checking user_access_token expiry"
+
+  # Get current token status from lark-cli
+  local token_info
+  token_info=$(python3 - <<'PY' 2>/dev/null
+import json
+import subprocess
+import sys
+
+try:
+    raw = subprocess.check_output(["lark-cli", "auth", "status"], text=True)
+    data = json.loads(raw)
+    expiry = data.get("tokenExpiry") or data.get("expiry") or data.get("expire_time", 0)
+    identity = data.get("identity", "unknown")
+    print(json.dumps({"expiry": expiry, "identity": identity}))
+except Exception as e:
+    print(json.dumps({"error": str(e)}))
+PY
+  )
+
+  local expiry identity
+  expiry=$(echo "$token_info" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('expiry',0))" 2>/dev/null || echo "0")
+  identity=$(echo "$token_info" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('identity','unknown'))" 2>/dev/null || echo "unknown")
+
+  if [[ "$expiry" == "0" ]] || [[ -z "$expiry" ]]; then
+    log_warn "Could not retrieve token expiry information"
+    log_warn "Run 'lark-cli auth status' to check manually"
+    echo ""
+    echo -e "  To re-authenticate:"
+    echo -e "    ${CYAN}larc auth login --profile writer${RESET}"
+    return 1
+  fi
+
+  # Calculate remaining time in seconds
+  local now remaining
+  now=$(date +%s)
+  remaining=$(( expiry - now ))
+  local remaining_min=$(( remaining / 60 ))
+
+  echo -e "  ${BOLD}Identity:${RESET} $identity"
+  echo -e "  ${BOLD}Token expires in:${RESET} ${remaining_min}m (${remaining}s)"
+  echo ""
+
+  local threshold_seconds=600  # 10 minutes
+
+  if [[ "$force" == "true" ]]; then
+    log_info "Force refresh requested"
+    _do_token_refresh "$identity"
+    return $?
+  fi
+
+  if [[ $remaining -lt 0 ]]; then
+    log_warn "Token has already expired (${remaining}s ago)"
+    _do_token_refresh "$identity"
+    return $?
+  elif [[ $remaining -lt $threshold_seconds ]]; then
+    log_info "Token expires in ${remaining_min}m — auto-refreshing"
+    _do_token_refresh "$identity"
+    return $?
+  else
+    log_ok "Token is valid for ${remaining_min}m — no refresh needed"
+    echo ""
+    echo -e "  Use ${CYAN}larc auth refresh --force${RESET} to refresh anyway"
+  fi
+}
+
+_do_token_refresh() {
+  local identity="${1:-unknown}"
+
+  log_info "Refreshing token for identity: $identity"
+  echo ""
+
+  # lark-cli auth refresh (if supported) or re-login
+  if lark-cli auth refresh 2>/dev/null; then
+    echo ""
+    log_ok "Token refreshed successfully"
+    echo ""
+    echo -e "  Verify with: ${CYAN}larc auth check${RESET}"
+  else
+    log_warn "lark-cli auth refresh not available — re-authentication required"
+    echo ""
+    echo -e "  To re-authenticate:"
+    echo -e "    ${CYAN}larc auth login --profile writer${RESET}  # includes common write scopes"
+    echo -e "    ${CYAN}larc auth login --profile backoffice_agent${RESET}  # full scope set"
+    echo ""
+    echo -e "  Or manually issue an auth URL:"
+    echo -e "    ${CYAN}lark-cli auth login${RESET}"
+    return 1
   fi
 }
