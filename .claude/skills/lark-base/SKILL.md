@@ -1,7 +1,7 @@
 ---
 name: lark-base
-version: 1.2.0
-description: "Use when operating Lark Base (multi-dimensional tables) with lark-cli: create tables, manage fields, read/write records, configure views, query history, and manage roles/forms/dashboards/workflows. Also use to migrate from legacy +table/+field/+record syntax to current command style. Required for field design, formula fields, lookup references, cross-table calculations, row-level derived metrics, and data analysis."
+version: 1.3.0
+description: "Use when operating Lark Base (multi-dimensional tables) with lark-cli: create tables, manage fields, read/write records, configure views, query history, and manage roles/forms/dashboards/workflows. Also use to migrate from legacy +table/+field/+record syntax to current command style. Required for field design, formula fields, lookup references, cross-table calculations, row-level derived metrics, and data analysis. Includes API-verified SFA/CRM design conventions."
 metadata:
   requires:
     bins: ["lark-cli"]
@@ -313,6 +313,57 @@ High-priority section. If the user's input contains a link or token, or an error
 | System/formula field write failed | Read-only field used as write target | Switch to writing storage fields; let formula/lookup/system fields produce their values automatically |
 | `1254104` | Batch exceeds 500 records | Split into multiple calls |
 | `1254291` | Concurrent write conflict | Use serial writes with delay between batches |
+
+## 5.5 SFA/CRM Design Conventions (みやびAI標準・API検証済み)
+
+> Full reference: [`crm-assets/lark-base-best-practices.md`](../../../crm-assets/lark-base-best-practices.md)
+
+SFA/CRM コンテキスト（contacts / companies / deals / activities / lead_scores）でテーブルを設計・操作する際の必須ルール。
+
+### セマンティックID（先頭フィールド）
+
+```
+{CODE}-{YYYYMM}-{NNN} | {サマリー}
+例: CNT-202504-001 | 窪内優也
+```
+
+| テーブル | CODE |
+|---------|------|
+| contacts | `CNT` |
+| companies | `ORG` |
+| deals | `DEAL` |
+| activities | `ACT` |
+| lead_scores | `SCORE` |
+
+先頭フィールドは **Formula 型**。`連番` フィールドは **必ず `text` 型** で実装（`auto_number` はフォーミュラ参照でバグあり）。
+
+```bash
+# 連番フィールドは text 型で作成
+lark-cli base +field-create --base-token {TOKEN} --table-id {TBL} \
+  --json '{"field_name":"連番","type":"text"}'
+
+# フォーミュラ内のフィールド参照は必ずブラケット記法
+# 正: [初回接触日], [名前], [連番]
+# 誤: 初回接触日, 名前, 連番
+```
+
+### フィールド命名禁則
+
+- **絵文字禁止** — API文字列マッチング不安定化
+- Linkフィールド名: `{参照先}_Link`（例: `所属会社_Link`）
+- フィールド名は必ず `+field-list` で確認してから指定（推測禁止）
+
+### Selectフィールド選択肢
+
+**必ず2桁番号プレフィックス付き**: `00.未開始` / `01.進行中` / `99.終了`
+
+理由: Lark Base API は選択肢の表示順序を保証しないため、文字列比較でステージ比較可能にする。
+
+### フォーミュラの制約（API検証済み）
+
+- `CREATED_TIME()` はフォーミュラフィールドで動作しない（null になる）
+  → 代替: レコード作成時に日付フィールドを必須入力とする
+- ダッシュボードブロックは **直列作成** が必要（並列API呼び出し不可）
 
 ## 6. Reference Documents
 

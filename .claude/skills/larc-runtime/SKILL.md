@@ -1,7 +1,7 @@
 ---
 name: larc-runtime
-version: 1.1.0
-description: "LARC (Lark Agent Runtime): Claude Code が Lark バックオフィスタスクをエージェントとして実行するためのスキル。enqueue → run-once → done/fail のライフサイクル管理 + Meegle（Lark Project）との双方向連携。"
+version: 1.2.0
+description: "LARC (Lark Agent Runtime): Claude Code が Lark バックオフィスタスクをエージェントとして実行するためのスキル。enqueue → run-once → done/fail のライフサイクル管理 + Meegle（Lark Project）との双方向連携 + キュートリアージ（stats/prune/retry）。"
 ---
 
 # LARC Runtime — Claude Code Agent Skill
@@ -71,6 +71,66 @@ larc ingress fail --queue-id <queue_id> --note "<失敗理由>"
 larc ingress list --agent main          # 全キューを確認
 larc ingress list --agent main --status pending   # pending のみ
 larc ingress followup --agent main      # partial（フォローアップ必要）を確認
+```
+
+## キュートリアージ（障害対応）
+
+failed アイテムが蓄積した場合のトリアージ手順。
+
+### 状況把握
+
+```bash
+larc ingress stats --agent main
+# → total / by status / by gate / top failure reasons / oldest pending&failed を表示
+```
+
+### リトライ（failed → pending に戻す）
+
+```bash
+# 特定1件
+larc ingress retry --queue-id <id>
+
+# 失敗理由でフィルタしてリトライ
+larc ingress retry --all-failed --reason-match "keychain" --dry-run   # 確認
+larc ingress retry --all-failed --reason-match "keychain" --yes       # 実行
+
+# 全 failed をリトライ
+larc ingress retry --all-failed --yes
+```
+
+### 削除（failed アイテムの廃棄）
+
+```bash
+# ドライランで確認（デフォルト）
+larc ingress prune --status failed --older-than 30d
+
+# 実行（--yes 必須。自動でバックアップ作成）
+larc ingress prune --status failed --older-than 30d --yes
+
+# 特定の失敗理由のみ削除
+larc ingress prune --status failed --reason-match "stale" --yes
+```
+
+### 安全設計
+
+- `prune` はデフォルトドライラン。`--yes` なしでは削除しない
+- 実行前に `<queue>.bak.YYYYMMDD-HHMMSS` が自動作成される（復元可能）
+- `stats` は読み取り専用で副作用なし
+
+### 典型的なトリアージフロー
+
+```bash
+# 1. 状況把握
+larc ingress stats --agent main
+
+# 2. リトライ可能なものをリトライ
+larc ingress retry --all-failed --reason-match "recover" --yes
+
+# 3. 古い失敗を廃棄
+larc ingress prune --status failed --older-than 14d --yes
+
+# 4. 残りを再確認
+larc ingress stats --agent main
 ```
 
 ## Approval フロー（gate=approval のとき）
