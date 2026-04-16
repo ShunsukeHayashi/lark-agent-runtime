@@ -1,3 +1,25 @@
+# Task OS — Meegle (Lark Project) integration
+# See docs/task-os-template.md for full design
+task_os:
+  project_key: "69dbca561543d1dedeb3c926"
+  work_item_type: story
+  template_id: "334993"
+  status_mapping:
+    enqueue: "sub_stage_1679654663853"     # スタート
+    run_once: "sub_stage_1679654941472"    # 開発中です
+    done: "sub_stage_1679655085909"        # 終了
+    fail: "sub_stage_1679654845402"        # プロダクトレビュー待ち
+  categories:
+    - 技術基盤
+    - プロダクト
+    - 発信
+    - 経営基盤
+  review:
+    morning_cron: "09:03"      # 平日 P0読み上げ
+    weekly_cron: "MON 09:05"   # 週次 P0/P1レビュー
+    demote_threshold_days: 14  # P0→P1降格基準（未活動日数）
+    promote_threshold_days: 7  # P1→P0昇格基準（直近コミット日数）
+
 agents:
   - id: main
     name: Main Agent
