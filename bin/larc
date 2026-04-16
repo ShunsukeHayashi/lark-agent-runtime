@@ -17,8 +17,29 @@ set -euo pipefail
 # ── Configuration ──────────────────────────────────────────────────────────────
 LARC_VERSION="0.2.0"
 LARC_REPO_URL="https://github.com/ShunsukeHayashi/lark-agent-runtime.git"
-SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
+# Portable path resolution. `readlink -f` is GNU-only; macOS ships BSD
+# readlink which lacks -f, and Git Bash on Windows has its own quirks.
+# Prefer `realpath`, fall back through `readlink -f`, then Python.
+_larc_bootstrap_realpath() {
+  local target="$1"
+  if command -v realpath >/dev/null 2>&1; then
+    realpath "$target" 2>/dev/null && return 0
+  fi
+  if readlink -f "$target" >/dev/null 2>&1; then
+    readlink -f "$target"
+    return 0
+  fi
+  if command -v python3 >/dev/null 2>&1; then
+    python3 -c "import os,sys; print(os.path.realpath(sys.argv[1]))" "$target" 2>/dev/null && return 0
+  fi
+  echo "$target"
+}
+SCRIPT_DIR="$(cd "$(dirname "$(_larc_bootstrap_realpath "${BASH_SOURCE[0]}")")/.." && pwd)"
 LIB_DIR="$SCRIPT_DIR/lib"
+# Load shared portable helpers (larc_realpath, larc_stat_mtime, larc_sed_inplace, etc.)
+# so every subcommand gets the same cross-platform behavior.
+# shellcheck disable=SC1091
+[[ -f "$LIB_DIR/runtime-common.sh" ]] && source "$LIB_DIR/runtime-common.sh"
 _LARC_SCENARIO_PY="$LIB_DIR/ingress_scenario.py"
 export LIB_DIR _LARC_SCENARIO_PY LARC_HOME LARC_CACHE LARC_CONFIG LARC_TENANT_ID
 
@@ -950,7 +971,7 @@ PY
     echo -e "  Files: $count"
     local latest
     latest=$(find "$LARC_CACHE" -type f -newer "$LARC_CONFIG" 2>/dev/null | head -1)
-    [[ -n "$latest" ]] && echo -e "  Last updated: $(stat -f '%Sm' -t '%Y-%m-%d %H:%M' "$latest" 2>/dev/null)"
+    [[ -n "$latest" ]] && echo -e "  Last updated: $(larc_stat_mtime_human "$latest")"
   else
     echo -e "  No cache"
   fi
@@ -1207,7 +1228,7 @@ _update_check_notify() {
 
   # Detect repo directory
   local repo_dir
-  repo_dir="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
+  repo_dir="$(cd "$(dirname "$(larc_realpath "${BASH_SOURCE[0]}")")/.." && pwd)"
   if [[ ! -d "$repo_dir/.git" ]]; then
     return 0   # Not a git repo (e.g. /usr/local/bin/larc without source)
   fi
@@ -1252,7 +1273,7 @@ cmd_update() {
 
   # Resolve LARC repo directory
   local repo_dir
-  repo_dir="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
+  repo_dir="$(cd "$(dirname "$(larc_realpath "${BASH_SOURCE[0]}")")/.." && pwd)"
 
   # ── Check mode ────────────────────────────────────────────────────────────
   if [[ "$check_only" == "true" ]]; then

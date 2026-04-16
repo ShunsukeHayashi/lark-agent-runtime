@@ -43,7 +43,7 @@ cmd_bootstrap() {
   local today
   today=$(date +%Y-%m-%d)
   local yesterday
-  yesterday=$(date -v-1d +%Y-%m-%d 2>/dev/null || date -d '-1 day' +%Y-%m-%d)
+  yesterday=$(larc_date_yesterday)
 
   declare -A disclosure_map=(
     ["SOUL.md"]="$ws/SOUL.md"
@@ -80,7 +80,7 @@ for item in items:
 
     # Cache check
     if [[ -f "$target" ]] && [[ "$force" == "false" ]]; then
-      cache_age=$(( $(date +%s) - $(stat -f '%m' "$target" 2>/dev/null || echo 0) ))
+      cache_age=$(( $(date +%s) - $(larc_stat_mtime "$target") ))
       if [[ $cache_age -lt $LARC_CACHE_TTL ]]; then
         skipped=$((skipped + 1))
         continue
@@ -173,9 +173,10 @@ _bootstrap_from_templates() {
   if [[ -d "$template_dir" ]]; then
     cp -r "$template_dir/." "$ws/"
     # Replace agent_id placeholder
+    local _today_ymd; _today_ymd=$(date +%Y-%m-%d)
     find "$ws" -type f -name "*.md" | while read -r f; do
-      sed -i '' "s/{{AGENT_ID}}/${agent_id}/g" "$f" 2>/dev/null || true
-      sed -i '' "s/{{DATE}}/$(date +%Y-%m-%d)/g" "$f" 2>/dev/null || true
+      larc_sed_inplace "s/{{AGENT_ID}}/${agent_id}/g" "$f" 2>/dev/null || true
+      larc_sed_inplace "s/{{DATE}}/${_today_ymd}/g"  "$f" 2>/dev/null || true
     done
     log_ok "Templates expanded: $ws"
     log_info "Next step: edit files then run 'larc bootstrap --force' to upload to Lark"
