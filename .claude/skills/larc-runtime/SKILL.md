@@ -1,7 +1,7 @@
 ---
 name: larc-runtime
-version: 1.0.0
-description: "LARC (Lark Agent Runtime): Claude Code が Lark バックオフィスタスクをエージェントとして実行するためのスキル。enqueue → run-once → done/fail のライフサイクルを管理する。"
+version: 1.1.0
+description: "LARC (Lark Agent Runtime): Claude Code が Lark バックオフィスタスクをエージェントとして実行するためのスキル。enqueue → run-once → done/fail のライフサイクル管理 + Meegle（Lark Project）との双方向連携。"
 ---
 
 # LARC Runtime — Claude Code Agent Skill
@@ -157,6 +157,57 @@ larc memory search --query "キーワード" --days 14
 | `permission denied` | scope 不足 | `larc auth suggest "<タスク>"` で確認 |
 | `no actionable queue item` | pending がない | `larc ingress list` で状態確認 |
 | `is 'in_progress'` | 既にクレーム済み | `larc ingress done/fail --queue-id <id>` |
+
+## Meegle (Lark Project) 連携 — Miyabi Task OS
+
+LARCのライフサイクルイベントは Meegle ストーリーと自動同期する。
+
+### ステータスマッピング
+
+| LARC アクション | Meegle state_key | ステータス名 |
+|---|---|---|
+| enqueue（受付） | `sub_stage_1679654663853` | スタート |
+| run-once（着手） | `sub_stage_1679654941472` | 開発中です |
+| done（完了） | `sub_stage_1679655085909` | 終了 |
+| fail（失敗） | `sub_stage_1679654845402` | プロダクトレビュー待ち |
+
+### Meegle 固定値
+
+```
+project_key: 69dbca561543d1dedeb3c926
+work_item_type: story
+template_id: 334993
+```
+
+### done/fail 時の推奨アクション
+
+```bash
+# 1. LARC 完了
+larc ingress done --queue-id <id> --note "<実施内容>"
+
+# 2. Meegle にコメント追加（MCP経由）
+# add_comment(project_key="69dbca561543d1dedeb3c926", work_item_id=<id>, content="[LARC完了] <内容>")
+
+# 3. Meegle ステータス遷移（MCP経由）
+# transition_state(project_key="69dbca561543d1dedeb3c926", work_item_id=<id>, state_key="sub_stage_1679655085909")
+
+# 4. Google Home で報告
+announce '<完了サマリー>' --home
+```
+
+### コンテキスト復元（セッション開始時）
+
+```bash
+# Meegle P0一覧を取得して作業対象を特定
+# search_by_mql(project_key="69dbca561543d1dedeb3c926",
+#   mql="SELECT `name`, `work_item_status`, `priority` FROM `製品開発`.`開発要件` WHERE `priority` = 'P0'")
+
+# LARC memory で関連メモリを検索
+larc memory search --query "<キーワード>" --days 14
+
+# git log で最終コミットを確認
+git -C ~/study/larc log -1 --format='%ar: %s'
+```
 
 ## 設定ファイルの場所
 
