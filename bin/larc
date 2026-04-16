@@ -112,6 +112,7 @@ cmd_approve()   { source "$LIB_DIR/approve.sh";   cmd_approve "$@"; }
 cmd_agent()     { source "$LIB_DIR/agent.sh";     cmd_agent "$@"; }
 cmd_auth()      { source "$LIB_DIR/auth.sh";      cmd_auth "$@"; }
 cmd_kg()         { source "$LIB_DIR/knowledge-graph.sh"; cmd_kg "$@"; }
+cmd_wiki()       { source "$LIB_DIR/wiki.sh"; cmd_wiki "$@"; }
 cmd_mergegate()  { source "$LIB_DIR/ingress.sh"; source "$LIB_DIR/approve.sh"; source "$LIB_DIR/mergegate.sh"; cmd_mergegate "$@"; }
 cmd_ingress()   { source "$LIB_DIR/memory.sh"; source "$LIB_DIR/send.sh"; source "$LIB_DIR/ingress.sh"; cmd_ingress "$@"; }
 cmd_daemon()    { source "$LIB_DIR/worker.sh"; source "$LIB_DIR/daemon.sh"; cmd_daemon "$@"; }
@@ -856,9 +857,19 @@ cmd_status() {
 
   # lark-cli connection check
   echo -e "${BOLD}Lark connection:${RESET}"
-  local identity
-  identity=$(lark-cli auth status 2>&1 | jq -r '.userName' 2>/dev/null || echo "not connected")
-  echo -e "  User: $identity"
+  local auth_json identity auth_err_msg
+  auth_json=$(lark-cli auth status 2>&1 || true)
+  identity=$(echo "$auth_json" | jq -r '.userName // empty' 2>/dev/null)
+  auth_err_msg=$(echo "$auth_json"  | jq -r '.error.message // empty' 2>/dev/null)
+  if [[ -n "$identity" && "$identity" != "null" ]]; then
+    echo -e "  User: $identity"
+  elif [[ -n "${LARC_LARK_USER_NAME:-}" ]]; then
+    echo -e "  User: ${LARC_LARK_USER_NAME} ${YELLOW}(cached; live check unavailable)${RESET}"
+    [[ -n "$auth_err_msg" ]] && echo -e "        ${YELLOW}reason:${RESET} $auth_err_msg"
+  else
+    echo -e "  User: ${YELLOW}not connected${RESET}"
+    [[ -n "$auth_err_msg" ]] && echo -e "        ${YELLOW}reason:${RESET} $auth_err_msg"
+  fi
 
   # Drive folder check
   if [[ -n "$LARC_DRIVE_FOLDER_TOKEN" ]]; then
@@ -868,12 +879,17 @@ cmd_status() {
   fi
 
   if [[ -n "${LARC_BASE_APP_TOKEN:-}" ]]; then
-    local base_ok
-    base_ok=$(lark-cli base +table-list --base-token "$LARC_BASE_APP_TOKEN" --jq '.ok' 2>/dev/null || echo "false")
+    local base_json base_ok base_err_msg base_err_hint
+    base_json=$(lark-cli base +table-list --base-token "$LARC_BASE_APP_TOKEN" 2>&1 || true)
+    base_ok=$(echo "$base_json"       | jq -r '.ok // false'            2>/dev/null)
+    base_err_msg=$(echo "$base_json"  | jq -r '.error.message // empty' 2>/dev/null)
+    base_err_hint=$(echo "$base_json" | jq -r '.error.hint // empty'    2>/dev/null)
     if [[ "$base_ok" == "true" ]]; then
       echo -e "  Base:         ${GREEN}connected${RESET} ($LARC_BASE_APP_TOKEN)"
     else
       echo -e "  Base:         ${YELLOW}unreachable${RESET} ($LARC_BASE_APP_TOKEN)"
+      [[ -n "$base_err_msg"  ]] && echo -e "                ${YELLOW}reason:${RESET} $base_err_msg"
+      [[ -n "$base_err_hint" ]] && echo -e "                ${YELLOW}hint:${RESET}   $base_err_hint"
     fi
   else
     echo -e "  Base:         ${RED}not set${RESET}"
@@ -995,9 +1011,14 @@ ${BOLD}Commands:${RESET}
                           --agent <id>  Target agent (default: main)
                           --timeout <N> Minutes before in_progress is considered stale (default: 60)
                           --dry-run     Preview without writing
-  ${CYAN}kg build${RESET}              Traverse Lark Wiki and index node graph into Base
+  ${CYAN}wiki add-member${RESET}       Add user to Wiki space; handles external-user 131005 error
+  ${CYAN}wiki open-sharing${RESET}     Set Wiki open_sharing level (no_access|tenant_readable|anyone_readable)
+  ${CYAN}kg build${RESET} [--with-links] Traverse Lark Wiki and index node graph into Base
   ${CYAN}kg query${RESET} "<concept>"  Keyword search over indexed graph; show matches + neighbors
-  ${CYAN}kg show${RESET} <token>       Show node details and neighbors from local cache
+  ${CYAN}kg show${RESET} <token>       Show node details, tree neighbors, and semantic edges
+  ${CYAN}kg scan-links${RESET} <token> Scan a docx node for outgoing mention_doc links
+  ${CYAN}kg build-edges${RESET}        Scan all docx nodes and update the edge index
+  ${CYAN}kg link${RESET} <f> <t>       Insert mention_doc block from <f> to <t>
   ${CYAN}daemon start${RESET}          Start IM poller + queue worker in background
                           --agent <id>    Agent ID (default: main)
                           --interval <s>  Poll interval in seconds (default: 30)
@@ -1368,6 +1389,7 @@ main() {
     auth)       shift; require_lark_cli; cmd_auth "$@" ;;
     ingress)    shift; require_lark_cli; cmd_ingress "$@" ;;
     kg)         shift; require_lark_cli; cmd_kg "$@" ;;
+    wiki)       shift; require_lark_cli; cmd_wiki "$@" ;;
     mergegate|mg) shift; cmd_mergegate "$@" ;;
     daemon)     shift; cmd_daemon "$@" ;;
     webhook)    shift; cmd_webhook "$@" ;;

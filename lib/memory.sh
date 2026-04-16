@@ -295,19 +295,23 @@ _get_or_create_memory_table() {
 
   if [[ -z "$table_id" ]]; then
     log_info "Creating agent_memory table..."
-    table_id=$(lark-cli base +table-create \
+    local _create_json _create_err_msg _create_err_hint
+    _create_json=$(lark-cli base +table-create \
       --base-token "$LARC_BASE_APP_TOKEN" \
-      --name "agent_memory" \
-      --jq '.table.table_id // .table_id' 2>/dev/null || echo "")
-    [[ -n "$table_id" ]] && {
-      lark-cli base +field-create --base-token "$LARC_BASE_APP_TOKEN" --table-id "$table_id" --json '{"name":"date","type":"text"}' >/dev/null 2>&1 || true
-      lark-cli base +field-create --base-token "$LARC_BASE_APP_TOKEN" --table-id "$table_id" --json '{"name":"content","type":"text"}' >/dev/null 2>&1 || true
-      lark-cli base +field-create --base-token "$LARC_BASE_APP_TOKEN" --table-id "$table_id" --json '{"name":"agent_id","type":"text"}' >/dev/null 2>&1 || true
-      lark-cli base +field-create --base-token "$LARC_BASE_APP_TOKEN" --table-id "$table_id" --json '{"name":"created_at","type":"text"}' >/dev/null 2>&1 || true
-      lark-cli base +field-create --base-token "$LARC_BASE_APP_TOKEN" --table-id "$table_id" --json '{"name":"updated_at","type":"text"}' >/dev/null 2>&1 || true
-    }
-
-    [[ -z "$table_id" ]] && { log_error "Table creation failed"; return 1; }
+      --name "agent_memory" 2>&1 || true)
+    table_id=$(echo "$_create_json" | jq -r '.table.table_id // .table_id // empty' 2>/dev/null)
+    if [[ -z "$table_id" || "$table_id" == "null" ]]; then
+      _create_err_msg=$(echo  "$_create_json" | jq -r '.error.message // empty' 2>/dev/null)
+      _create_err_hint=$(echo "$_create_json" | jq -r '.error.hint // empty'    2>/dev/null)
+      log_error "Failed to ensure agent_memory table"
+      [[ -n "$_create_err_msg"  ]] && log_error "  reason: $_create_err_msg"
+      [[ -n "$_create_err_hint" ]] && log_error "  hint:   $_create_err_hint"
+      return 1
+    fi
+    for field_name in date content agent_id created_at updated_at; do
+      lark-cli base +field-create --base-token "$LARC_BASE_APP_TOKEN" --table-id "$table_id" \
+        --json "{\"name\":\"$field_name\",\"type\":\"text\"}" >/dev/null 2>&1 || true
+    done
     log_ok "agent_memory table created: $table_id"
   fi
 
