@@ -26,6 +26,9 @@ cmd_ingress() {
     fail)    _ingress_fail "$@" ;;
     recover) _ingress_recover "$@" ;;
     verify)  _ingress_verify "$@" ;;
+    stats)   _ingress_stats "$@" ;;
+    prune)   _ingress_prune "$@" ;;
+    retry)   _ingress_retry "$@" ;;
     help|--help|-h) _ingress_help ;;
     *)
       log_error "Unknown ingress action: $action"
@@ -62,6 +65,9 @@ ${BOLD}Commands:${RESET}
   ${CYAN}done${RESET}      Mark a queue item as completed
   ${CYAN}fail${RESET}      Mark a queue item as failed
   ${CYAN}verify${RESET}    End-to-end pipeline verification: enqueue → Base write → audit log
+  ${CYAN}stats${RESET}     Show counts by status / gate and top failure reasons
+  ${CYAN}prune${RESET}     Delete failed queue items matching filters (dry-run by default)
+  ${CYAN}retry${RESET}     Reset failed items to pending so the worker will retry
 
 ${BOLD}Examples:${RESET}
   larc ingress enqueue --text "Please route this expense to approval" --sender ou_xxx --source im
@@ -2784,4 +2790,328 @@ _get_or_create_logs_table() {
     execution_note started_at completed_at message_text
 
   echo "$table_id"
+}
+
+# ── T-009: Queue triage helpers (stats / prune / retry) ─────────────────────
+# Operational tooling to cope with accumulated failed queue items.
+# Operates on the local JSONL cache at $LARC_CACHE/queue/<agent_id>.jsonl.
+# See GitHub issue #8.
+
+_ingress_stats() {
+  local agent_id="main"
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --agent) agent_id="$2"; shift 2 ;;
+      *) shift ;;
+    esac
+  done
+
+  local queue_file="$LARC_CACHE/queue/${agent_id}.jsonl"
+  if [[ ! -f "$queue_file" ]]; then
+    log_warn "No local queue file for agent: $agent_id"
+    return 1
+  fi
+
+  log_head "Queue stats (${agent_id})"
+  python3 - "$queue_file" <<'PY'
+import json, sys, collections
+path = sys.argv[1]
+status_counts = collections.Counter()
+gate_counts   = collections.Counter()
+reason_counts = collections.Counter()
+total = 0
+oldest_pending = None
+oldest_failed  = None
+with open(path, "r", encoding="utf-8") as f:
+    for line in f:
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            d = json.loads(line)
+        except Exception:
+            continue
+        total += 1
+        st = d.get("status", "-")
+        status_counts[st] += 1
+        gate_counts[d.get("gate", "-")] += 1
+        if st == "failed":
+            reason = (d.get("last_transition_note") or "").strip() or "(no note)"
+            reason_counts[reason[:80]] += 1
+            ts = d.get("updated_at") or d.get("created_at") or ""
+            if ts and (oldest_failed is None or ts < oldest_failed):
+                oldest_failed = ts
+        if st == "pending":
+            ts = d.get("created_at") or ""
+            if ts and (oldest_pending is None or ts < oldest_pending):
+                oldest_pending = ts
+
+print(f"  total:        {total}")
+print(f"  by status:")
+for s, n in status_counts.most_common():
+    print(f"    {s:<15} {n}")
+print(f"  by gate:")
+for g, n in gate_counts.most_common():
+    print(f"    {g:<15} {n}")
+if reason_counts:
+    print(f"  top failure reasons (truncated to 80 chars):")
+    for r, n in reason_counts.most_common(5):
+        print(f"    [{n:>3}] {r}")
+if oldest_pending:
+    print(f"  oldest pending: {oldest_pending}")
+if oldest_failed:
+    print(f"  oldest failed:  {oldest_failed}")
+PY
+}
+
+# Prune queue items matching filters. By default dry-run; require --yes to delete.
+_ingress_prune() {
+  local agent_id="main"
+  local status_filter="failed"
+  local older_than=""
+  local reason_match=""
+  local dry_run=true
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --agent) agent_id="$2"; shift 2 ;;
+      --status) status_filter="$2"; shift 2 ;;
+      --older-than) older_than="$2"; shift 2 ;;
+      --reason-match) reason_match="$2"; shift 2 ;;
+      --dry-run) dry_run=true; shift ;;
+      --yes) dry_run=false; shift ;;
+      -h|--help)
+        cat <<EOF
+Usage: larc ingress prune [options]
+
+Remove queue items matching all given filters. Dry-run by default.
+
+Options:
+  --agent <id>          Target agent (default: main)
+  --status <status>     Filter by status (default: failed)
+  --older-than <N>d     Filter items older than N days (e.g. 7d, 30d)
+  --reason-match <re>   Python regex matched against last_transition_note
+  --dry-run             Preview only (default)
+  --yes                 Actually delete matched items (irreversible locally)
+
+Examples:
+  larc ingress prune --status failed --older-than 7d --dry-run
+  larc ingress prune --status failed --reason-match "keychain" --yes
+EOF
+        return 0
+        ;;
+      *) shift ;;
+    esac
+  done
+
+  local queue_file="$LARC_CACHE/queue/${agent_id}.jsonl"
+  if [[ ! -f "$queue_file" ]]; then
+    log_warn "No local queue file for agent: $agent_id"
+    return 1
+  fi
+
+  local tmp_out; tmp_out="${queue_file}.prune.tmp"
+  local matched; matched=$(python3 - "$queue_file" "$tmp_out" "$status_filter" "$older_than" "$reason_match" "$dry_run" <<'PY'
+import json, sys, re
+from datetime import datetime, timezone, timedelta
+
+path, out_path, status_filter, older_than, reason_match, dry_run_s = sys.argv[1:7]
+dry_run = dry_run_s.lower() == "true"
+
+cutoff = None
+if older_than:
+    m = re.match(r"^(\d+)d$", older_than)
+    if m:
+        cutoff = datetime.now(timezone.utc) - timedelta(days=int(m.group(1)))
+
+rx = re.compile(reason_match) if reason_match else None
+
+matched = []
+kept = []
+with open(path, "r", encoding="utf-8") as f:
+    for line in f:
+        line_s = line.rstrip("\n")
+        if not line_s.strip():
+            continue
+        try:
+            d = json.loads(line_s)
+        except Exception:
+            kept.append(line_s)
+            continue
+        # status filter
+        if status_filter and d.get("status") != status_filter:
+            kept.append(line_s); continue
+        # cutoff filter
+        if cutoff:
+            ts = d.get("updated_at") or d.get("created_at")
+            try:
+                dt = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+                if dt >= cutoff:
+                    kept.append(line_s); continue
+            except Exception:
+                kept.append(line_s); continue
+        # reason filter
+        if rx:
+            note = d.get("last_transition_note") or ""
+            if not rx.search(note):
+                kept.append(line_s); continue
+        matched.append(d)
+
+if not dry_run:
+    with open(out_path, "w", encoding="utf-8") as f:
+        for line in kept:
+            f.write(line + "\n")
+
+print(len(matched))
+for m in matched[:5]:
+    print(f"  {m.get('queue_id','-')}  [{m.get('status','-')}]  {str(m.get('last_transition_note') or m.get('message_text',''))[:80]}")
+if len(matched) > 5:
+    print(f"  ... ({len(matched) - 5} more)")
+PY
+  )
+
+  local count; count=$(echo "$matched" | head -1)
+  log_info "Matched: $count item(s)"
+  echo "$matched" | tail -n +2
+
+  if $dry_run; then
+    log_info "(dry-run — pass --yes to actually delete)"
+    rm -f "$tmp_out"
+    return 0
+  fi
+
+  if [[ "$count" -eq 0 ]]; then
+    rm -f "$tmp_out"
+    log_info "Nothing to delete"
+    return 0
+  fi
+
+  # Backup then swap.
+  local backup="${queue_file}.bak.$(date +%Y%m%d-%H%M%S)"
+  cp "$queue_file" "$backup"
+  mv "$tmp_out" "$queue_file"
+  log_ok "Deleted $count item(s). Backup: $backup"
+}
+
+# Retry a failed queue item (or batch) by resetting it to pending.
+_ingress_retry() {
+  local agent_id="main"
+  local queue_id=""
+  local all_failed=false
+  local reason_match=""
+  local dry_run=false
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --agent) agent_id="$2"; shift 2 ;;
+      --queue-id) queue_id="$2"; shift 2 ;;
+      --all-failed) all_failed=true; shift ;;
+      --reason-match) reason_match="$2"; shift 2 ;;
+      --dry-run) dry_run=true; shift ;;
+      -h|--help)
+        cat <<EOF
+Usage: larc ingress retry [options]
+
+Reset failed queue items back to pending so the worker will try again.
+
+Options:
+  --agent <id>          Target agent (default: main)
+  --queue-id <id>       Retry a single queue item
+  --all-failed          Retry every failed item (filterable by --reason-match)
+  --reason-match <re>   Only retry items whose last_transition_note matches
+  --dry-run             Preview only
+
+Examples:
+  larc ingress retry --queue-id 61cf1282-3682-...
+  larc ingress retry --all-failed --reason-match "keychain" --dry-run
+EOF
+        return 0
+        ;;
+      *) shift ;;
+    esac
+  done
+
+  if [[ -z "$queue_id" && "$all_failed" == "false" ]]; then
+    log_error "Specify either --queue-id <id> or --all-failed"
+    return 1
+  fi
+
+  local queue_file="$LARC_CACHE/queue/${agent_id}.jsonl"
+  if [[ ! -f "$queue_file" ]]; then
+    log_warn "No local queue file for agent: $agent_id"
+    return 1
+  fi
+
+  local tmp_out; tmp_out="${queue_file}.retry.tmp"
+  local updated; updated=$(python3 - "$queue_file" "$tmp_out" "$queue_id" "$all_failed" "$reason_match" "$dry_run" <<'PY'
+import json, sys, re
+from datetime import datetime, timezone
+
+path, out_path, queue_id, all_failed_s, reason_match, dry_run_s = sys.argv[1:7]
+all_failed = all_failed_s.lower() == "true"
+dry_run    = dry_run_s.lower() == "true"
+rx = re.compile(reason_match) if reason_match else None
+now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+updated = []
+lines_out = []
+with open(path, "r", encoding="utf-8") as f:
+    for line in f:
+        line_s = line.rstrip("\n")
+        if not line_s.strip():
+            continue
+        try:
+            d = json.loads(line_s)
+        except Exception:
+            lines_out.append(line_s); continue
+        match = False
+        if queue_id and d.get("queue_id") == queue_id and d.get("status") == "failed":
+            match = True
+        elif all_failed and d.get("status") == "failed":
+            if rx:
+                note = d.get("last_transition_note") or ""
+                if not rx.search(note):
+                    lines_out.append(line_s); continue
+            match = True
+        if match:
+            d["status"] = "pending"
+            d["last_transition_note"] = f"retry requested at {now}"
+            d["updated_at"] = now
+            d["started_at"] = None
+            updated.append(d)
+        lines_out.append(json.dumps(d, ensure_ascii=False))
+
+if not dry_run:
+    with open(out_path, "w", encoding="utf-8") as f:
+        for line in lines_out:
+            f.write(line + "\n")
+
+print(len(updated))
+for u in updated[:5]:
+    print(f"  {u.get('queue_id','-')}  -> pending")
+if len(updated) > 5:
+    print(f"  ... ({len(updated) - 5} more)")
+PY
+  )
+
+  local count; count=$(echo "$updated" | head -1)
+  log_info "Matched: $count item(s)"
+  echo "$updated" | tail -n +2
+
+  if $dry_run; then
+    log_info "(dry-run — no changes written)"
+    rm -f "$tmp_out"
+    return 0
+  fi
+
+  if [[ "$count" -eq 0 ]]; then
+    rm -f "$tmp_out"
+    log_info "Nothing to retry"
+    return 0
+  fi
+
+  local backup="${queue_file}.bak.$(date +%Y%m%d-%H%M%S)"
+  cp "$queue_file" "$backup"
+  mv "$tmp_out" "$queue_file"
+  log_ok "Reset $count item(s) to pending. Backup: $backup"
 }
