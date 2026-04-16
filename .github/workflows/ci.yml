@@ -8,15 +8,34 @@ on:
 
 jobs:
   verify:
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 10
+
+    defaults:
+      run:
+        # Use bash on all platforms. On windows-latest this runs Git Bash
+        # (MSYS2), which is the recommended LARC runtime on Windows.
+        shell: bash
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Verify shell syntax
-        run: bash -n bin/larc scripts/install.sh scripts/auth-suggest-check.sh
+      - name: Verify shell syntax (bin/larc, lib/*, scripts/*.sh)
+        run: |
+          set -e
+          files=(bin/larc)
+          while IFS= read -r f; do files+=("$f"); done < <(ls lib/*.sh)
+          while IFS= read -r f; do files+=("$f"); done < <(ls scripts/*.sh)
+          echo "Checking ${#files[@]} files"
+          for f in "${files[@]}"; do
+            bash -n "$f"
+          done
+          echo "All files OK"
 
       - name: Verify auth-suggest regression cases
         run: bash scripts/auth-suggest-check.sh --verify

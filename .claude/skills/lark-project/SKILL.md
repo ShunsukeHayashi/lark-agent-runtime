@@ -271,7 +271,43 @@ WHERE `priority` is not null
 
 ---
 
+---
+
+## LARC Task OS 連携
+
+> 詳細は `docs/task-os-template.md` 参照
+
+### LARC ↔ Meegle ステータスマッピング
+
+| LARC アクション | Meegle state_key | ステータス名 |
+|---|---|---|
+| enqueue（受付） | `sub_stage_1679654663853` | スタート |
+| run-once（着手） | `sub_stage_1679654941472` | 開発中です |
+| done（完了） | `sub_stage_1679655085909` | 終了 |
+| fail（失敗） | `sub_stage_1679654845402` | プロダクトレビュー待ち |
+
+### done/fail 時の3ステップ
+
+```
+1. larc ingress done --queue-id <id> --note "<内容>"
+2. add_comment(project_key, work_item_id, "[LARC完了] <内容>")
+3. transition_state(project_key, work_item_id, state_key)
+```
+
+### コンテキスト復元（セッション開始時）
+
+```
+1. search_by_mql → P0一覧取得
+2. description / comments → コンテキスト文書抽出
+3. larc memory search → 直近14日の関連メモリ
+4. git log → 最終コミット日時
+5. → 優先順位リスト → 音声報告
+```
+
+---
+
 ## 運用ドキュメント
 
+- Task OS テンプレート: `docs/task-os-template.md`
 - プレイブック: `~/dev/ops/lark-project-registration-playbook.md`
 - 運用ガイド: `~/dev/ops/lark-project-ops-guide.md`

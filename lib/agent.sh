@@ -424,11 +424,19 @@ _get_or_create_agents_table() {
 
   if [[ -z "$table_id" ]]; then
     log_info "Creating agents_registry table..."
-    table_id=$(lark-cli base +table-create \
+    local _create_json _create_err_msg _create_err_hint
+    _create_json=$(lark-cli base +table-create \
       --base-token "$LARC_BASE_APP_TOKEN" \
-      --name "agents_registry" \
-      --jq '.table.table_id // .table_id' 2>/dev/null || echo "")
-    [[ -z "$table_id" ]] && { log_error "Table creation failed"; return 1; }
+      --name "agents_registry" 2>&1 || true)
+    table_id=$(echo "$_create_json" | jq -r '.table.table_id // .table_id // empty' 2>/dev/null)
+    if [[ -z "$table_id" || "$table_id" == "null" ]]; then
+      _create_err_msg=$(echo  "$_create_json" | jq -r '.error.message // empty' 2>/dev/null)
+      _create_err_hint=$(echo "$_create_json" | jq -r '.error.hint // empty'    2>/dev/null)
+      log_error "Failed to ensure agents_registry table"
+      [[ -n "$_create_err_msg"  ]] && log_error "  reason: $_create_err_msg"
+      [[ -n "$_create_err_hint" ]] && log_error "  hint:   $_create_err_hint"
+      return 1
+    fi
     log_ok "agents_registry table created: $table_id"
   fi
 

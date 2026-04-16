@@ -6,6 +6,37 @@ The format is intentionally lightweight while the project is still in incubation
 
 ---
 
+## 2026-04-15 — Portable Unix utilities
+
+### Preparation for Windows Support milestone
+
+Added cross-platform shims in `lib/runtime-common.sh` so the same code path works on macOS (BSD userland), Linux (GNU coreutils), Git Bash on Windows, and WSL2:
+
+- `larc_realpath` — `realpath` → `readlink -f` → Python fallback
+- `larc_stat_mtime` — BSD `stat -f %m` ↔ GNU `stat -c %Y`
+- `larc_stat_mtime_human` — BSD `stat -f %Sm` ↔ GNU `stat -c %y`
+- `larc_sed_inplace` — GNU `sed -i` ↔ BSD `sed -i `
+- `larc_date_yesterday` — GNU `date -d` → BSD `date -v-1d` → Python fallback
+
+Replaced the BSD-specific call sites in `bin/larc` (path resolution, cache mtime) and `lib/bootstrap.sh` (cache age, yesterday date, sed-inplace template substitution). macOS behavior is unchanged; Linux / Git Bash / WSL now go down working code paths instead of silently failing.
+
+- Prep for #11 (stat -f), #12 (sed -i), #13 (date -v), #14 (readlink -f)
+- Part of the Windows Support milestone
+
+## 2026-04-15 — Improved error surfacing for lark-cli failures
+
+Previously, `lark-cli` errors (typically `keychain Get failed: keychain access blocked` when running over SSH or from a sandboxed session) were swallowed by `2>/dev/null`, causing two misleading UX outcomes:
+
+- `larc status` displayed `Base: unreachable` and `User: null` with no reason
+- `larc ingress context` / agent registration printed a generic `Table creation failed`
+
+Now both paths capture the structured `error.message` and `error.hint` from `lark-cli` and surface them to the user. `larc status` additionally falls back to the cached `LARC_LARK_USER_NAME` from `config.env` when the live check fails, marking it as cached.
+
+- Fixes #6 (bug: larc status masks keychain errors as "unreachable")
+- Fixes #7 (bug: ingress context misreports keychain failure as "Table creation failed")
+
+---
+
 ## 2026-04-15
 
 ### OpenClaw-first positioning clarified
