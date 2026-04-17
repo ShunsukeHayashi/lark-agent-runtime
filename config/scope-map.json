@@ -1,6 +1,6 @@
 {
   "_comment": "タスク種別 → 必要 Lark スコープのマッピング定義。identity は user / bot / either のいずれか。",
-  "_version": "0.2.0",
+  "_version": "0.3.0",
   "_updated": "2026-04-17",
   "tasks": {
     "read_document": {
@@ -245,6 +245,129 @@
       ],
       "identity": "bot",
       "description": "Lark OCR APIで画像からテキストを抽出し、Claude Haikuで構造化データに変換する"
+    },
+    "create_chat_group": {
+      "scopes": [
+        "im:chat:create"
+      ],
+      "identity": "bot",
+      "description": "IM グループチャットの新規作成"
+    },
+    "manage_chat_group": {
+      "scopes": [
+        "im:chat:update",
+        "im:chat.members:write"
+      ],
+      "identity": "bot",
+      "description": "グループチャットのメンバー追加・削除・名称変更"
+    },
+    "read_email": {
+      "scopes": [
+        "mail:mail_message:readonly"
+      ],
+      "identity": "user",
+      "description": "Lark メール（受信トレイ）の読み取り"
+    },
+    "send_email": {
+      "scopes": [
+        "mail:mail_message"
+      ],
+      "identity": "user",
+      "description": "Lark メールの送信"
+    },
+    "read_sheets": {
+      "scopes": [
+        "sheets:spreadsheet:readonly"
+      ],
+      "identity": "user",
+      "description": "電子表格（シート）の読み取り"
+    },
+    "write_sheets": {
+      "scopes": [
+        "sheets:spreadsheet"
+      ],
+      "identity": "user",
+      "description": "電子表格（シート）のセル書き込み・行追加"
+    },
+    "read_slides": {
+      "scopes": [
+        "docx:document:readonly"
+      ],
+      "identity": "user",
+      "description": "スライド（飞书文档PPT）の読み取り"
+    },
+    "write_slides": {
+      "scopes": [
+        "docx:document"
+      ],
+      "identity": "user",
+      "description": "スライドの編集・ページ追加"
+    },
+    "write_attendance": {
+      "scopes": [
+        "attendance:attendance"
+      ],
+      "identity": "user",
+      "description": "考勤打刻の修正・補完記録"
+    },
+    "manage_vc": {
+      "scopes": [
+        "vc:reserve:create",
+        "vc:room:list"
+      ],
+      "identity": "user",
+      "description": "ビデオ会議の予約・管理・会議室確認"
+    },
+    "write_minutes": {
+      "scopes": [
+        "minutes:content"
+      ],
+      "identity": "user",
+      "description": "飞书妙记（会議録）の作成・編集"
+    },
+    "translate_content": {
+      "scopes": [
+        "translation:translation:translate"
+      ],
+      "identity": "bot",
+      "description": "Lark 翻訳APIによるテキスト翻訳（文書・メッセージ対応）"
+    },
+    "search_content": {
+      "scopes": [
+        "search:search:execute"
+      ],
+      "identity": "user",
+      "description": "Lark 横断検索（Docs / Wiki / Base / Drive を串刺し）"
+    },
+    "read_hire": {
+      "scopes": [
+        "hire:job:readonly",
+        "hire:candidate:readonly"
+      ],
+      "identity": "user",
+      "description": "採用情報（求人・候補者・選考ステージ）の読み取り"
+    },
+    "manage_hire": {
+      "scopes": [
+        "hire:candidate:update",
+        "hire:job"
+      ],
+      "identity": "user",
+      "description": "採用候補者の進捗更新・選考ステージ移動"
+    },
+    "create_helpdesk_ticket": {
+      "scopes": [
+        "helpdesk:ticket:create"
+      ],
+      "identity": "user",
+      "description": "ヘルプデスクチケットの起票"
+    },
+    "trigger_workflow": {
+      "scopes": [
+        "workflow:workflow:execute"
+      ],
+      "identity": "bot",
+      "description": "Lark 自動化フロー（Automation）のトリガー実行"
     }
   },
   "authority_notes": {

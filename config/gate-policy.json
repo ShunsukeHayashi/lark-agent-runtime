@@ -1,7 +1,7 @@
 {
   "_comment": "Execution gate policy — maps task types to risk level and required gate before execution.",
-  "_version": "0.1.0",
-  "_updated": "2026-04-14",
+  "_version": "0.3.0",
+  "_updated": "2026-04-17",
 
   "risk_levels": {
     "none":   "Read-only or fully reversible. No gate needed.",
@@ -52,6 +52,37 @@
     "create_expense":   { "risk": "high",   "gate": "approval", "reason": "Expense submission triggers a financial approval chain. Must not proceed without manager authorization." },
     "submit_approval":  { "risk": "high",   "gate": "approval", "reason": "Approval submission is irreversible once submitted; approver must act to cancel." },
     "act_approval_task": { "risk": "high",  "gate": "approval", "reason": "Approving or rejecting an approval task affects downstream workflows and is audited.", "note": "Agent must only act on tasks explicitly delegated to it." },
-    "manage_base":      { "risk": "high",   "gate": "approval", "reason": "Base structural changes (schema edits, table deletes) can destroy production data." }
+    "manage_base":      { "risk": "high",   "gate": "approval", "reason": "Base structural changes (schema edits, table deletes) can destroy production data." },
+
+    "ocr_image":             { "risk": "none",   "gate": "none",     "reason": "Read-only image-to-text extraction. No data is written." },
+
+    "create_chat_group":     { "risk": "low",    "gate": "none",     "reason": "Group chat creation is reversible (can be disbanded). Bot membership is visible to admins." },
+    "manage_chat_group":     { "risk": "medium", "gate": "preview",  "reason": "Adding or removing members changes communication access; visible to all group members immediately." },
+
+    "read_email":            { "risk": "none",   "gate": "none",     "reason": "Read-only mail access. No data is modified." },
+    "send_email":            { "risk": "medium", "gate": "preview",  "reason": "Emails are sent externally and cannot be unsent. Preview recipient and content before sending." },
+
+    "read_sheets":           { "risk": "none",   "gate": "none",     "reason": "Read-only spreadsheet access." },
+    "write_sheets":          { "risk": "low",    "gate": "none",     "reason": "Spreadsheet edits are versioned and can be reverted via revision history." },
+
+    "read_slides":           { "risk": "none",   "gate": "none",     "reason": "Read-only slides access." },
+    "write_slides":          { "risk": "low",    "gate": "none",     "reason": "Slide edits are versioned; presentation context is visible in Drive." },
+
+    "write_attendance":      { "risk": "high",   "gate": "approval", "reason": "Attendance corrections affect payroll calculations and HR records. Requires manager authorization." },
+
+    "manage_vc":             { "risk": "low",    "gate": "none",     "reason": "VC reservations can be cancelled. Room scheduling is immediately visible to participants." },
+
+    "write_minutes":         { "risk": "low",    "gate": "none",     "reason": "Minutes content is versioned and editable. Changes are visible to meeting participants." },
+
+    "translate_content":     { "risk": "none",   "gate": "none",     "reason": "Read-only transformation — no source data is modified." },
+
+    "search_content":        { "risk": "none",   "gate": "none",     "reason": "Read-only cross-surface search. No data is written or modified." },
+
+    "read_hire":             { "risk": "none",   "gate": "none",     "reason": "Read-only hiring data access. Candidate privacy is protected by Lark scopes." },
+    "manage_hire":           { "risk": "high",   "gate": "approval", "reason": "Moving candidates through hiring stages affects employment decisions. Requires HR authorization." },
+
+    "create_helpdesk_ticket": { "risk": "low",   "gate": "none",     "reason": "Ticket creation is reversible and visible in helpdesk queue." },
+
+    "trigger_workflow":      { "risk": "medium", "gate": "preview",  "reason": "Workflow side-effects are not always predictable. Preview the workflow target and parameters before executing." }
   }
 }

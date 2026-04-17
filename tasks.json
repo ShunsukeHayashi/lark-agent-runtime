@@ -8,8 +8,13 @@
       "id": "T-001",
       "title": "surface lark-cli keychain errors in status / ensure-table paths",
       "milestone": "core-ux",
-      "linked_issues": [6, 7],
-      "linked_prs": [10],
+      "linked_issues": [
+        6,
+        7
+      ],
+      "linked_prs": [
+        10
+      ],
       "status": "done",
       "owner": "claude",
       "locked_by": null,
@@ -22,8 +27,15 @@
       "id": "T-002",
       "title": "portable shims for realpath/stat/sed/date",
       "milestone": "windows-support",
-      "linked_issues": [11, 12, 13, 14],
-      "linked_prs": [19],
+      "linked_issues": [
+        11,
+        12,
+        13,
+        14
+      ],
+      "linked_prs": [
+        19
+      ],
       "status": "done",
       "owner": "claude",
       "locked_by": null,
@@ -36,8 +48,12 @@
       "id": "T-003",
       "title": "windows-latest CI matrix (Git Bash)",
       "milestone": "windows-support",
-      "linked_issues": [17],
-      "linked_prs": [20],
+      "linked_issues": [
+        17
+      ],
+      "linked_prs": [
+        20
+      ],
       "status": "done",
       "owner": "claude",
       "locked_by": null,
@@ -50,8 +66,12 @@
       "id": "T-004",
       "title": "bin/larc.ps1 PowerShell launcher",
       "milestone": "windows-support",
-      "linked_issues": [16],
-      "linked_prs": [21],
+      "linked_issues": [
+        16
+      ],
+      "linked_prs": [
+        21
+      ],
       "status": "done",
       "owner": "claude",
       "locked_by": null,
@@ -64,8 +84,12 @@
       "id": "T-005",
       "title": "force UTF-8 Python I/O on Windows",
       "milestone": "windows-support",
-      "linked_issues": [22],
-      "linked_prs": [23],
+      "linked_issues": [
+        22
+      ],
+      "linked_prs": [
+        23
+      ],
       "status": "done",
       "owner": "claude",
       "locked_by": null,
@@ -78,8 +102,12 @@
       "id": "T-006",
       "title": "lib/billing.sh fcntl.flock cross-platform fallback",
       "milestone": "windows-support",
-      "linked_issues": [15],
-      "linked_prs": [25],
+      "linked_issues": [
+        15
+      ],
+      "linked_prs": [
+        25
+      ],
       "status": "done",
       "owner": "claude",
       "locked_by": null,
@@ -92,8 +120,12 @@
       "id": "T-007",
       "title": "Windows installation guide (docs/install-windows.md)",
       "milestone": "windows-support",
-      "linked_issues": [18],
-      "linked_prs": [27],
+      "linked_issues": [
+        18
+      ],
+      "linked_prs": [
+        27
+      ],
       "status": "done",
       "owner": "claude",
       "locked_by": null,
@@ -106,7 +138,9 @@
       "id": "T-008",
       "title": "real-hardware smoke test on AAI (Windows 11)",
       "milestone": "windows-support",
-      "linked_issues": [9],
+      "linked_issues": [
+        9
+      ],
       "linked_prs": [],
       "status": "pending",
       "owner": null,
@@ -119,8 +153,12 @@
       "id": "T-009",
       "title": "queue triage helpers: prune/retry/stats",
       "milestone": "operational-resilience",
-      "linked_issues": [8],
-      "linked_prs": [26],
+      "linked_issues": [
+        8
+      ],
+      "linked_prs": [
+        26
+      ],
       "status": "done",
       "owner": "claude",
       "locked_by": null,
@@ -135,12 +173,13 @@
       "milestone": "launch",
       "linked_issues": [],
       "linked_prs": [],
-      "status": "pending",
-      "owner": null,
+      "status": "done",
+      "owner": "claude",
       "locked_by": null,
       "lock_expires_at": null,
       "created_at": "2026-04-17",
-      "notes": "14 modified files uncommitted. release-readiness verdict is PREVIEW CANDIDATE. Commit all M files, push, create GitHub Release tag v0.2.0 with CHANGELOG entry."
+      "notes": "Committed a9d814e, tagged v0.2.0, pushed to GitHub",
+      "closed_at": "2026-04-17"
     },
     {
       "id": "T-011",
@@ -148,12 +187,13 @@
       "milestone": "launch",
       "linked_issues": [],
       "linked_prs": [],
-      "status": "pending",
-      "owner": null,
+      "status": "done",
+      "owner": "claude",
       "locked_by": null,
       "lock_expires_at": null,
       "created_at": "2026-04-17",
-      "notes": "Description: 'Permission-first runtime for Lark-native office-work agents.' Topics: lark feishu agent-runtime permissions openclaw bash. Currently 0 stars / 0 watchers — discoverability blocked by missing metadata."
+      "notes": "Description and topics set via gh repo edit",
+      "closed_at": "2026-04-17"
     },
     {
       "id": "T-012",
@@ -161,12 +201,13 @@
       "milestone": "launch",
       "linked_issues": [],
       "linked_prs": [],
-      "status": "pending",
-      "owner": null,
+      "status": "done",
+      "owner": "claude",
       "locked_by": null,
       "lock_expires_at": null,
       "created_at": "2026-04-17",
-      "notes": "Primary market is China/Feishu. Use README.zh-CN as base. Post to open.feishu.cn dev community and 掘金 (juejin.cn). Core message: 飞书 Agent 的权限管理 runtime."
+      "notes": "Draft saved: docs/launch/t012-feishu-community-post.md (掘金版 + open.feishu.cn版)",
+      "closed_at": "2026-04-17"
     },
     {
       "id": "T-013",
@@ -174,12 +215,13 @@
       "milestone": "launch",
       "linked_issues": [],
       "linked_prs": [],
-      "status": "pending",
-      "owner": null,
+      "status": "done",
+      "owner": "claude",
       "locked_by": null,
       "lock_expires_at": null,
       "created_at": "2026-04-17",
-      "notes": "@The_AGI_WAY 39K フォロワー向け。権限設計リスクの問題提起スレッド。Repo URL + larc approve gate デモをリンク。経営者層に刺さる文脈で書く。"
+      "notes": "Draft saved: docs/launch/t013-x-thread-the-agi-way.md (8ツイート @The_AGI_WAY向け)",
+      "closed_at": "2026-04-17"
     },
     {
       "id": "T-014",
@@ -187,12 +229,13 @@
       "milestone": "bizdev",
       "linked_issues": [],
       "linked_prs": [],
-      "status": "pending",
-      "owner": null,
+      "status": "done",
+      "owner": "claude",
       "locked_by": null,
       "lock_expires_at": null,
       "created_at": "2026-04-17",
-      "notes": "診断サービス「AI業務導入 権限設計診断」60万円/社。LARCの4問ヒアリング → タスク×リスク分類マップ → 危険箇所レポート → 継続提案。Lark非依存で全企業に販売可能。"
+      "notes": "Proposal template saved: docs/launch/t014-ai-governance-diagnosis-template.md",
+      "closed_at": "2026-04-17"
     },
     {
       "id": "T-015",
@@ -213,12 +256,13 @@
       "milestone": "launch",
       "linked_issues": [],
       "linked_prs": [],
-      "status": "pending",
-      "owner": null,
+      "status": "done",
+      "owner": "claude",
       "locked_by": null,
       "lock_expires_at": null,
       "created_at": "2026-04-17",
-      "notes": "みやびSFA/CRM構築の実実績（キュー30件・done23件）を外部公開可能な形に整理。Lark Base + LARC ingress queue でのSFA構築フローを記事化。"
+      "notes": "Article saved: docs/launch/t016-note-zenn-sfa-case-study.md",
+      "closed_at": "2026-04-17"
     },
     {
       "id": "T-017",
@@ -252,12 +296,13 @@
       "milestone": "launch",
       "linked_issues": [],
       "linked_prs": [],
-      "status": "pending",
-      "owner": null,
+      "status": "done",
+      "owner": "claude",
       "locked_by": null,
       "lock_expires_at": null,
       "created_at": "2026-04-17",
-      "notes": "CHANGELOG.md から 2026-04-14〜04-16 の変更をまとめてリリースノートを作成。v0.2.0 タグを打ってから GitHub Release を作成。T-010 が前提。"
+      "notes": "Release published: https://github.com/ShunsukeHayashi/lark-agent-runtime/releases/tag/v0.2.0",
+      "closed_at": "2026-04-17"
     },
     {
       "id": "T-020",
