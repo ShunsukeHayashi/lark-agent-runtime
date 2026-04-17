@@ -45,17 +45,18 @@ ${BOLD}larc ingress${RESET} — Normalize inbound Lark events into queued tasks
 
 ${BOLD}Commands:${RESET}
   ${CYAN}enqueue${RESET}   Create a queue item from message text / stdin
-  ${CYAN}list${RESET}      List queued items from Base or local cache
-  ${CYAN}openclaw${RESET}  Build or dispatch the next-step bundle for an OpenClaw agent
+  ${CYAN}list${RESET}      List queued items from Base first, then local cache if needed
+  ${CYAN}openclaw${RESET}  Build or dispatch the next-step bundle for an OpenClaw agent (Base first, local fallback)
                  --agent <id>       Target agent for bundle lookup (default: main)
                  --queue-id <id>    Force a specific queue item
                  --days <N>         Retrieval window for context commands (default: 14)
                  --execute          Dispatch directly via openclaw agent
                  --gateway          Use gateway mode instead of --local embedded mode
-  ${CYAN}next${RESET}      Pull the next actionable queue item for an agent
-  ${CYAN}run-once${RESET}  Claim the next actionable queue item for an agent
+  ${CYAN}next${RESET}      Pull the next actionable queue item for an agent (Base first, local fallback)
+  ${CYAN}run-once${RESET}  Claim the next actionable queue item for an agent (Base first, local fallback)
   ${CYAN}execute-stub${RESET} Show a placeholder execution plan for an in-progress item
   ${CYAN}execute-apply${RESET} Run safe adapter actions for an in-progress item
+                 (fixture-verified: document_update, crm_followup, expense_approval)
   ${CYAN}followup${RESET}  Show partial items that still require manual follow-up
   ${CYAN}approve${RESET}   Mark a blocked approval item as approved
   ${CYAN}resume${RESET}    Move an approved item back to pending
@@ -89,6 +90,15 @@ ${BOLD}Examples:${RESET}
   larc ingress handoff --queue-id 1234 --days 14
   larc ingress done --queue-id 1234 --note "Completed by crm-agent"
   larc ingress fail --queue-id 1234 --note "Approval context was missing"
+
+${BOLD}Verification boundary:${RESET}
+  Queue pickup, lifecycle transitions, and OpenClaw handoff are broadly usable with
+  Base-first lookup and local fallback.
+  Bundle wording plus execute-apply safe paths are fixture-verified for:
+    - document_update
+    - crm_followup
+    - expense_approval
+  Other task types may still work, but they are not regression-locked to the same level.
 
 EOF
 }
@@ -132,8 +142,9 @@ _ingress_enqueue() {
   [[ ! -f "$gate_path" ]] && { log_error "gate-policy.json not found"; return 1; }
 
   local summary_json
-  summary_json=$(python3 - "$map_path" "$gate_path" "$text" "$agent_id" "$source" "$sender" "$event_id" <<'PY'
+  summary_json=$(LARC_LIB_DIR="$LIB_DIR" python3 - "$map_path" "$gate_path" "$text" "$agent_id" "$source" "$sender" "$event_id" <<'PY'
 import json
+import os
 import re
 import sys
 import uuid
@@ -149,6 +160,29 @@ with open(gate_path, "r", encoding="utf-8") as f:
 
 tasks = scope_map.get("tasks", {})
 gate_tasks = gate_policy.get("tasks", {})
+
+# --- LLM classification (primary) ---------------------------------------
+# Uses lib/classify_task_llm.py against a configured LLM (default: z.ai GLM-4.6).
+# Returns matched task_type keys by intent, not keyword — handles JP/EN/ZH.
+# Falls back silently to the regex block below when:
+#   - LARC_CLASSIFIER_DISABLE_LLM=1 is set
+#   - no API key configured
+#   - network / parse failure
+# Emits task_types to matched_tasks; regex block only runs when this is empty.
+matched_tasks = set()
+if not os.environ.get("LARC_CLASSIFIER_DISABLE_LLM"):
+    lib_dir = os.environ.get("LARC_LIB_DIR")
+    helper = os.path.join(lib_dir, "classify_task_llm.py") if lib_dir else ""
+    if helper and os.path.isfile(helper):
+        sys.path.insert(0, lib_dir)
+        try:
+            import classify_task_llm  # type: ignore
+            llm_tasks = classify_task_llm.classify(task_desc, tasks)
+            for tk in llm_tasks:
+                if tk in tasks:
+                    matched_tasks.add(tk)
+        except Exception as _exc:
+            print(f"[ingress] LLM classifier error: {_exc}", file=sys.stderr)
 
 KEYWORD_MAP = {
     r"\bdoc\b|document": ["read_document"],
@@ -196,12 +230,16 @@ KEYWORD_MAP = {
     r"slide|\bppt\b|presentation|deck": ["manage_slides"],
 }
 
-matched_tasks = set()
-for pattern, task_keys in KEYWORD_MAP.items():
-    if re.search(pattern, task_desc_l):
-        for tk in task_keys:
-            if tk in tasks:
-                matched_tasks.add(tk)
+# --- Regex classification (fallback) ------------------------------------
+# Only runs when the LLM classifier above produced no matches (or was
+# disabled / unavailable). Keeps offline behaviour working for the
+# scripted English patterns.
+if not matched_tasks:
+    for pattern, task_keys in KEYWORD_MAP.items():
+        if re.search(pattern, task_desc_l):
+            for tk in task_keys:
+                if tk in tasks:
+                    matched_tasks.add(tk)
 
 all_scopes = sorted({scope for tk in matched_tasks for scope in tasks[tk]["scopes"]})
 identities = {tasks[tk]["identity"] for tk in matched_tasks}
@@ -278,7 +316,12 @@ PY
 
   if [[ -n "$LARC_BASE_APP_TOKEN" ]]; then
     _ingress_write_base "$summary_json"
-    _ingress_write_audit_log "$summary_json" "enqueued"
+    _ingress_write_audit_log "$summary_json" "$(python3 - "$summary_json" <<'PY'
+import json, sys
+d = json.loads(sys.argv[1])
+print(d.get("status", "enqueued"))
+PY
+)"
   else
     log_warn "LARC_BASE_APP_TOKEN not set — recorded to local queue only"
   fi
@@ -645,6 +688,7 @@ TASK_PLANS = {
     "send_message": "Send the prepared chat notification through Lark IM.",
     "create_expense": "Prepare the expense payload and collect receipts or supporting details.",
     "submit_approval": "Create the approval instance or route the prepared record into approval.",
+    "ocr_image": "Run OCR on the attached receipt or image and extract the structured facts needed downstream.",
     "read_base": "Read the relevant Base rows required to complete the task.",
     "update_base_record": "Patch the target Base record with the new task outcome.",
     "create_document": "Draft the new document content in the target workspace.",
@@ -654,16 +698,17 @@ TASK_PLANS = {
 }
 
 TASK_ADAPTERS = {
-    "create_crm_record": "larc memory push --agent {agent}",
+    "create_crm_record": "openclaw agent --agent {agent} --json --local --message \"Create or upsert the CRM record for this queue item and return the record token or identifier.\"",
     "send_crm_followup": "larc send --agent {agent} \"Follow-up prepared from queue {queue_id}\"",
     "send_message": "larc send --agent {agent} \"{message}\"",
     "create_expense": "larc approve gate create_expense",
     "submit_approval": "larc approve create",
+    "ocr_image": "openclaw agent --agent {agent} --json --local --message \"OCR the receipt image for this queue item and return the extracted text plus key structured fields.\"",
     "read_base": "larc memory search --query \"{message}\" --days 30",
-    "update_base_record": "larc memory push --agent {agent}",
-    "create_document": "larc send --agent {agent} \"Draft document requested: {message}\"",
-    "update_document": "larc send --agent {agent} \"Update document requested: {message}\"",
-    "write_wiki": "larc send --agent {agent} \"Wiki update requested: {message}\"",
+    "update_base_record": "openclaw agent --agent {agent} --json --local --message \"Update the target Base or CRM record for this queue item and return the updated record token or identifier.\"",
+    "create_document": "openclaw agent --agent {agent} --json --local --message \"Create the requested document and return the created document URL or token.\"",
+    "update_document": "openclaw agent --agent {agent} --json --local --message \"Update the requested document and return the updated document URL or token.\"",
+    "write_wiki": "openclaw agent --agent {agent} --json --local --message \"Update the requested wiki node and return the updated node URL or token.\"",
     "write_calendar": "larc send --agent {agent} \"Calendar action requested: {message}\"",
 }
 
@@ -676,6 +721,7 @@ TASK_OPENCLAW_TOOLS = {
     "send_message": ["feishu_im_user_message"],
     "create_expense": ["feishu_bitable_app_table_record", "feishu_drive_file"],
     "submit_approval": ["feishu_bitable_app_table_record"],
+    "ocr_image": ["feishu_drive_file"],
     "create_document": ["feishu_create_doc"],
     "update_document": ["feishu_fetch_doc", "feishu_update_doc"],
     "write_wiki": ["feishu_search_doc_wiki", "feishu_update_doc"],
@@ -735,7 +781,7 @@ def extract_fields(scenario_id, text):
         if not fields["output_folder_token"]:
             missing.append("output_folder_token")
             blocked.append("output_folder_token")
-            ask_user = ask_user or "The default LARC Drive folder is not configured. Set LARC_DRIVE_FOLDER_TOKEN before running this PPAL marketing flow."
+            ask_user = ask_user or "The default LarkHarness Drive folder is not configured. Set LARC_DRIVE_FOLDER_TOKEN before running this PPAL marketing flow."
         if not fields["segment_hint"]:
             missing.append("segment_hint")
             partial.append("segment_hint")
@@ -745,9 +791,10 @@ def extract_fields(scenario_id, text):
             partial.append("destination_target")
             ask_user = ask_user or "Please specify where the campaign result should be sent, for example the sales team chat."
     elif scenario_id == "crm_followup":
-        m = re.search(r"\bfor\s+([A-Za-z0-9._-][A-Za-z0-9._ -]{1,60})", text, re.I)
+        m = re.search(r"\bfor\s+([A-Za-z0-9._-][A-Za-z0-9._ -]{1,60}?)(?=\s+(?:and|with|about|regarding)\b|[,.]|$)", text, re.I)
         q = re.search(r"['\"]([^'\"]{2,80})['\"]", text)
         customer_key = (m.group(1).strip() if m else (q.group(1).strip() if q else ""))
+        customer_key = re.split(r"\s+(?:and|with|about|regarding)\b|[,.]", customer_key, maxsplit=1)[0].strip()
         fields["customer_key"] = customer_key
         fields["followup_message"] = text.strip() if re.search(r"follow.?up|send|message|notify", text, re.I) else ""
         if not fields["customer_key"]:
@@ -761,15 +808,26 @@ def extract_fields(scenario_id, text):
     elif scenario_id == "expense_approval":
         amount = re.search(r"\b(\d[\d,]*(?:\.\d+)?)\b", text)
         date = re.search(r"\b(20\d{2}-\d{2}-\d{2})\b", text)
-        purpose = re.search(r"\bfor\s+(.+)$", text, re.I)
+        purpose = re.search(r"\bfor\s+\d[\d,]*(?:\.\d+)?\s+on\s+20\d{2}-\d{2}-\d{2}\s+for\s+(.+)$", text, re.I)
+        if not purpose:
+            purpose = re.search(r"\bfor\s+(.+)$", text, re.I)
         fields["amount"] = amount.group(1) if amount else ""
         fields["expense_date"] = date.group(1) if date else ""
         fields["purpose"] = purpose.group(1).strip() if purpose else ""
         fields["expense_type"] = "expense" if re.search(r"expense|receipt|travel|meal|taxi", text, re.I) else ""
+        receipt = re.search(r"(file_[A-Za-z0-9_-]+|boxcn[A-Za-z0-9_-]+|drive:[A-Za-z0-9_-]+)", text)
+        fields["receipt_file_token"] = receipt.group(1) if receipt else ""
+        if fields["purpose"]:
+            fields["purpose"] = re.sub(r"\b(file_[A-Za-z0-9_-]+|boxcn[A-Za-z0-9_-]+|drive:[A-Za-z0-9_-]+)\b", "", fields["purpose"]).strip()
+            fields["purpose"] = re.sub(r"\breceipt\b", "", fields["purpose"], flags=re.I).strip()
+            fields["purpose"] = re.sub(r"\s{2,}", " ", fields["purpose"]).strip(" ,.-")
         for key in ("amount", "expense_type", "expense_date", "purpose"):
             if not fields.get(key):
                 missing.append(key)
                 blocked.append(key)
+        if not fields["receipt_file_token"]:
+            missing.append("receipt_file_token")
+            partial.append("receipt_file_token")
         if blocked:
             ask_user = "Please provide amount, expense type, date, and business purpose before approval."
     elif scenario_id == "document_update":
@@ -799,6 +857,8 @@ for task_type in task_types:
         finish_hint.append("Sent outbound message")
     elif task_type in {"create_expense", "submit_approval"}:
         finish_hint.append("Prepared expense/approval payload")
+    elif task_type == "ocr_image":
+        finish_hint.append("Extracted receipt OCR summary")
     elif task_type in {"create_document", "update_document", "write_wiki"}:
         finish_hint.append("Updated document content")
     elif task_type == "write_calendar":
@@ -812,6 +872,11 @@ for task_type in task_types:
         ))
     for tool in TASK_OPENCLAW_TOOLS.get(task_type, []):
         tool_hints.append(tool)
+
+if scenario_id == "crm_followup" and not fields.get("followup_message"):
+    finish_hint.append("Manual follow-up message still required")
+if scenario_id == "expense_approval" and not fields.get("receipt_file_token"):
+    finish_hint.append("Receipt attachment still requires manual follow-up")
 
 print("")
 print("Execution stub plan")
@@ -898,6 +963,7 @@ TASK_OPENCLAW_TOOLS = {
     "send_message": ["feishu_im_user_message"],
     "create_expense": ["feishu_bitable_app_table_record", "feishu_drive_file"],
     "submit_approval": ["feishu_bitable_app_table_record"],
+    "ocr_image": ["feishu_drive_file"],
     "create_document": ["feishu_create_doc"],
     "update_document": ["feishu_fetch_doc", "feishu_update_doc"],
     "write_wiki": ["feishu_search_doc_wiki", "feishu_update_doc"],
@@ -963,7 +1029,9 @@ def extract_fields(scenario_id, text):
     elif scenario_id == "crm_followup":
         m = re.search(r"\bfor\s+([A-Za-z0-9._-][A-Za-z0-9._ -]{1,60})", text, re.I)
         q = re.search(r"['\"]([^'\"]{2,80})['\"]", text)
-        fields["customer_key"] = (m.group(1).strip() if m else (q.group(1).strip() if q else ""))
+        customer_key = (m.group(1).strip() if m else (q.group(1).strip() if q else ""))
+        customer_key = re.split(r"\s+(?:and|with|about|regarding)\b|[,.]", customer_key, maxsplit=1)[0].strip()
+        fields["customer_key"] = customer_key
         fields["followup_message"] = text.strip() if re.search(r"follow.?up|send|message|notify", text, re.I) else ""
         if not fields["customer_key"]:
             missing.append("customer_key")
@@ -976,15 +1044,26 @@ def extract_fields(scenario_id, text):
     elif scenario_id == "expense_approval":
         amount = re.search(r"\b(\d[\d,]*(?:\.\d+)?)\b", text)
         date = re.search(r"\b(20\d{2}-\d{2}-\d{2})\b", text)
-        purpose = re.search(r"\bfor\s+(.+)$", text, re.I)
+        purpose = re.search(r"\bfor\s+\d[\d,]*(?:\.\d+)?\s+on\s+20\d{2}-\d{2}-\d{2}\s+for\s+(.+)$", text, re.I)
+        if not purpose:
+            purpose = re.search(r"\bfor\s+(.+)$", text, re.I)
         fields["amount"] = amount.group(1) if amount else ""
         fields["expense_date"] = date.group(1) if date else ""
         fields["purpose"] = purpose.group(1).strip() if purpose else ""
         fields["expense_type"] = "expense" if re.search(r"expense|receipt|travel|meal|taxi", text, re.I) else ""
+        receipt = re.search(r"(file_[A-Za-z0-9_-]+|boxcn[A-Za-z0-9_-]+|drive:[A-Za-z0-9_-]+)", text)
+        fields["receipt_file_token"] = receipt.group(1) if receipt else ""
+        if fields["purpose"]:
+            fields["purpose"] = re.sub(r"\b(file_[A-Za-z0-9_-]+|boxcn[A-Za-z0-9_-]+|drive:[A-Za-z0-9_-]+)\b", "", fields["purpose"]).strip()
+            fields["purpose"] = re.sub(r"\breceipt\b", "", fields["purpose"], flags=re.I).strip()
+            fields["purpose"] = re.sub(r"\s{2,}", " ", fields["purpose"]).strip(" ,.-")
         for key in ("amount", "expense_type", "expense_date", "purpose"):
             if not fields.get(key):
                 missing.append(key)
                 blocked.append(key)
+        if not fields["receipt_file_token"]:
+            missing.append("receipt_file_token")
+            partial.append("receipt_file_token")
         if blocked:
             ask_user = "Please provide amount, expense type, date, and business purpose before approval."
     elif scenario_id == "document_update":
@@ -1005,7 +1084,86 @@ scenario_id = detect_scenario(task_types)
 fields, missing_fields, blocked_fields, partial_fields, ask_user_prompt = extract_fields(scenario_id, message)
 
 for task_type in task_types:
-    if task_type == "create_document":
+    if task_type == "create_crm_record":
+        results.append({
+            "task_type": task_type,
+            "mode": "run",
+            "dispatch": "openclaw",
+            "message": (
+                "Using the official openclaw-lark plugin, create or upsert the CRM/Base record "
+                f"for customer or lead '{fields.get('customer_key', '')}'. "
+                f"Use this queue request as the operator brief: {message}. "
+                "If multiple candidate records exist, update the best match and report the chosen record identifier. "
+                "Return the created or updated record token or identifier plus a one-line summary of what changed."
+            ),
+            "note": "Created or updated the CRM record via OpenClaw",
+            "tool_hints": TASK_OPENCLAW_TOOLS.get(task_type, []),
+            "session_id": f"larc-step-{queue.get('queue_id', '')}-create-crm-record"
+        })
+    elif task_type == "update_base_record":
+        results.append({
+            "task_type": task_type,
+            "mode": "run",
+            "dispatch": "openclaw",
+            "message": (
+                "Using the official openclaw-lark plugin, update the target Base or CRM record "
+                f"for customer or lead '{fields.get('customer_key', '')}'. "
+                f"Apply the outcome described in this queue request: {message}. "
+                "If the target record is ambiguous, stop and report the ambiguity instead of changing multiple rows. "
+                "Return the updated record token or identifier and summarize the changed fields."
+            ),
+            "note": "Updated the Base/CRM record via OpenClaw",
+            "tool_hints": TASK_OPENCLAW_TOOLS.get(task_type, []),
+            "session_id": f"larc-step-{queue.get('queue_id', '')}-update-base-record"
+        })
+    elif task_type == "create_expense":
+        results.append({
+            "task_type": task_type,
+            "mode": "run",
+            "dispatch": "openclaw",
+            "message": (
+                "Using the official openclaw-lark plugin, prepare the expense record and payload "
+                f"for amount '{fields.get('amount', '')}', expense type '{fields.get('expense_type', '')}', "
+                f"date '{fields.get('expense_date', '')}', and purpose '{fields.get('purpose', '')}'. "
+                f"Use receipt token '{fields.get('receipt_file_token', '')}' if present. "
+                "Create or update the draft expense artifact only. Do not submit a financial approval on your own. "
+                "Return the created record token or identifier and summarize the normalized fields."
+            ),
+            "note": "Prepared the expense payload via OpenClaw",
+            "tool_hints": TASK_OPENCLAW_TOOLS.get(task_type, []),
+            "session_id": f"larc-step-{queue.get('queue_id', '')}-create-expense"
+        })
+    elif task_type == "submit_approval":
+        results.append({
+            "task_type": task_type,
+            "mode": "run",
+            "dispatch": "openclaw",
+            "message": (
+                "Using the official openclaw-lark plugin, assemble the approval-ready summary "
+                f"for expense amount '{fields.get('amount', '')}', date '{fields.get('expense_date', '')}', "
+                f"type '{fields.get('expense_type', '')}', and purpose '{fields.get('purpose', '')}'. "
+                "Return the minimum approval metadata, attachment references, and a one-line operator checklist "
+                "needed before running `larc approve create`. Do not submit the approval yourself."
+            ),
+            "note": "Prepared the approval handoff payload via OpenClaw",
+            "tool_hints": TASK_OPENCLAW_TOOLS.get(task_type, []),
+            "session_id": f"larc-step-{queue.get('queue_id', '')}-submit-approval"
+        })
+    elif task_type == "ocr_image":
+        results.append({
+            "task_type": task_type,
+            "mode": "skip" if scenario_id == "expense_approval" and not fields.get("receipt_file_token") else "run",
+            "dispatch": "openclaw",
+            "message": (
+                "Using the official openclaw-lark plugin, OCR the receipt or image attachment "
+                f"'{fields.get('receipt_file_token', '')}' and extract the key structured facts. "
+                "Return the raw extracted text plus normalized fields such as merchant, total amount, date, currency, and tax if present."
+            ),
+            "note": "Receipt attachment still requires manual follow-up" if scenario_id == "expense_approval" and not fields.get("receipt_file_token") else "Extracted receipt OCR summary via OpenClaw",
+            "tool_hints": TASK_OPENCLAW_TOOLS.get(task_type, []),
+            "session_id": f"larc-step-{queue.get('queue_id', '')}-ocr-image"
+        })
+    elif task_type == "create_document":
         results.append({
             "task_type": task_type,
             "mode": "run",
@@ -1029,12 +1187,21 @@ for task_type in task_types:
             "mode": "run",
             "dispatch": "openclaw",
             "message": (
-                "Using the official openclaw-lark plugin, read the PPAL Base context "
-                f"from app {fields.get('base_token', '')}, prioritizing view {fields.get('default_view_id', '')}, "
-                f"user table {fields.get('user_table_id', '')}, cv table {fields.get('cv_table_id', '')}, "
-                f"metrics table {fields.get('metrics_table_id', '')}, and source table {fields.get('source_table_id', '')}. "
-                f"Focus on the campaign goal '{fields.get('campaign_goal', '')}' and segment '{fields.get('segment_hint', '')}'. "
-                "Return only the key lead/funnel facts needed for the next document and message step."
+                (
+                    "Using the official openclaw-lark plugin, read the CRM/Base context "
+                    f"for customer or lead '{fields.get('customer_key', '')}'. "
+                    "Return only the key record facts needed for the follow-up message and identify the best matching row."
+                )
+                if scenario_id == "crm_followup"
+                else
+                (
+                    "Using the official openclaw-lark plugin, read the PPAL Base context "
+                    f"from app {fields.get('base_token', '')}, prioritizing view {fields.get('default_view_id', '')}, "
+                    f"user table {fields.get('user_table_id', '')}, cv table {fields.get('cv_table_id', '')}, "
+                    f"metrics table {fields.get('metrics_table_id', '')}, and source table {fields.get('source_table_id', '')}. "
+                    f"Focus on the campaign goal '{fields.get('campaign_goal', '')}' and segment '{fields.get('segment_hint', '')}'. "
+                    "Return only the key lead/funnel facts needed for the next document and message step."
+                )
             ),
             "note": "Requested PPAL Base context retrieval via OpenClaw",
             "tool_hints": TASK_OPENCLAW_TOOLS.get(task_type, []),
@@ -1046,31 +1213,78 @@ for task_type in task_types:
             "mode": "run",
             "dispatch": "openclaw",
             "message": (
-                "Using the official openclaw-lark plugin, read the current SSOT document "
-                f"{fields.get('ssot_doc_url', '')} for PPAL marketing operations. "
-                f"Use it to support the campaign goal '{fields.get('campaign_goal', '')}'. "
-                "Return only the sections that matter for the next campaign brief."
+                (
+                    "Using the official openclaw-lark plugin, read the target document "
+                    f"'{fields.get('document_ref', '')}' before applying any edits. "
+                    "Return only the sections that matter for the requested update and preserve unrelated content."
+                )
+                if scenario_id == "document_update"
+                else
+                (
+                    "Using the official openclaw-lark plugin, read the current SSOT document "
+                    f"{fields.get('ssot_doc_url', '')} for PPAL marketing operations. "
+                    f"Use it to support the campaign goal '{fields.get('campaign_goal', '')}'. "
+                    "Return only the sections that matter for the next campaign brief."
+                )
             ),
-            "note": "Requested SSOT document retrieval via OpenClaw",
+            "note": "Requested target document retrieval via OpenClaw" if scenario_id == "document_update" else "Requested SSOT document retrieval via OpenClaw",
             "tool_hints": TASK_OPENCLAW_TOOLS.get(task_type, []),
             "session_id": f"larc-step-{queue.get('queue_id', '')}-read-document"
+        })
+    elif task_type == "update_document":
+        results.append({
+            "task_type": task_type,
+            "mode": "run",
+            "dispatch": "openclaw",
+            "message": (
+                "Using the official openclaw-lark plugin, update the target document "
+                f"'{fields.get('document_ref', '')}' according to this instruction: {fields.get('edit_instruction', message)}. "
+                "Apply only the requested edit, preserve unrelated content, and return the updated document URL or token "
+                "plus a short summary of what changed."
+            ),
+            "note": "Updated the target document via OpenClaw",
+            "tool_hints": TASK_OPENCLAW_TOOLS.get(task_type, []),
+            "session_id": f"larc-step-{queue.get('queue_id', '')}-update-document"
+        })
+    elif task_type == "write_wiki":
+        results.append({
+            "task_type": task_type,
+            "mode": "run",
+            "dispatch": "openclaw",
+            "message": (
+                "Using the official openclaw-lark plugin, update the target wiki node "
+                f"'{fields.get('document_ref', '')}' according to this instruction: {fields.get('edit_instruction', message)}. "
+                "Preserve unrelated sections, apply only the requested change, and return the updated wiki URL or token "
+                "plus a short summary of what changed."
+            ),
+            "note": "Updated the target wiki node via OpenClaw",
+            "tool_hints": TASK_OPENCLAW_TOOLS.get(task_type, []),
+            "session_id": f"larc-step-{queue.get('queue_id', '')}-write-wiki"
         })
     elif task_type == "send_crm_followup":
         results.append({
             "task_type": task_type,
-            "mode": "run",
+            "mode": "skip" if scenario_id == "crm_followup" and not fields.get("followup_message") else "run",
             "dispatch": "lark_send",
-            "message": f"Follow-up prepared from queue {queue.get('queue_id')}",
-            "note": "Sent CRM follow-up placeholder",
+            "message": fields.get("followup_message") or f"Follow-up prepared from queue {queue.get('queue_id')}",
+            "note": "Manual follow-up message still required" if scenario_id == "crm_followup" and not fields.get("followup_message") else "Sent CRM follow-up message",
             "tool_hints": TASK_OPENCLAW_TOOLS.get(task_type, [])
         })
     elif task_type == "send_message":
         results.append({
             "task_type": task_type,
-            "mode": "run",
+            "mode": (
+                "skip"
+                if scenario_id == "crm_followup"
+                else "run"
+            ),
             "dispatch": "lark_send",
-            "message": message,
-            "note": "Sent outbound message",
+            "message": fields.get("followup_message") or message,
+            "note": (
+                "CRM follow-up delivery is handled by send_crm_followup"
+                if scenario_id == "crm_followup"
+                else "Sent outbound message"
+            ),
             "tool_hints": TASK_OPENCLAW_TOOLS.get(task_type, [])
         })
     else:
@@ -1136,14 +1350,21 @@ plan = json.loads(sys.argv[1])
 print(",".join(plan.get("blocked_fields", [])))
 print(plan.get("ask_user_prompt", ""))
 print(sum(1 for s in plan["steps"] if s["mode"] == "skip"))
+print(plan.get("scenario_id", "generic"))
 print(plan["agent"])
+for step in plan["steps"]:
+    print("__STEP__" + json.dumps({
+        "task_type": step.get("task_type", ""),
+        "mode": step.get("mode", ""),
+        "note": step.get("note", ""),
+    }, ensure_ascii=False))
 for step in plan["steps"]:
     if step["mode"] == "run":
         print(json.dumps(step, ensure_ascii=False))
 PY
   )
 
-  local blocked_fields worker_agent skipped_count run_steps
+  local blocked_fields worker_agent skipped_count scenario_id plan_step_meta run_steps
   blocked_fields=$(sed -n '1p' <<< "$_plan_out")
   if [[ -n "$blocked_fields" ]]; then
     log_error "Queue item $queue_id is blocked by missing required fields: $blocked_fields"
@@ -1153,8 +1374,10 @@ PY
     return 1
   fi
   skipped_count=$(sed -n '3p' <<< "$_plan_out")
-  worker_agent=$(sed -n '4p' <<< "$_plan_out")
-  run_steps=$(sed -n '5,$p' <<< "$_plan_out")
+  scenario_id=$(sed -n '4p' <<< "$_plan_out")
+  worker_agent=$(sed -n '5p' <<< "$_plan_out")
+  plan_step_meta=$(printf '%s\n' "$_plan_out" | sed -n '6,$p' | grep '^__STEP__' | sed 's/^__STEP__//')
+  run_steps=$(printf '%s\n' "$_plan_out" | sed -n '6,$p' | grep -v '^__STEP__')
 
   if [[ -z "$run_steps" ]]; then
     log_warn "No safe adapters to execute for queue item $queue_id"
@@ -1193,6 +1416,15 @@ PY
   local finish_note
   finish_note=$(printf '%s; ' "${execution_notes[@]}")
   finish_note="${finish_note%; }"
+  local structured_step_summary=""
+  structured_step_summary=$(_ingress_summarize_structured_steps "$scenario_id" "$plan_step_meta")
+  if [[ -n "$structured_step_summary" ]]; then
+    if [[ -n "$finish_note" ]]; then
+      finish_note="${structured_step_summary}; ${finish_note}"
+    else
+      finish_note="$structured_step_summary"
+    fi
+  fi
   local final_status="done"
   if [[ "$skipped_count" != "0" ]]; then
     final_status="partial"
@@ -1677,28 +1909,7 @@ _ingress_write_audit_log() {
   export _LARC_AUDIT_TABLE_ID="$table_id"
 
   local audit_record
-  audit_record=$(python3 - "$completed_json" "$final_status" <<'PY'
-import json, sys
-from datetime import datetime, timezone
-d = json.loads(sys.argv[1])
-status = sys.argv[2]
-row = {
-    "log_at":        datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
-    "agent_id":      d.get("worker_agent_id") or d.get("agent_id", ""),
-    "queue_id":      d.get("queue_id", ""),
-    "source":        d.get("source", ""),
-    "sender":        d.get("sender", ""),
-    "task_types":    ", ".join(d.get("task_types", [])),
-    "gate":          d.get("gate", ""),
-    "status":        status,
-    "execution_note": d.get("execution_note", ""),
-    "started_at":    d.get("started_at", ""),
-    "completed_at":  d.get("completed_at", ""),
-    "message_text":  (d.get("message_text") or "")[:200],
-}
-print(json.dumps(row, ensure_ascii=False))
-PY
-)
+  audit_record=$(_ingress_build_audit_record "$completed_json" "$final_status")
 
   local audit_out audit_rc
   audit_out=$(lark-cli base +record-upsert \
@@ -1710,6 +1921,103 @@ PY
   else
     log_warn "Audit log write failed: $audit_out"
   fi
+}
+
+_ingress_build_audit_record() {
+  local completed_json="$1"
+  local final_status="$2"
+  python3 - "$completed_json" "$final_status" <<'PY'
+import json, sys
+from datetime import datetime, timezone
+d = json.loads(sys.argv[1])
+status = sys.argv[2]
+note = d.get("execution_note", "") or ""
+message_text = (d.get("message_text") or "")[:200]
+raw_source = d.get("source", "") or ""
+sender = d.get("sender", "") or ""
+task_types = d.get("task_types", []) or []
+
+result_class = "operational"
+noise_reason = ""
+next_human_action = ""
+note_lc = note.lower()
+message_lc = message_text.lower()
+sender_lc = sender.lower()
+if status == "failed":
+    if "bot echo" in note_lc and "purged" in note_lc:
+        result_class = "noise"
+        noise_reason = "bot_echo_purged"
+    elif message_lc.startswith("[larc →") and "bot echo" in note_lc:
+        result_class = "noise"
+        noise_reason = "bot_echo_reflection"
+
+source = raw_source
+task_type_set = set(task_types)
+if raw_source == "im":
+    if noise_reason.startswith("bot_echo") or "bot echo" in note_lc or message_lc.startswith("[larc →") or sender_lc in {"bot", "app", "assistant", "larc"}:
+        source = "im_system_echo"
+    elif "delivery failed" in note_lc or ("delivery" in note_lc and ("sent" in note_lc or "failed" in note_lc)):
+        source = "im_delivery"
+    elif task_type_set & {"send_message", "send_crm_followup"} and status in {"in_progress", "done", "failed", "partial"}:
+        source = "im_delivery"
+    else:
+        source = "im_user_request"
+
+queue_id = d.get("queue_id", "")
+if status == "pending_preview":
+    next_human_action = f"Review the preview bundle for {queue_id} and confirm whether execution should proceed."
+elif status == "blocked_approval":
+    next_human_action = f"Approve or reject this item in Lark Approval. After approval, run: larc ingress approve --queue-id {queue_id}"
+elif status == "approved":
+    next_human_action = f"Approval is complete. Resume the workflow with: larc ingress resume --queue-id {queue_id}"
+elif status == "partial":
+    next_human_action = f"Inspect execution_note, complete the missing follow-up, then rerun or close queue item {queue_id}."
+
+row = {
+    "log_at":        datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+    "agent_id":      d.get("worker_agent_id") or d.get("agent_id", ""),
+    "queue_id":      queue_id,
+    "source":        source,
+    "raw_source":    raw_source,
+    "sender":        sender,
+    "task_types":    ", ".join(task_types),
+    "gate":          d.get("gate", ""),
+    "status":        status,
+    "execution_note": note,
+    "started_at":    d.get("started_at", ""),
+    "completed_at":  d.get("completed_at", ""),
+    "message_text":  message_text,
+    "result_class":  result_class,
+    "noise_reason":  noise_reason,
+    "next_human_action": next_human_action,
+}
+print(json.dumps(row, ensure_ascii=False))
+PY
+}
+
+_ingress_summarize_structured_steps() {
+  local scenario_id="$1"
+  local plan_step_meta="${2:-}"
+  PLAN_STEP_META="$plan_step_meta" python3 - "$scenario_id" <<'PY'
+import json, sys
+scenario_id = sys.argv[1]
+raw = (__import__("os").environ.get("PLAN_STEP_META", "")).strip().splitlines()
+items = []
+for line in raw:
+    if not line.strip():
+        continue
+    d = json.loads(line)
+    task = d.get("task_type", "")
+    mode = d.get("mode", "")
+    if scenario_id == "crm_followup" and task in {"create_crm_record", "read_base", "send_crm_followup", "send_message"}:
+        label = mode
+        note = (d.get("note", "") or "").strip()
+        if mode == "skip" and note:
+            label = f"skip[{note}]"
+        items.append(f"{task}={label}")
+if items:
+    print("CRM step summary: " + ", ".join(items))
+PY
 }
 
 _ingress_notify_completion() {
@@ -2113,7 +2421,26 @@ PY
 _ingress_prepare_claimed_queue_item() {
   local queue_json="$1"
   local worker_agent_id="$2"
-  local claimed_json queue_id existing_local raw_agent_id
+  local claimed_json queue_id existing_local raw_agent_id existing_status existing_worker
+  queue_id=$(python3 - "$queue_json" <<'PY'
+import json, sys
+d = json.loads(sys.argv[1])
+print(d.get("queue_id", ""))
+PY
+)
+  existing_local=$(_ingress_get_local_queue_item "$queue_id")
+  if [[ -n "$existing_local" ]]; then
+    read -r existing_status existing_worker < <(python3 - "$existing_local" <<'PY'
+import json, sys
+d = json.loads(sys.argv[1])
+print(d.get("status", ""), d.get("worker_agent_id") or d.get("assigned_agent_id") or d.get("agent_id") or "")
+PY
+)
+    if [[ "$existing_status" == "in_progress" && "$existing_worker" == "$worker_agent_id" ]]; then
+      printf '%s\n' "$existing_local"
+      return 0
+    fi
+  fi
 
   claimed_json=$(_ingress_claim_queue_item "$queue_json" "$worker_agent_id")
   queue_id=$(python3 - "$claimed_json" <<'PY'
@@ -2122,8 +2449,6 @@ d = json.loads(sys.argv[1])
 print(d.get("queue_id", ""))
 PY
 )
-
-  existing_local=$(_ingress_get_local_queue_item "$queue_id")
   if [[ -z "$existing_local" ]]; then
     raw_agent_id=$(python3 - "$claimed_json" <<'PY'
 import json, sys
@@ -2258,6 +2583,7 @@ TASK_OPENCLAW_TOOLS = {
     "send_message": ["feishu_im_user_message"],
     "create_expense": ["feishu_bitable_app_table_record", "feishu_drive_file"],
     "submit_approval": ["feishu_bitable_app_table_record"],
+    "ocr_image": ["feishu_drive_file"],
     "create_document": ["feishu_create_doc"],
     "update_document": ["feishu_fetch_doc", "feishu_update_doc"],
     "write_wiki": ["feishu_search_doc_wiki", "feishu_update_doc"],
@@ -2306,7 +2632,7 @@ elif status == "pending_preview":
 operator_steps = [
     f"1. Read queue item {queue_id}.",
     "2. Use the official openclaw-lark plugin for atomic Feishu operations.",
-    "3. Use LARC commands for governed workflow actions such as context, handoff, approve/resume, and done/fail.",
+    "3. Use LarkHarness commands for governed workflow actions such as context, handoff, approve/resume, and done/fail.",
 ]
 if status in {"pending", "pending_preview"}:
     operator_steps.append(f"4. Start with: larc ingress context --queue-id {queue_id} --days {days}")
@@ -2324,7 +2650,7 @@ elif status == "blocked_approval":
 tool_lines = [f"- {tool}" for tool in tool_hints] if tool_hints else ["- No explicit tool hint yet; inspect the task manually."]
 
 prompt_lines = [
-    "You are the OpenClaw agent responsible for the next governed action in LARC.",
+    "You are the OpenClaw agent responsible for the next governed action in LarkHarness.",
     "",
     "Queue item:",
     f"- queue_id: {queue_id}",
@@ -2357,7 +2683,7 @@ prompt_lines.extend([
     "",
     "Execution rules:",
     "- Prefer the official openclaw-lark plugin for atomic Lark/Feishu operations.",
-    "- Use LARC commands for permission, gate, queue, lifecycle updates, and governed write-back steps.",
+    "- Use LarkHarness commands for permission, gate, queue, lifecycle updates, and governed write-back steps.",
     "- Do not bypass approval requirements.",
     "",
     "Mandatory reply step (always run after completing the task):",
@@ -2634,7 +2960,7 @@ PY
 }
 
 _ingress_verify() {
-  log_head "LARC Ingress Pipeline Verification"
+  log_head "LarkHarness Ingress Pipeline Verification"
 
   local ok=0
   local fail=0
@@ -2702,16 +3028,16 @@ _ingress_verify() {
     echo "$dry_output"
   fi
 
-  # --- 5. Live enqueue + Base write check ---
+  # --- 5. Live enqueue + queue persistence check ---
   echo ""
-  log_info "[5/5] Live enqueue → Base write"
+  log_info "[5/5] Live enqueue → Base-first queue persistence"
   if [[ -n "${LARC_BASE_APP_TOKEN:-}" ]]; then
     local live_output
     live_output=$(larc ingress enqueue --text "verify: pipeline check $(date +%s)" --source verify 2>&1)
     if echo "$live_output" | grep -q "Queue item recorded\|Queued"; then
-      log_ok "Live enqueue → Base write succeeded"; ((ok++)) || true
+      log_ok "Live enqueue persisted to the Base-backed queue path"; ((ok++)) || true
     else
-      log_error "Live enqueue → Base write may have failed"; ((fail++)) || true
+      log_error "Live enqueue → Base-backed queue persistence may have failed"; ((fail++)) || true
       echo "$live_output"
     fi
   else
@@ -2728,7 +3054,7 @@ _ingress_verify() {
 
   # --- Pin recommendations ---
   echo ""
-  log_info "To pin table IDs and prevent wrong-Base selection, add to ~/.larc/config.env:"
+  log_info "To keep Base-first queue and audit resolution stable, pin these IDs in ~/.larc/config.env:"
   if [[ -n "${queue_table_id:-}" ]]; then
     echo "  LARC_QUEUE_TABLE_ID=\"$queue_table_id\""
   fi
@@ -2838,8 +3164,8 @@ _get_or_create_logs_table() {
 
   # Always ensure fields exist — even when table ID was pinned in config.env
   _ensure_table_fields "$LARC_BASE_APP_TOKEN" "$table_id" \
-    log_at agent_id queue_id source sender task_types gate status \
-    execution_note started_at completed_at message_text
+    log_at agent_id queue_id source raw_source sender task_types gate status \
+    execution_note started_at completed_at message_text result_class noise_reason next_human_action
 
   echo "$table_id"
 }
