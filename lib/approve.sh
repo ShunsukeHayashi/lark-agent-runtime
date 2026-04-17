@@ -28,10 +28,10 @@ cmd_approve() {
 _approve_help() {
   cat <<EOF
 
-${BOLD}larc approve${RESET} — Approval flow and execution gate control
+${BOLD}larc approve${RESET} — Approval flow helpers and execution-gate guidance
 
 ${BOLD}Commands:${RESET}
-  ${CYAN}gate${RESET} [task_type]            Check execution gate for a task type (lists all if omitted)
+  ${CYAN}gate${RESET} [task_type]            Check the execution gate for a task type (lists all if omitted)
   ${CYAN}gate${RESET} <task_type> --quiet    Machine-readable: prints gate name only (none|preview|approval)
   ${CYAN}list${RESET} / ${CYAN}inbox${RESET}               List current pending approval tasks
   ${CYAN}definition${RESET} <approval_code>  Fetch approval definition with form / node_list
@@ -55,8 +55,8 @@ ${BOLD}Examples:${RESET}
 
 ${BOLD}Gate policy:${RESET} config/gate-policy.json
   none     — proceed immediately
-  preview  — show what will happen, require explicit confirmation
-  approval — submit Lark Approval instance; wait for approver action
+  preview  — preview the governed write path first, then require explicit confirmation
+  approval — submit a Lark Approval instance or equivalent human approval step before execution
 
 EOF
 }
@@ -135,10 +135,11 @@ if note:
     print(f"  {BOLD}Note:{RESET}   {note}")
 
 if gate == "preview":
-    print(f"\n  {BOLD}Next:{RESET} Add --dry-run to preview, then rerun with --confirm to execute.")
+    print(f"\n  {BOLD}Next:{RESET} Preview the governed write path first, then rerun the actual command with explicit confirmation.")
 elif gate == "approval":
-    print(f"\n  {BOLD}Next:{RESET} larc approve create --approval-code $LARC_APPROVAL_CODE --user-id $USER_ID ...")
-    print(f"         Wait for approver action before executing the task.")
+    print(f"\n  {BOLD}Next:{RESET} Create or route the approval artifact first, for example:")
+    print(f"         larc approve create --approval-code $LARC_APPROVAL_CODE --user-id $USER_ID ...")
+    print(f"         Wait for approver action before executing the governed task.")
 PY
 
   local exit_code=$?
@@ -595,6 +596,10 @@ _approve_instances_api() {
   }
   [[ -n "$form_file" && -n "$form_json" ]] && {
     log_error "Use only one of --form-file or --form-json"
+    return 1
+  }
+  [[ -n "$form_file" && ! -f "$form_file" ]] && {
+    log_error "Form file not found: $form_file"
     return 1
   }
   [[ -n "$payload_file" && ! -f "$payload_file" ]] && {

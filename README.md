@@ -37,7 +37,7 @@ AI agents are strong in coding workflows but still weak in ordinary white-collar
 - unclear execution authority  
 - an over-reliance on local filesystems instead of enterprise-native surfaces
 
-LARC takes a `permission-first` approach — explain required scopes before touching anything, route through Lark-native surfaces, record every action back into Base.
+LARC takes a `permission-first` approach — explain the required minimum scopes before touching anything, route through Lark-native surfaces, record every action back into Base.
 
 ---
 
@@ -46,7 +46,7 @@ LARC takes a `permission-first` approach — explain required scopes before touc
 | Capability | What it does |
 |---|---|
 | `larc bootstrap` | Loads `SOUL → USER → MEMORY → HEARTBEAT` from Lark Drive into the agent context |
-| `larc auth suggest` | Infers minimum scopes and authority type from a natural-language task description |
+| `larc auth suggest` | Infers required minimum scopes and authority type from a natural-language task description |
 | `larc approve gate` | Checks execution gate policy (none / preview / approval) before running a task |
 | `larc ingress openclaw` | Builds and dispatches the next governed action bundle to OpenClaw |
 | `larc ingress recover` | Resets stale in-progress queue items after a worker crash |
@@ -100,7 +100,7 @@ larc status
 | Mode | What runs | Status |
 |---|---|---|
 | **Supervised** | OpenClaw + Claude Code manually calls `larc ingress run-once` | ✅ Stable |
-| **OpenClaw-assisted autonomous** | OpenClaw Feishu/Lark channel handles bot/chat ingress, official `openclaw-lark` handles atomic Lark actions, and LARC handles gate/queue/audit | ✅ Stable |
+| **OpenClaw-assisted autonomous** | OpenClaw Feishu/Lark channel handles bot/chat ingress, official `openclaw-lark` handles atomic Lark actions, and LARC handles gate/queue/audit | ⚠️ Partially verified |
 | **Experimental IM loop** | `larc daemon start` — IM poller enqueues messages, worker dispatches to OpenClaw automatically | 🧪 Experimental |
 
 > **The IM daemon loop is experimental.** Use supervised or OpenClaw-assisted mode for production workflows. The daemon is useful for testing and low-stakes automation, not as the primary onboarding path.
@@ -115,7 +115,7 @@ larc status
 
 | Area | What is verified |
 |---|---|
-| Permission intelligence | `auth suggest` infers minimum scopes for 32 task types; authority model documented |
+| Permission intelligence | `auth suggest` infers required minimum scopes for 32 task types; authority model documented and regression-checked |
 | Approval gate | `approve gate` enforces none/preview/approval policy before execution |
 | Queue lifecycle | `enqueue → openclaw → done/fail/partial/followup` full cycle verified |
 | Agent registry | YAML batch registration; scopes stored per agent in Lark Base |
@@ -123,8 +123,9 @@ larc status
 | Knowledge graph | Wiki BFS traversal; keyword query with neighbor context |
 | Status dashboard | `larc status` shows Base, OpenClaw, daemon, and queue state in one view |
 
-### Experimental
+### Partially verified / experimental
 
+- OpenClaw-assisted autonomous mode — plugin/channel and queue handoff are working, but environment-specific runtime combinations still need broader verification
 - IM daemon loop (`larc daemon start`) — echo loop and restart reliability still being hardened
 - `larc send` notifications via bot token — just fixed (2026-04-15)
 - OpenClaw plugin/runtime combinations may still need setup verification per environment; the recommended path remains `OpenClaw Feishu/Lark channel + official openclaw-lark plugin + LARC`

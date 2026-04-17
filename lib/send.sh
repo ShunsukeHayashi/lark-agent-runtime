@@ -27,6 +27,23 @@ cmd_send() {
     return 1
   }
 
+  # ── Guard: file path passed as message (same class of bug as --markdown /path) ──
+  # larc send "/tmp/msg.txt" would send the path string literally, not the file contents.
+  if [[ "$message" == /* || ( "$message" == *"/"* && "$message" != *$'\n'* && ${#message} -lt 300 && -f "$message" ) ]]; then
+    echo "" >&2
+    echo "╔══════════════════════════════════════════════════════════════╗" >&2
+    echo "║  ERROR: メッセージにファイルパスを直接渡すことは禁止です        ║" >&2
+    echo "╚══════════════════════════════════════════════════════════════╝" >&2
+    echo "" >&2
+    echo "  渡された値: $message" >&2
+    echo "" >&2
+    echo "  ファイルの内容を送信するには stdin を使ってください:" >&2
+    echo "     cat $message | larc send" >&2
+    echo "     larc send \"\$(cat $message)\"" >&2
+    echo "" >&2
+    exit 1
+  fi
+
   log_head "send → agent '$agent_id'"
 
   # Resolve chat_id (fetch agent config from Base)

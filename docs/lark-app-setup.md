@@ -1,5 +1,7 @@
 # Lark アプリ設定ガイド — テスト担当者向け
 
+> 実行計画は [docs/lark-dev-app-create-plan.md](./lark-dev-app-create-plan.md)、手順をそのまま回す playbook は [playbook/lark-dev-app-create.yaml](../playbook/lark-dev-app-create.yaml) を参照してください。
+
 > **対象**: LARC をテストユーザーに配布する担当者  
 > **目的**: lark-cli が使用する Lark アプリを作成し、テストユーザーが `lark-cli config init` できる状態にする
 
@@ -9,14 +11,23 @@
 
 LARC は `lark-cli` 経由で Lark API を呼び出します。`lark-cli` には **OAuth クライアント**（App ID + App Secret）が必要です。
 
-テスト配布の流れ：
+ただし、**テストユーザー全員に App Secret を配る運用は推奨しません。**
+
+推奨順:
+
+1. 各開発者が自分の dev app を作る
+2. 管理者が対象端末へ直接 `lark-cli config init` する
+3. どうしても必要な短期テストだけ Secret 共有を使う
+
+推奨フロー：
 
 ```
-担当者が Lark アプリを 1 つ作成
-  → App ID と App Secret をテストユーザーに共有
-  → 各ユーザーが lark-cli config init + lark-cli auth login
+各開発者が自分の Lark アプリを作成
+  → 各ユーザーが自分の端末で lark-cli config init + lark-cli auth login
   → larc quickstart で環境構築完了
 ```
+
+管理端末でまとめてセットアップする場合は、担当者が対象端末へ直接 `lark-cli config init` を実行し、その後ユーザーに `lark-cli auth login` と `larc quickstart` を案内してください。
 
 ---
 
@@ -103,7 +114,8 @@ LARC は `lark-cli` 経由で Lark API を呼び出します。`lark-cli` には
 | **App ID** | `app_id` フィールド |
 | **App Secret** | 「View」ボタンをクリックして表示 |
 
-この 2 つをテストユーザーに安全な方法（Lark IM の秘密メッセージ等）で共有してください。
+この 2 つは、原則として **アプリ所有者または端末を直接設定する担当者のみ** が扱ってください。
+通常のテスター配布では、Secret の横展開を避けてください。
 
 ---
 
@@ -116,10 +128,10 @@ LARC は `lark-cli` 経由で Lark API を呼び出します。`lark-cli` には
 ```
 【LARC テスト参加者向け設定情報】
 
-LARC の利用に必要な Lark アプリの認証情報です。
+LARC の利用に必要な Lark アプリ設定手順です。
 
 App ID:     cli_XXXXXXXXXXXXXXXX
-App Secret: (別途お伝えします)
+App Secret: ご自身の dev app を作成した場合のみ、手元で入力してください
 
 ── 設定手順 ──────────────────────────
 1. lark-cli をインストール（未インストールの場合）
@@ -148,11 +160,18 @@ App Secret: (別途お伝えします)
 
 ### Q: テストユーザーごとに別アプリが必要？
 
-**不要です。** 1 つのアプリを複数ユーザーで共有できます。各ユーザーは自分の Lark アカウントで `lark-cli auth login` してください。LARC が Lark Drive に作成するフォルダ（`larc-workspace/`, `larc-workdir/`）は各ユーザーの Drive に作成されます。
+**推奨は「必要」です。** 少なくとも開発者・長期テスターについては、各自が自分の dev app を持つ方が自然です。
+
+1つのアプリを複数ユーザーで共有すること自体は可能ですが、Secret 配布・ローテーション・責任分界が悪化するため、短期の例外運用に留めてください。
 
 ### Q: App Secret を安全に渡す方法は？
 
-Lark IM の 1:1 メッセージ（暗号化済み）、または Signal など安全なチャネルを使用してください。メール・Slack パブリックチャンネルへの掲載は避けてください。
+最善策は **渡さないこと** です。
+
+- 各自が自分の dev app を作る
+- または管理者が端末へ直接 `lark-cli config init` を行う
+
+それでも共有が必要な場合のみ、Lark IM の 1:1 メッセージ（暗号化済み）や Signal など安全なチャネルを使用してください。メール・Slack パブリックチャンネルへの掲載は避けてください。
 
 ### Q: テスト終了後にアプリを削除すると？
 

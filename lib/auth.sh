@@ -149,13 +149,13 @@ EXTERNAL_TENANT_PATTERNS = [
 BOT_SCOPE_PATTERNS = {
     r"send\s+\w*\s*(?:message|notification|alert|chat)|notify": ["im:message:send_as_bot"],
     r"read\s+\w*\s*message|message\s+history|chat\s+history": ["im:message:readonly"],
-    r"read\s+\w*\s*(?:doc|document)|view\s+\w*\s*doc": ["docs:doc:readonly"],
-    r"wiki|knowledge\s*base": ["wiki:wiki:readonly"],
+    r"read\s+\w*\s*(?:doc|document)|view\s+\w*\s*doc": ["docs:document:readonly"],
+    r"wiki|knowledge\s*base": ["wiki:space:read"],
     r"(?:create|update|write)\s+\w*\s*wiki": ["wiki:node:create"],
-    r"base|bitable|crm|record": ["base:record:readonly"],
-    r"(?:create|add|insert)\s+\w*\s*record": ["bitable:app", "base:record:created"],
+    r"base|bitable|crm|record": ["bitable:app:readonly"],
+    r"(?:create|add|insert)\s+\w*\s*record": ["bitable:app"],
     r"drive|upload\s+\w*\s*file": ["drive:file:create"],
-    r"read\s+\w*\s*drive|list\s+file": ["drive:drive:readonly"],
+    r"read\s+\w*\s*drive|list\s+file": ["drive:drive.metadata:readonly"],
 }
 
 decision = None
@@ -395,7 +395,7 @@ for tk in sorted(matched_tasks):
     t = tasks[tk]
     print(f"    - {tk}: {t.get('description','')}")
 
-print(f"\n  Required scopes ({len(all_scopes)}):")
+print(f"\n  Required minimum scopes ({len(all_scopes)}):")
 for scope, from_task in sorted(all_scopes.items()):
     print(f"    {scope}  (← {from_task})")
 
@@ -407,6 +407,8 @@ if note.get("when"):
     print(f"    Why: {note['when']}")
 if note.get("provision"):
     print(f"    How to provision: {note['provision']}")
+if effective_identity == "either":
+    print("    Execution hint: Split the workflow by authority boundary whenever possible.")
 
 scope_str = " ".join(sorted(all_scopes.keys()))
 print(f"\n  To issue auth URL:")
@@ -552,12 +554,12 @@ _auth_check_basic() {
   local all_ok=true
 
   # Drive read test
-  echo -e "  ${BOLD}Drive read (drive:drive:readonly):${RESET}"
+  echo -e "  ${BOLD}Drive read (drive:drive.metadata:readonly):${RESET}"
   if [[ -n "$LARC_DRIVE_FOLDER_TOKEN" ]]; then
     if lark-cli drive files list --params "{\"folder_token\":\"${LARC_DRIVE_FOLDER_TOKEN}\"}" &>/dev/null; then
       echo -e "    ${GREEN}✓ OK${RESET}"
     else
-      echo -e "    ${RED}✗ FAILED${RESET} — drive:drive:readonly may be missing"
+      echo -e "    ${RED}✗ FAILED${RESET} — drive:drive.metadata:readonly may be missing"
       all_ok=false
     fi
   else
@@ -565,12 +567,12 @@ _auth_check_basic() {
   fi
 
   # Base read test
-  echo -e "  ${BOLD}Base read (base:record:readonly):${RESET}"
+  echo -e "  ${BOLD}Base read (bitable:app:readonly):${RESET}"
   if [[ -n "$LARC_BASE_APP_TOKEN" ]]; then
     if lark-cli base +table-list --base-token "$LARC_BASE_APP_TOKEN" &>/dev/null; then
       echo -e "    ${GREEN}✓ OK${RESET}"
     else
-      echo -e "    ${RED}✗ FAILED${RESET} — base:record:readonly may be missing"
+      echo -e "    ${RED}✗ FAILED${RESET} — bitable:app:readonly may be missing"
       all_ok=false
     fi
   else

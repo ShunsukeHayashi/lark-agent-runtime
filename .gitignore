@@ -21,3 +21,17 @@ crm-assets/miyabi-*.md
 crm-assets/miyabi-*.ts
 crm-assets/legacy-backoffice-CLAUDE.md
 .mcp.json
+.gitnexus
+
+# Python cache
+scripts/__pycache__/
+__pycache__/
+
+# Business documents — personal invoices, proposals, agreements
+scripts/invoice_*.md
+scripts/*_proposal.md
+scripts/*_revenue_share.md
+scripts/lop_*.md
+scripts/crm_daily_ops.md
+scripts/crm_wiki_content.md
+scripts/larc_sfa_wiki.md

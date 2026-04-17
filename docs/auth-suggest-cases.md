@@ -31,7 +31,7 @@ Extra scopes are a warning (over-permission) but not a failure.
 **Expected scopes:**
 | Scope | Why |
 |---|---|
-| `base:record:created` | Expense record is stored in Lark Base |
+| `bitable:app` | Expense record is stored in Lark Base |
 | `approval:instance:write` | Submitting an approval instance requires write authority |
 
 **Authority path:** user — both actions are performed as the person filing the expense.
@@ -64,9 +64,8 @@ Extra scopes are a warning (over-permission) but not a failure.
 **Expected scopes:**
 | Scope | Why |
 |---|---|
-| `base:record:created` | CRM record written into Lark Base |
-| `base:record:readonly` | Reading existing records to avoid duplicates |
 | `bitable:app` | App-level access required to write into a Bitable app |
+| `bitable:app:readonly` | Reading existing records to avoid duplicates |
 | `contact:user.base:readonly` | Resolving the customer's user identity from directory |
 | `im:message:send_as_bot` | Sending the follow-up message as a bot |
 
@@ -76,7 +75,7 @@ appropriate identity.
 
 **Before fix:** 1 scope (`im:message:send_as_bot` only — Base scopes were missed)
 **Root cause:** keyword pattern `record.*create` missed natural English word order `create.*record`
-**Status:** ✅ passing (5 scopes)
+**Status:** ✅ passing (4 scopes)
 
 ---
 
@@ -87,7 +86,7 @@ appropriate identity.
 **Expected scopes:**
 | Scope | Why |
 |---|---|
-| `base:record:readonly` | Read before update to verify record exists |
+| `bitable:app:readonly` | Read before update to verify record exists |
 | `bitable:app` | App-level access is required to modify a Bitable app |
 | `bitable:record` | Record update permission is required for the write path |
 
@@ -108,7 +107,7 @@ Bitable write scopes in addition to the pre-read.
 **Expected scopes:**
 | Scope | Why |
 |---|---|
-| `base:record:created` | Expense record creation (implied by "expense") |
+| `bitable:app` | Expense record creation (implied by "expense") |
 | `approval:instance:write` | Routing to approval requires submitting an instance |
 | `im:message:send_as_bot` | "notify the manager" — IM notification as bot |
 
@@ -150,22 +149,21 @@ required "create expense" rather than bare "expense".
 **Expected scopes:**
 | Scope | Why |
 |---|---|
-| `base:record:created` | Lead record written into Lark Base |
-| `base:record:readonly` | Existence check before creation |
 | `bitable:app` | App-level access for the Bitable CRM app |
+| `bitable:app:readonly` | Existence check before creation |
 | `calendar:calendar` | Creating a calendar event for the follow-up |
 | `contact:user.base:readonly` | Looking up the lead's user identity |
 
 **Authority path:** user — this task describes record creation plus calendar scheduling,
 but does not explicitly request an IM send.
 
-**Note on scope count:** The minimum correct result is 5 scopes. If
+**Note on scope count:** The minimum correct result is 4 scopes. If
 `im:message:send_as_bot` appears here, that is an over-permission bug because the
 task mentions a follow-up meeting, not a follow-up message.
 
 **Before fix:** calendar scope missing because `schedule a follow-up meeting` uses
 a hyphen — `\w+` does not match `follow-up`. Fixed to `\S+`.
-**Status:** ✅ passing (5 scopes)
+**Status:** ✅ passing (4 scopes)
 
 ---
 
@@ -176,7 +174,7 @@ a hyphen — `\w+` does not match `follow-up`. Fixed to `\S+`.
 **Expected scopes:**
 | Scope | Why |
 |---|---|
-| `attendance:record:readonly` | Reading attendance check-in data |
+| `attendance:task:readonly` | Reading attendance check-in data |
 | `sheets:spreadsheet` | Generating the report into a spreadsheet |
 
 **Authority path:** user
@@ -189,7 +187,7 @@ a hyphen — `\w+` does not match `follow-up`. Fixed to `\S+`.
 
 | Gap | Impact | Priority |
 |---|---|---|
-| user / bot / tenant authority explanation not shown in CLI output | Harder to understand which identity to provision | High |
+| scope names in docs drift from `scope-map.json` | Contracts become unclear and regression checks become noisy | High |
 | No verification of scope grant against actual Lark auth token | Gaps only visible at runtime | Medium |
 | Approval `act` vs `submit` distinction not always inferred correctly | Wrong authority type for approvers | Low |
 
@@ -197,34 +195,22 @@ a hyphen — `\w+` does not match `follow-up`. Fixed to `\S+`.
 
 ## Regression command
 
-Run all 8 cases and check scope counts:
+Run all 8 cases and verify the expected minimum scopes:
 
 ```bash
-for desc in \
-  "create expense report and request approval" \
-  "read a document and update the wiki page" \
-  "create crm record and send a follow-up message" \
-  "update the customer record after the meeting" \
-  "route expense to approval and notify the manager" \
-  "upload the contract file to drive and update the wiki with the key terms" \
-  "create a lead record and schedule a follow-up meeting" \
-  "read the attendance records and generate a timesheet report"
-do
-  count=$(larc auth suggest "$desc" 2>&1 | grep "Required scopes" | grep -o '[0-9]*' | head -1)
-  echo "[$count] $desc"
-done
+bash scripts/auth-suggest-check.sh --verify
 ```
 
-Expected output (minimum scope counts):
+Expected minimum scope sets:
 ```
-[2] create expense report and request approval
-[3] read a document and update the wiki page
-[5] create crm record and send a follow-up message
-[3] update the customer record after the meeting
-[3] route expense to approval and notify the manager
-[3] upload the contract file to drive and update the wiki with the key terms
-[5] create a lead record and schedule a follow-up meeting
-[2] read the attendance records and generate a timesheet report
+[approval:instance:write, bitable:app] create expense report and request approval
+[docs:doc:readonly, wiki:wiki, wiki:wiki:readonly] read a document and update the wiki page
+[bitable:app, bitable:app:readonly, contact:user.base:readonly, im:message:send_as_bot] create crm record and send a follow-up message
+[bitable:app, bitable:app:readonly, bitable:record] update the customer record after the meeting
+[approval:instance:write, bitable:app, im:message:send_as_bot] route expense to approval and notify the manager
+[drive:file:create, wiki:wiki, wiki:wiki:readonly] upload the contract file to drive and update the wiki with the key terms
+[bitable:app, bitable:app:readonly, calendar:calendar, contact:user.base:readonly] create a lead record and schedule a follow-up meeting
+[attendance:task:readonly, sheets:spreadsheet] read the attendance records and generate a timesheet report
 ```
 
 ---

@@ -19,7 +19,7 @@ Usage: scripts/auth-suggest-check.sh [--case N] [--list] [--verify]
 Options:
   --case N   Run only the specified case number
   --list     Print the available cases and exit
-  --verify   Check the reported scope count against the documented minimum
+  --verify   Check the reported scopes against the documented minimum set
   --help     Show this help
 
 Purpose:
@@ -48,20 +48,20 @@ done
 
 # Keep these aligned with docs/auth-suggest-cases.md.
 cases=(
-  "1|expense report + approval|2|create expense report and request approval"
-  "2|read doc + update wiki|3|read a document and update the wiki page"
-  "3|create crm + follow-up|5|create crm record and send a follow-up message"
-  "4|update customer record|3|update the customer record after the meeting"
-  "5|route expense + notify mgr|3|route expense to approval and notify the manager"
-  "6|upload to drive + wiki|3|upload the contract file to drive and update the wiki with the key terms"
-  "7|crm lead + schedule meeting|5|create a lead record and schedule a follow-up meeting"
-  "8|attendance + timesheet|2|read the attendance records and generate a timesheet report"
+  "1|expense report + approval|approval:instance:write,bitable:app|create expense report and request approval"
+  "2|read doc + update wiki|docs:doc:readonly,wiki:wiki,wiki:wiki:readonly|read a document and update the wiki page"
+  "3|create crm + follow-up|bitable:app,bitable:app:readonly,contact:user.base:readonly,im:message:send_as_bot|create crm record and send a follow-up message"
+  "4|update customer record|bitable:app,bitable:app:readonly,bitable:record|update the customer record after the meeting"
+  "5|route expense + notify mgr|approval:instance:write,bitable:app,im:message:send_as_bot|route expense to approval and notify the manager"
+  "6|upload to drive + wiki|drive:file:create,wiki:wiki,wiki:wiki:readonly|upload the contract file to drive and update the wiki with the key terms"
+  "7|crm lead + schedule meeting|bitable:app,bitable:app:readonly,calendar:calendar,contact:user.base:readonly|create a lead record and schedule a follow-up meeting"
+  "8|attendance + timesheet|attendance:task:readonly,sheets:spreadsheet|read the attendance records and generate a timesheet report"
 )
 
 if [[ "$list_only" == "true" ]]; then
   for entry in "${cases[@]}"; do
-    IFS="|" read -r case_id label expected_count prompt <<<"$entry"
-    printf '%s\t%s\t%s\t%s\n' "$case_id" "$label" "$expected_count" "$prompt"
+    IFS="|" read -r case_id label expected_scopes prompt <<<"$entry"
+    printf '%s\t%s\t%s\t%s\n' "$case_id" "$label" "$expected_scopes" "$prompt"
   done
   exit 0
 fi
@@ -69,10 +69,12 @@ fi
 run_case() {
   local case_id="$1"
   local label="$2"
-  local expected_count="$3"
+  local expected_scopes_csv="$3"
   local prompt="$4"
   local output=""
-  local actual_count=""
+  local actual_scopes=""
+  local missing_scopes=()
+  local extra_scopes=()
 
   echo ""
   echo "=== Case ${case_id}: ${label} ==="
@@ -81,25 +83,62 @@ run_case() {
   printf '%s\n' "$output"
 
   if [[ "$verify" == "true" ]]; then
-    actual_count=$(printf '%s\n' "$output" | sed -n 's/.*Required scopes (\([0-9][0-9]*\)).*/\1/p' | head -1)
-    if [[ -z "$actual_count" ]]; then
-      echo "[auth-suggest-check] case ${case_id}: could not parse scope count" >&2
+    actual_scopes=$(printf '%s\n' "$output" | python3 -c '
+import re, sys
+scopes = []
+capture = False
+for line in sys.stdin:
+    if "Required scopes" in line or "Required minimum scopes" in line:
+        capture = True
+        continue
+    if capture:
+        if line.startswith("  Authority:"):
+            break
+        m = re.match(r"\s+([A-Za-z0-9:._-]+)\s+\(←", line)
+        if m:
+            scopes.append(m.group(1))
+print("\n".join(scopes))
+')
+    if [[ -z "$actual_scopes" ]]; then
+      echo "[auth-suggest-check] case ${case_id}: could not parse scopes" >&2
       return 1
     fi
-    if [[ "$actual_count" != "$expected_count" ]]; then
-      echo "[auth-suggest-check] case ${case_id}: expected ${expected_count} scopes, got ${actual_count}" >&2
+
+    IFS=',' read -r -a expected_scope_arr <<<"$expected_scopes_csv"
+    mapfile -t actual_scope_arr <<<"$actual_scopes"
+
+    for scope in "${expected_scope_arr[@]}"; do
+      if ! printf '%s\n' "${actual_scope_arr[@]}" | rg -x --fixed-strings "$scope" >/dev/null; then
+        missing_scopes+=("$scope")
+      fi
+    done
+
+    for scope in "${actual_scope_arr[@]}"; do
+      [[ -z "$scope" ]] && continue
+      if ! printf '%s\n' "${expected_scope_arr[@]}" | rg -x --fixed-strings "$scope" >/dev/null; then
+        extra_scopes+=("$scope")
+      fi
+    done
+
+    if [[ ${#missing_scopes[@]} -gt 0 ]]; then
+      echo "[auth-suggest-check] case ${case_id}: missing scopes: ${missing_scopes[*]}" >&2
       return 1
     fi
-    echo "[auth-suggest-check] case ${case_id}: PASS (${actual_count} scopes)"
+
+    if [[ ${#extra_scopes[@]} -gt 0 ]]; then
+      echo "[auth-suggest-check] case ${case_id}: PASS with extra scopes: ${extra_scopes[*]}"
+    else
+      echo "[auth-suggest-check] case ${case_id}: PASS"
+    fi
   fi
 }
 
 for entry in "${cases[@]}"; do
-  IFS="|" read -r case_id label expected_count prompt <<<"$entry"
+  IFS="|" read -r case_id label expected_scopes prompt <<<"$entry"
   if [[ -n "$selected_case" && "$selected_case" != "$case_id" ]]; then
     continue
   fi
-  run_case "$case_id" "$label" "$expected_count" "$prompt"
+  run_case "$case_id" "$label" "$expected_scopes" "$prompt"
 done
 
 echo ""

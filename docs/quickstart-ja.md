@@ -32,6 +32,8 @@ LARC 単体の「常駐 IM ボット」を先に立てるのではなく、`Open
 >
 > **会話入口の原則**: テストユーザーや運用担当者が実際に話しかけるのは、OpenClaw の Feishu/Lark channel が作る chat app / bot です。
 > `lark-cli` 用の App ID / App Secret は LARC runtime の認証用であり、ユーザー向け chat app を別に立ち上げるための導線ではありません。
+>
+> **認証運用の原則**: 開発者や長期テスターに App Secret を横展開するのは推奨しません。各自が自分の dev app を作るか、管理者が対象端末へ直接 `lark-cli config init` してください。
 
 ---
 
@@ -126,7 +128,12 @@ Lark の原子的操作は official plugin 側で実行します。plugin は会
 
 ### 2-1. アプリ情報を入手
 
-テスト担当者から **App ID** と **App Secret** を受け取ってください。
+推奨は次のどちらかです。
+
+1. 自分で dev app を作成し、自分の App ID / Secret を使う
+2. 管理者に対象端末へ直接 `lark-cli config init` してもらう
+
+短期テストの例外を除き、Secret の配布前提にはしないでください。
 
 > テスト担当者の方はこちら → [Lark アプリ設定ガイド](lark-app-setup.md)
 >

@@ -387,28 +387,7 @@ _ingress_next() {
     queue_json=$(_ingress_find_next_base_queue_item "$agent_id")
     if [[ -n "$queue_json" ]]; then
       local _desync_check
-      _desync_check=$(python3 - "$queue_json" "$LARC_CACHE/queue" <<'PY'
-import json, os, sys
-d = json.loads(sys.argv[1])
-qid = d.get("queue_id", "")
-queue_dir = sys.argv[2]
-if qid and os.path.isdir(queue_dir):
-    for name in os.listdir(queue_dir):
-        if not name.endswith(".jsonl"):
-            continue
-        with open(os.path.join(queue_dir, name), encoding="utf-8") as f:
-            for line in f:
-                line = line.strip()
-                if not line:
-                    continue
-                row = json.loads(line)
-                if row.get("queue_id") == qid:
-                    local_status = row.get("status", "")
-                    if local_status in {"done", "failed", "partial", "cancelled"}:
-                        print(f"{qid}\t{local_status}")
-                    raise SystemExit(0)
-PY
-      )
+      _desync_check=$(_ingress_base_local_desync_status "$queue_json")
       if [[ -n "$_desync_check" ]]; then
         local _dsync_qid _dsync_status
         _dsync_qid=${_desync_check%%$'\t'*}
@@ -465,10 +444,24 @@ _ingress_openclaw() {
 
   local queue_json=""
   if [[ -n "$queue_id" ]]; then
-    queue_json=$(_ingress_get_local_queue_item "$queue_id")
-    [[ -z "$queue_json" ]] && { log_error "Queue item not found locally: $queue_id"; return 1; }
+    queue_json=$(_ingress_get_queue_item_anywhere "$queue_id")
+    [[ -z "$queue_json" ]] && { log_error "Queue item not found (local or Base): $queue_id"; return 1; }
   else
-    queue_json=$(_ingress_find_next_local_queue_item "$agent_id")
+    if [[ -n "${LARC_BASE_APP_TOKEN:-}" ]]; then
+      queue_json=$(_ingress_find_next_base_queue_item "$agent_id")
+      if [[ -n "$queue_json" ]]; then
+        local _desync_check
+        _desync_check=$(_ingress_base_local_desync_status "$queue_json")
+        if [[ -n "$_desync_check" ]]; then
+          local _dsync_qid _dsync_status
+          _dsync_qid=${_desync_check%%$'\t'*}
+          _dsync_status=${_desync_check##*$'\t'}
+          log_warn "Base/local desync: $_dsync_qid is locally $_dsync_status but Base shows pending — skipping"
+          queue_json=""
+        fi
+      fi
+    fi
+    [[ -z "$queue_json" ]] && queue_json=$(_ingress_find_next_local_queue_item "$agent_id")
     if [[ -z "$queue_json" ]]; then
       echo "(no actionable queue item for $agent_id)"
       return 0
@@ -622,8 +615,8 @@ _ingress_execute_stub() {
   [[ -z "$queue_id" ]] && { log_error "Usage: larc ingress execute-stub --queue-id <id>"; return 1; }
 
   local queue_json
-  queue_json=$(_ingress_get_local_queue_item "$queue_id")
-  [[ -z "$queue_json" ]] && { log_error "Queue item not found locally: $queue_id"; return 1; }
+  queue_json=$(_ingress_get_queue_item_anywhere "$queue_id")
+  [[ -z "$queue_json" ]] && { log_error "Queue item not found (local or Base): $queue_id"; return 1; }
 
   local current_status
   current_status=$(python3 - "$queue_json" <<'PY'
@@ -869,8 +862,8 @@ _ingress_execute_apply() {
   [[ -z "$queue_id" ]] && { log_error "Usage: larc ingress execute-apply --queue-id <id> [--dry-run]"; return 1; }
 
   local queue_json
-  queue_json=$(_ingress_get_local_queue_item "$queue_id")
-  [[ -z "$queue_json" ]] && { log_error "Queue item not found locally: $queue_id"; return 1; }
+  queue_json=$(_ingress_get_queue_item_anywhere "$queue_id")
+  [[ -z "$queue_json" ]] && { log_error "Queue item not found (local or Base): $queue_id"; return 1; }
 
   local current_status
   current_status=$(python3 - "$queue_json" <<'PY'
@@ -1227,8 +1220,8 @@ _ingress_followup() {
 
   if [[ -n "$queue_id" ]]; then
     local queue_json
-    queue_json=$(_ingress_get_local_queue_item "$queue_id")
-    [[ -z "$queue_json" ]] && { log_error "Queue item not found locally: $queue_id"; return 1; }
+    queue_json=$(_ingress_get_queue_item_anywhere "$queue_id")
+    [[ -z "$queue_json" ]] && { log_error "Queue item not found (local or Base): $queue_id"; return 1; }
     local status
     status=$(python3 - "$queue_json" <<'PY'
 import json, sys
@@ -1291,8 +1284,8 @@ _ingress_delegate() {
   [[ -z "$queue_id" ]] && { log_error "Usage: larc ingress delegate --queue-id <id> [--dry-run]"; return 1; }
 
   local queue_json
-  queue_json=$(_ingress_get_local_queue_item "$queue_id")
-  [[ -z "$queue_json" ]] && { log_error "Queue item not found locally: $queue_id"; return 1; }
+  queue_json=$(_ingress_get_queue_item_anywhere "$queue_id")
+  [[ -z "$queue_json" ]] && { log_error "Queue item not found (local or Base): $queue_id"; return 1; }
 
   local current_status
   current_status=$(python3 - "$queue_json" <<'PY'
@@ -1365,8 +1358,8 @@ _ingress_context() {
   [[ -z "$queue_id" ]] && { log_error "Usage: larc ingress context --queue-id <id> [--days N]"; return 1; }
 
   local queue_json
-  queue_json=$(_ingress_get_local_queue_item "$queue_id")
-  [[ -z "$queue_json" ]] && { log_error "Queue item not found locally: $queue_id"; return 1; }
+  queue_json=$(_ingress_get_queue_item_anywhere "$queue_id")
+  [[ -z "$queue_json" ]] && { log_error "Queue item not found (local or Base): $queue_id"; return 1; }
 
   _ingress_render_bundle "context" "$queue_json" "$days"
 }
@@ -1385,8 +1378,8 @@ _ingress_handoff() {
   [[ -z "$queue_id" ]] && { log_error "Usage: larc ingress handoff --queue-id <id> [--days N]"; return 1; }
 
   local queue_json
-  queue_json=$(_ingress_get_local_queue_item "$queue_id")
-  [[ -z "$queue_json" ]] && { log_error "Queue item not found locally: $queue_id"; return 1; }
+  queue_json=$(_ingress_get_queue_item_anywhere "$queue_id")
+  [[ -z "$queue_json" ]] && { log_error "Queue item not found (local or Base): $queue_id"; return 1; }
 
   local current_status
   current_status=$(python3 - "$queue_json" <<'PY'
@@ -1521,8 +1514,8 @@ _ingress_transition() {
   local dry_run="${5:-false}"
 
   local queue_json
-  queue_json=$(_ingress_get_local_queue_item "$queue_id")
-  [[ -z "$queue_json" ]] && { log_error "Queue item not found locally: $queue_id"; return 1; }
+  queue_json=$(_ingress_get_queue_item_anywhere "$queue_id")
+  [[ -z "$queue_json" ]] && { log_error "Queue item not found (local or Base): $queue_id"; return 1; }
 
   local current_status
   current_status=$(python3 - "$queue_json" <<'PY'
@@ -1561,7 +1554,19 @@ PY
     return 0
   fi
 
-  _ingress_replace_local_queue_item "$queue_id" "$updated_json"
+  local existing_local raw_agent_id
+  existing_local=$(_ingress_get_local_queue_item "$queue_id")
+  if [[ -z "$existing_local" ]]; then
+    raw_agent_id=$(python3 - "$updated_json" <<'PY'
+import json, sys
+d = json.loads(sys.argv[1])
+print(d.get("agent_id") or "main")
+PY
+)
+    _ingress_write_local "$raw_agent_id" "$updated_json"
+  else
+    _ingress_replace_local_queue_item "$queue_id" "$updated_json"
+  fi
   if [[ -n "$LARC_BASE_APP_TOKEN" ]]; then
     _ingress_write_base "$updated_json"
     _ingress_write_audit_log "$updated_json" "$new_status"
@@ -1577,8 +1582,8 @@ _ingress_complete() {
   local dry_run="${4:-false}"
 
   local queue_json
-  queue_json=$(_ingress_get_local_queue_item "$queue_id")
-  [[ -z "$queue_json" ]] && { log_error "Queue item not found locally: $queue_id"; return 1; }
+  queue_json=$(_ingress_get_queue_item_anywhere "$queue_id")
+  [[ -z "$queue_json" ]] && { log_error "Queue item not found (local or Base): $queue_id"; return 1; }
 
   local current_status
   current_status=$(python3 - "$queue_json" <<'PY'
@@ -1622,7 +1627,19 @@ PY
     return 0
   fi
 
-  _ingress_replace_local_queue_item "$queue_id" "$updated_json"
+  local existing_local raw_agent_id
+  existing_local=$(_ingress_get_local_queue_item "$queue_id")
+  if [[ -z "$existing_local" ]]; then
+    raw_agent_id=$(python3 - "$updated_json" <<'PY'
+import json, sys
+d = json.loads(sys.argv[1])
+print(d.get("agent_id") or "main")
+PY
+)
+    _ingress_write_local "$raw_agent_id" "$updated_json"
+  else
+    _ingress_replace_local_queue_item "$queue_id" "$updated_json"
+  fi
   if [[ -n "$LARC_BASE_APP_TOKEN" ]]; then
     _ingress_write_base "$updated_json"
   fi
@@ -1950,6 +1967,41 @@ for d in all_rows:
 PY
 }
 
+_ingress_get_queue_item_anywhere() {
+  local queue_id="$1"
+  local queue_json=""
+  queue_json=$(_ingress_get_local_queue_item "$queue_id")
+  if [[ -z "$queue_json" && -n "${LARC_BASE_APP_TOKEN:-}" ]]; then
+    queue_json=$(_ingress_get_base_queue_item "$queue_id")
+  fi
+  printf '%s' "$queue_json"
+}
+
+_ingress_base_local_desync_status() {
+  local queue_json="$1"
+  python3 - "$queue_json" "$LARC_CACHE/queue" <<'PY'
+import json, os, sys
+d = json.loads(sys.argv[1])
+qid = d.get("queue_id", "")
+queue_dir = sys.argv[2]
+if qid and os.path.isdir(queue_dir):
+    for name in os.listdir(queue_dir):
+        if not name.endswith(".jsonl"):
+            continue
+        with open(os.path.join(queue_dir, name), encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                row = json.loads(line)
+                if row.get("queue_id") == qid:
+                    local_status = row.get("status", "")
+                    if local_status in {"done", "failed", "partial", "cancelled"}:
+                        print(f"{qid}\t{local_status}")
+                    raise SystemExit(0)
+PY
+}
+
 _ingress_find_next_local_queue_item() {
   local agent_id="$1"
   local queue_dir="$LARC_CACHE/queue"
@@ -2085,8 +2137,8 @@ PY
   fi
 
   if [[ -n "${LARC_BASE_APP_TOKEN:-}" ]]; then
-    _ingress_write_base "$claimed_json"
-    _ingress_write_audit_log "$claimed_json" "in_progress"
+    _ingress_write_base "$claimed_json" >&2
+    _ingress_write_audit_log "$claimed_json" "in_progress" >&2
   fi
 
   printf '%s\n' "$claimed_json"

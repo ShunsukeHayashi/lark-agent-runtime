@@ -31,6 +31,12 @@ _memory_pull() {
     esac
   done
 
+  # Validate date format: must be YYYY-MM-DD
+  if ! [[ "$date" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]]; then
+    log_error "--date must be in YYYY-MM-DD format (got: '$date')"
+    return 1
+  fi
+
   log_head "memory pull — fetching memory from Lark Base (${agent_id} / $date)"
 
   [[ -z "$LARC_BASE_APP_TOKEN" ]] && {
@@ -98,6 +104,12 @@ _memory_push() {
       *) date="$1"; shift ;;
     esac
   done
+  # Validate date format: must be YYYY-MM-DD
+  if ! [[ "$date" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]]; then
+    log_error "--date must be in YYYY-MM-DD format (got: '$date')"
+    return 1
+  fi
+
   local ws="$LARC_CACHE/workspace/$agent_id"
   local source_file="$ws/memory/${date}.md"
 

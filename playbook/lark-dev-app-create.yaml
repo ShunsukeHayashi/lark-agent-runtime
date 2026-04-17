@@ -1,0 +1,194 @@
+---
+# LARC Lark Dev App Create Playbook
+# Purpose: create and validate a reusable Lark Developer Console app for lark-cli and LARC onboarding.
+
+meta:
+  version: 1
+  agent: main
+  gate: none
+  source: playbook
+  related_docs:
+    - docs/lark-dev-app-create-plan.md
+    - docs/lark-app-setup.md
+    - docs/quickstart-ja.md
+
+inputs:
+  required:
+    - target_region          # lark | feishu
+    - app_name
+    - auth_mode              # self_owned | operator_provisioned | shared_secret_fallback
+  optional:
+    - secure_share_channel
+    - operator_name
+    - tenant_name
+    - tester_name
+
+outputs:
+  - app_id
+  - published_scope_snapshot
+  - auth_mode_decision
+  - tester_setup_message
+
+success_criteria:
+  - custom app exists in the correct region
+  - bot is enabled
+  - minimum verified scopes are added
+  - app is published after scope changes
+  - app secret is not broadly distributed by default
+  - tester completes lark-cli auth login and larc quickstart
+
+scope_baseline:
+  drive:
+    - drive:drive
+    - drive:drive:readonly
+    - drive:file:create
+    - docs:doc:readonly
+  base:
+    - base:record:created
+    - base:record:readonly
+  im:
+    - im:message:send_as_bot
+    - im:message.file_link:readonly
+  wiki:
+    - wiki:wiki:readonly
+  approval_and_task:
+    - approval:approval:readonly
+    - approval:approval:write
+    - approval:instance:write
+    - approval:task:write
+    - task:task
+
+tasks:
+  - id: decide-auth-mode
+    title: "Decide auth mode first"
+    kind: manual
+    instruction: |
+      Choose one auth mode before app creation:
+      - self_owned: each developer/tester owns their own app and secret
+      - operator_provisioned: operator configures lark-cli on the target machine directly
+      - shared_secret_fallback: temporary exception only
+      Do not treat shared secret handoff as the normal path.
+    evidence:
+      - auth mode recorded
+
+  - id: decide-region
+    title: "Decide target region and test boundary"
+    kind: manual
+    instruction: |
+      Confirm whether this app should be created in Lark global or Feishu China.
+      Confirm this app is for dev/test use, not public production distribution.
+    evidence:
+      - chosen region recorded
+      - operator agrees on dev/test-only boundary
+
+  - id: open-console
+    title: "Open Developer Console"
+    kind: manual
+    instruction: |
+      Open the matching console:
+      - https://open.larksuite.com/app
+      - https://open.feishu.cn/app
+
+  - id: create-app
+    title: "Create custom app"
+    kind: manual
+    instruction: |
+      Create a custom app with a clear name such as larc-dev or larc-test.
+      Add a short description that this app is for lark-cli and LARC testing.
+    evidence:
+      - app shell exists
+      - app name recorded
+
+  - id: enable-bot
+    title: "Enable bot feature"
+    kind: manual
+    instruction: |
+      In Features > Bot, enable Bot so LARC message sending can work.
+
+  - id: add-scopes
+    title: "Add minimum verified scopes"
+    kind: manual
+    instruction: |
+      Add the scopes from scope_baseline.
+      Do not add speculative extra scopes unless a verified workflow needs them.
+    evidence:
+      - scope list captured
+
+  - id: publish-app
+    title: "Publish app after scope changes"
+    kind: manual
+    instruction: |
+      Save the configuration and publish the app.
+      Record publish date and the final scope snapshot in a private operator note.
+    evidence:
+      - publish completed
+      - timestamp recorded
+
+  - id: capture-credentials
+    title: "Capture App ID and App Secret locally"
+    kind: manual
+    instruction: |
+      Open Credentials & Basic Info and record App ID and App Secret.
+      Do not commit or paste secrets into this repository.
+      Keep the secret with the app owner or provisioning operator.
+
+  - id: prepare-handoff
+    title: "Prepare tester onboarding without default secret sharing"
+    kind: manual
+    instruction: |
+      Build the onboarding path from the chosen auth mode.
+      - self_owned: tell the tester to create their own app and run local config init
+      - operator_provisioned: operator runs config init on the machine, tester only runs auth login and quickstart
+      - shared_secret_fallback: if unavoidable, use the approved secure channel and time-box the test
+    evidence:
+      - tester setup message sent
+
+  - id: self-owned-local-config
+    title: "Self-owned mode: local config init"
+    kind: external
+    when: auth_mode == self_owned
+    instruction: |
+      Tester creates their own app and runs:
+      lark-cli config init --app-id <their App ID> --app-secret-stdin --brand lark
+
+  - id: operator-provision-machine
+    title: "Operator-provisioned mode: configure target machine directly"
+    kind: manual
+    when: auth_mode == operator_provisioned
+    instruction: |
+      Operator runs lark-cli config init directly on the target machine.
+      Do not send the raw secret to the tester unless there is no alternative.
+
+  - id: shared-secret-exception
+    title: "Fallback mode: shared secret exception"
+    kind: manual
+    when: auth_mode == shared_secret_fallback
+    instruction: |
+      Use this only for short-lived testing.
+      Share through the approved secure channel, record the exception, and rotate later.
+
+  - id: tester-verify-login
+    title: "Tester verifies login"
+    kind: external
+    instruction: |
+      Ask the tester to complete lark-cli config init and lark-cli auth login.
+      If login fails, check region mismatch, app publish state, and scope configuration.
+
+  - id: tester-verify-larc
+    title: "Tester verifies LARC quickstart"
+    kind: external
+    instruction: |
+      Ask the tester to run larc quickstart.
+      If quickstart fails, identify whether the blocker is auth, scope, or tenant setup.
+
+  - id: close-loop
+    title: "Record outcome and next actions"
+    kind: manual
+    instruction: |
+      Record whether the app worked as-is or required scope changes.
+      If new scopes were required, update docs/lark-app-setup.md and this playbook in a follow-up change.
+
+rollback:
+  - if testing ends, prefer disabling Bot before deleting the app
+  - if credentials leak is suspected, rotate App Secret and re-share securely
+  - if the wrong region was chosen, create a new app in the correct region instead of forcing cross-region assumptions

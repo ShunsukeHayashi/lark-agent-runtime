@@ -1,7 +1,7 @@
 {
   "_comment": "タスク種別 → 必要 Lark スコープのマッピング定義。identity は user / bot / either のいずれか。",
   "_version": "0.2.0",
-  "_updated": "2026-04-14",
+  "_updated": "2026-04-17",
   "tasks": {
     "read_document": {
       "scopes": [
@@ -12,7 +12,7 @@
     },
     "create_document": {
       "scopes": [
-        "docs:doc:create"
+        "docs:document"
       ],
       "identity": "user",
       "description": "飞书文档の新規作成"
@@ -40,8 +40,8 @@
     },
     "manage_wiki": {
       "scopes": [
-        "wiki:wiki",
-        "wiki:wiki.node"
+        "wiki:node:write",
+        "wiki:node:create"
       ],
       "identity": "user",
       "description": "Wikiスペースの管理（メンバー・権限含む）"
@@ -84,14 +84,13 @@
     },
     "read_base": {
       "scopes": [
-        "base:record:readonly"
+        "bitable:app:readonly"
       ],
       "identity": "user",
       "description": "Bitable/Base レコードの読み取り"
     },
     "create_base_record": {
       "scopes": [
-        "base:record:created",
         "bitable:app"
       ],
       "identity": "user",
@@ -116,7 +115,6 @@
     },
     "create_crm_record": {
       "scopes": [
-        "base:record:created",
         "bitable:app",
         "contact:user.base:readonly"
       ],
@@ -125,7 +123,6 @@
     },
     "send_crm_followup": {
       "scopes": [
-        "base:record:created",
         "bitable:app",
         "contact:user.base:readonly",
         "im:message:send_as_bot"
@@ -149,7 +146,7 @@
     },
     "create_expense": {
       "scopes": [
-        "base:record:created",
+        "bitable:app",
         "approval:instance:write"
       ],
       "identity": "user",
@@ -194,7 +191,7 @@
     },
     "read_task": {
       "scopes": [
-        "task:task:readonly"
+        "task:task:read"
       ],
       "identity": "user",
       "description": "タスク・チェックリストの読み取り"
@@ -208,7 +205,7 @@
     },
     "read_attendance": {
       "scopes": [
-        "attendance:record:readonly"
+        "attendance:task:readonly"
       ],
       "identity": "user",
       "description": "考勤打刻レコードの読み取り"

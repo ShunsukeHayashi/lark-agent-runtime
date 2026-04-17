@@ -1,7 +1,7 @@
 {
   "schema_version": "1.0",
   "description": "LARC task ledger with lock-based concurrency control. Agents claim tasks by setting locked_by + lock_expires_at before mutating. Stale locks (now > lock_expires_at) can be stolen by any agent.",
-  "updated_at": "2026-04-16T00:00:00Z",
+  "updated_at": "2026-04-17T00:00:00Z",
   "lock_ttl_minutes": 60,
   "tasks": [
     {
@@ -10,12 +10,13 @@
       "milestone": "core-ux",
       "linked_issues": [6, 7],
       "linked_prs": [10],
-      "status": "review",
+      "status": "done",
       "owner": "claude",
       "locked_by": null,
       "lock_expires_at": null,
       "created_at": "2026-04-15",
-      "notes": "Awaiting owner review/merge"
+      "closed_at": "2026-04-15",
+      "notes": "Merged via PR #10"
     },
     {
       "id": "T-002",
@@ -23,12 +24,13 @@
       "milestone": "windows-support",
       "linked_issues": [11, 12, 13, 14],
       "linked_prs": [19],
-      "status": "review",
+      "status": "done",
       "owner": "claude",
       "locked_by": null,
       "lock_expires_at": null,
       "created_at": "2026-04-15",
-      "notes": "Covers #11-14 in spirit; awaiting Windows reproduction to close"
+      "closed_at": "2026-04-15",
+      "notes": "Merged via PR #19"
     },
     {
       "id": "T-003",
@@ -36,12 +38,13 @@
       "milestone": "windows-support",
       "linked_issues": [17],
       "linked_prs": [20],
-      "status": "review",
+      "status": "done",
       "owner": "claude",
       "locked_by": null,
       "lock_expires_at": null,
       "created_at": "2026-04-15",
-      "notes": "Windows leg fails until #23 merges; already surfaced a real bug (#22)"
+      "closed_at": "2026-04-15",
+      "notes": "Merged via PR #20"
     },
     {
       "id": "T-004",
@@ -49,12 +52,13 @@
       "milestone": "windows-support",
       "linked_issues": [16],
       "linked_prs": [21],
-      "status": "review",
+      "status": "done",
       "owner": "claude",
       "locked_by": null,
       "lock_expires_at": null,
       "created_at": "2026-04-15",
-      "notes": "Awaiting real-hardware test on AAI (Windows 11)"
+      "closed_at": "2026-04-15",
+      "notes": "Merged via PR #21. Real-hardware test still needed (T-008)"
     },
     {
       "id": "T-005",
@@ -62,38 +66,41 @@
       "milestone": "windows-support",
       "linked_issues": [22],
       "linked_prs": [23],
-      "status": "review",
+      "status": "done",
       "owner": "claude",
       "locked_by": null,
       "lock_expires_at": null,
       "created_at": "2026-04-15",
-      "notes": "Blocks Windows CI green. Discovered live by #20's CI run"
+      "closed_at": "2026-04-15",
+      "notes": "Merged via PR #23"
     },
     {
       "id": "T-006",
       "title": "lib/billing.sh fcntl.flock cross-platform fallback",
       "milestone": "windows-support",
       "linked_issues": [15],
-      "linked_prs": [],
-      "status": "pending",
-      "owner": null,
+      "linked_prs": [25],
+      "status": "done",
+      "owner": "claude",
       "locked_by": null,
       "lock_expires_at": null,
       "created_at": "2026-04-15",
-      "notes": "Blocks any code path that imports lib/billing.sh on Windows. Needs msvcrt.locking branch"
+      "closed_at": "2026-04-15",
+      "notes": "Merged via PR #25"
     },
     {
       "id": "T-007",
       "title": "Windows installation guide (docs/install-windows.md)",
       "milestone": "windows-support",
       "linked_issues": [18],
-      "linked_prs": [],
-      "status": "pending",
-      "owner": null,
+      "linked_prs": [27],
+      "status": "done",
+      "owner": "claude",
       "locked_by": null,
       "lock_expires_at": null,
       "created_at": "2026-04-15",
-      "notes": "Ship after T-002..T-005 merge so instructions match reality"
+      "closed_at": "2026-04-15",
+      "notes": "Merged via PR #27"
     },
     {
       "id": "T-008",
@@ -106,20 +113,164 @@
       "locked_by": null,
       "lock_expires_at": null,
       "created_at": "2026-04-15",
-      "notes": "Must happen after Windows-support PRs merge. Read-only run (no daemon start, no Base writes). Populates #9 with actual failures"
+      "notes": "Read-only run (no daemon start, no Base writes). Blocks Issue #9 close."
     },
     {
       "id": "T-009",
       "title": "queue triage helpers: prune/retry/stats",
       "milestone": "operational-resilience",
       "linked_issues": [8],
+      "linked_prs": [26],
+      "status": "done",
+      "owner": "claude",
+      "locked_by": null,
+      "lock_expires_at": null,
+      "created_at": "2026-04-15",
+      "closed_at": "2026-04-15",
+      "notes": "Merged via PR #26"
+    },
+    {
+      "id": "T-010",
+      "title": "commit pending changes and tag v0.2.0 release",
+      "milestone": "launch",
+      "linked_issues": [],
       "linked_prs": [],
       "status": "pending",
       "owner": null,
       "locked_by": null,
       "lock_expires_at": null,
-      "created_at": "2026-04-15",
-      "notes": "72 failed queue items accumulated; no recovery path today"
+      "created_at": "2026-04-17",
+      "notes": "14 modified files uncommitted. release-readiness verdict is PREVIEW CANDIDATE. Commit all M files, push, create GitHub Release tag v0.2.0 with CHANGELOG entry."
+    },
+    {
+      "id": "T-011",
+      "title": "set GitHub repository Topics and Description",
+      "milestone": "launch",
+      "linked_issues": [],
+      "linked_prs": [],
+      "status": "pending",
+      "owner": null,
+      "locked_by": null,
+      "lock_expires_at": null,
+      "created_at": "2026-04-17",
+      "notes": "Description: 'Permission-first runtime for Lark-native office-work agents.' Topics: lark feishu agent-runtime permissions openclaw bash. Currently 0 stars / 0 watchers — discoverability blocked by missing metadata."
+    },
+    {
+      "id": "T-012",
+      "title": "post to Feishu developer community (Chinese)",
+      "milestone": "launch",
+      "linked_issues": [],
+      "linked_prs": [],
+      "status": "pending",
+      "owner": null,
+      "locked_by": null,
+      "lock_expires_at": null,
+      "created_at": "2026-04-17",
+      "notes": "Primary market is China/Feishu. Use README.zh-CN as base. Post to open.feishu.cn dev community and 掘金 (juejin.cn). Core message: 飞书 Agent 的权限管理 runtime."
+    },
+    {
+      "id": "T-013",
+      "title": "publish X thread: 'AIに会社の鍵を全部渡してませんか？'",
+      "milestone": "launch",
+      "linked_issues": [],
+      "linked_prs": [],
+      "status": "pending",
+      "owner": null,
+      "locked_by": null,
+      "lock_expires_at": null,
+      "created_at": "2026-04-17",
+      "notes": "@The_AGI_WAY 39K フォロワー向け。権限設計リスクの問題提起スレッド。Repo URL + larc approve gate デモをリンク。経営者層に刺さる文脈で書く。"
+    },
+    {
+      "id": "T-014",
+      "title": "create AI governance diagnosis service proposal template",
+      "milestone": "bizdev",
+      "linked_issues": [],
+      "linked_prs": [],
+      "status": "pending",
+      "owner": null,
+      "locked_by": null,
+      "lock_expires_at": null,
+      "created_at": "2026-04-17",
+      "notes": "診断サービス「AI業務導入 権限設計診断」60万円/社。LARCの4問ヒアリング → タスク×リスク分類マップ → 危険箇所レポート → 継続提案。Lark非依存で全企業に販売可能。"
+    },
+    {
+      "id": "T-015",
+      "title": "stabilize IM daemon loop (experimental → stable)",
+      "milestone": "operational-resilience",
+      "linked_issues": [],
+      "linked_prs": [],
+      "status": "pending",
+      "owner": null,
+      "locked_by": null,
+      "lock_expires_at": null,
+      "created_at": "2026-04-17",
+      "notes": "PID管理 + 自動復帰 health check 実装。現在 experimental 表記。stable になると完全自律モードを主張できる。daemon は現在 PID 73744 / 73750 で稼働中だが再起動信頼性が未検証。"
+    },
+    {
+      "id": "T-016",
+      "title": "write Note/Zenn article: SFA construction case study using LARC",
+      "milestone": "launch",
+      "linked_issues": [],
+      "linked_prs": [],
+      "status": "pending",
+      "owner": null,
+      "locked_by": null,
+      "lock_expires_at": null,
+      "created_at": "2026-04-17",
+      "notes": "みやびSFA/CRM構築の実実績（キュー30件・done23件）を外部公開可能な形に整理。Lark Base + LARC ingress queue でのSFA構築フローを記事化。"
+    },
+    {
+      "id": "T-017",
+      "title": "auth suggest: expand scope-map from 32 to 50 task types",
+      "milestone": "core-ux",
+      "linked_issues": [],
+      "linked_prs": [],
+      "status": "pending",
+      "owner": null,
+      "locked_by": null,
+      "lock_expires_at": null,
+      "created_at": "2026-04-17",
+      "notes": "現在 config/scope-map.json は32タスクタイプ。カバレッジ不足のタスクを追加してリスク分類の精度を向上。gate-policy.json も合わせて拡充。"
+    },
+    {
+      "id": "T-018",
+      "title": "MergeGate integration (lib/mergegate.sh)",
+      "milestone": "milestone-2",
+      "linked_issues": [],
+      "linked_prs": [],
+      "status": "pending",
+      "owner": null,
+      "locked_by": null,
+      "lock_expires_at": null,
+      "created_at": "2026-04-17",
+      "notes": "CLAUDE.md Phase 3 タスク。Bot Webhook受信によるMergeGate機能。lib/mergegate.sh は存在するが未統合。"
+    },
+    {
+      "id": "T-019",
+      "title": "publish GitHub Release v0.2.0 with release notes",
+      "milestone": "launch",
+      "linked_issues": [],
+      "linked_prs": [],
+      "status": "pending",
+      "owner": null,
+      "locked_by": null,
+      "lock_expires_at": null,
+      "created_at": "2026-04-17",
+      "notes": "CHANGELOG.md から 2026-04-14〜04-16 の変更をまとめてリリースノートを作成。v0.2.0 タグを打ってから GitHub Release を作成。T-010 が前提。"
+    },
+    {
+      "id": "T-020",
+      "title": "OpenClaw-assisted autonomous mode: environment-specific verification",
+      "milestone": "milestone-2",
+      "linked_issues": [],
+      "linked_prs": [],
+      "status": "pending",
+      "owner": null,
+      "locked_by": null,
+      "lock_expires_at": null,
+      "created_at": "2026-04-17",
+      "notes": "現在 ⚠️ partially verified。OpenClaw Feishu channel + openclaw-lark plugin + LARC の組み合わせをローカル以外の環境で検証。stable 昇格のための検証作業。"
     }
   ]
 }

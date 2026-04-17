@@ -143,6 +143,7 @@ cmd_ingress()   { source "$LIB_DIR/memory.sh"; source "$LIB_DIR/send.sh"; source
 cmd_daemon()    { source "$LIB_DIR/worker.sh"; source "$LIB_DIR/daemon.sh"; cmd_daemon "$@"; }
 cmd_webhook()   { source "$LIB_DIR/webhook.sh"; cmd_webhook "$@"; }
 cmd_worker()    { source "$LIB_DIR/worker.sh"; cmd_worker "$@"; }
+cmd_docs()      { source "$LIB_DIR/docs.sh";      cmd_docs "$@"; }
 cmd_onboard()   { _cmd_onboard "$@"; }
 cmd_template()  { _cmd_template "$@"; }
 cmd_dashboard() { source "$LIB_DIR/dashboard.sh"; cmd_dashboard "$@"; }
@@ -1415,6 +1416,7 @@ main() {
     ingress)    shift; require_lark_cli; cmd_ingress "$@" ;;
     kg)         shift; require_lark_cli; cmd_kg "$@" ;;
     wiki)       shift; require_lark_cli; cmd_wiki "$@" ;;
+    docs)       shift; require_lark_cli; cmd_docs "$@" ;;
     mergegate|mg) shift; cmd_mergegate "$@" ;;
     daemon)     shift; cmd_daemon "$@" ;;
     webhook)    shift; cmd_webhook "$@" ;;

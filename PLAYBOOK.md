@@ -1,602 +1,677 @@
-# LARC × OpenClaw 実装プレイブック
+# LARC v0.2.0 Operational Playbook
 
-> 全タスクを並列で実行するためのロードマップ。各フェーズは独立して実行可能。
-
-## アーキテクチャ概要
-
-```
-[ローカル: larc CLI]
-       │
-       ├── bootstrap → Lark Drive / Wiki から SOUL/USER/MEMORY を読込
-       ├── memory    → Lark Base と日次記憶を双方向同期
-       ├── send      → Lark IM へメッセージ送信 (openclaw agent 相当)
-       ├── task      → Lark Project タスク管理
-       ├── approve   → Lark Approval フロー起動
-       └── agent     → エージェント登録・管理
-
-[Lark Drive: エージェントワークスペース]
-       ├── SOUL.md         → アイデンティティ・原則
-       ├── USER.md         → ユーザープロファイル
-       ├── MEMORY.md       → 長期記憶
-       ├── memory/日付.md  → 日次コンテキスト
-       └── HEARTBEAT.md    → システム状態
-
-[Lark Base: 構造化データ]
-       ├── agents_registry  → エージェント登録テーブル
-       ├── agent_memory     → 記憶テーブル
-       ├── agent_heartbeat  → 状態ログテーブル
-       └── agent_logs       → 監査ログテーブル
-```
+> Ground-truth reference for operating, extending, and launching LARC.  
+> Last updated: 2026-04-17 | Version: 2.0.0
 
 ---
 
-## Current Truth — 2026-04-14
+## Section 1 — Orientation
 
-### 実装方針（承認済み）
-- `larc` は継続する
-- ただし **現行 `lark-cli` の実コマンド体系へ寄せて再実装する**
-- 足りない機能だけ `lark-cli` の **局所フォーク** または `lark-cli api` で補う
-- 最初から全面フォークはしない
+> Full product overview: [README.md](README.md) · [README.zh-CN.md](README.zh-CN.md) · [README.ja.md](README.ja.md)
 
-### この方針を採る理由
-- `Drive` / `Task` / `Auth` は現行 `lark-cli` の shortcut でかなり高確率に実装できる
-- `Base` も shortcut 群に寄せれば実装可能性が高い
-- `Approval` の新規起票だけは現行 CLI に直接コマンドが見当たらず、raw API か局所フォークが必要
-- よって、MVP を先に成立させてから不足機能だけをフォークで埋める方が最短
+LARC sits between OpenClaw/Claude Code (the reasoning agent) and Lark (the enterprise platform): it enforces execution gates, infers minimum scopes, manages the task queue, and records every action back into Base.
 
-### 現行 `lark-cli` とのズレ（要修正）
+### Core message (3 languages)
 
-| 現コードの想定 | 現行 CLI で現実的な置換先 | 状態 |
-|---|---|---|
-| `drive list` | `drive files list` | 要置換 |
-| `drive download` | `drive +download` | 要置換 |
-| `drive folder create` | `drive files create_folder` | 要置換 |
-| `base tables list` | `base +table-list` | 要置換 |
-| `base records list` | `base +record-list` | 要置換 |
-| `base records create/update` | `base +record-upsert` | 要置換 |
-| `task tasks create/patch` | `task +create` / `task +update` / `task +complete` | 要置換 |
-| `approval instances create` | `lark-cli api` or local fork | 未解決 |
+**English**: "Permission-first runtime for Lark-native office-work agents."
 
-### MVP の範囲
-- `bootstrap`
-- `memory`
-- `send`
-- `agent registry`
-- `task`
-- `auth`
+**中文**: "飞书 Agent 权限管理 runtime — 让 AI 只做它被允许做的事。"
 
-### MVP から外すもの
-- `Approval` の新規起票
-- `OpenClaw` 完全互換 CLI
-- `MergeGate` 連携
-- `Knowledge Graph`
+**日本語**: "AIに与える権限を設計する。Lark対応エージェントのランタイム基盤。"
 
-### 実態ベースの位置づけ（2026-04-14）
-- LARC はすでに「Lark 上で動くエージェントの土台」として必要な主要パーツを持つ
-- ただし現段階では **自律エージェントそのもの** ではなく、**Claude Code などの上位エージェントが使う Lark runtime / CLI surface** である
-- つまり現在の実行モデルは以下:
+---
+
+## Section 2 — Current Truth (2026-04-17)
+
+### Version & repository
+
+| Field | Value |
+|-------|-------|
+| Version | v0.2.0 |
+| Repo | `ShunsukeHayashi/lark-agent-runtime` |
+| Visibility | PUBLIC (since 2026-04-14) |
+| License | MIT |
+| Commits | 97 |
+| Install path | `~/study/larc/` (symlink: `~/bin/larc`) |
+
+### Live metrics
+
+- Active queue items seen in production: 11+ (including CRM/SFA tasks)
+- Registered agents: 4 (main, expense-processor, crm-agent, doc-agent)
+- Scope-map task types: 32
+- Gate-policy entries: 32
+- Claude Code skills: 24 (`.claude/skills/lark-*/`)
+
+### Implementation status
+
+| Feature | Status | Notes |
+|---------|--------|-------|
+| `larc init` | ✅ stable | Keychain + config setup |
+| `larc bootstrap` | ✅ stable | SOUL/USER/MEMORY/HEARTBEAT load from Drive |
+| `larc memory pull/push` | ✅ stable | Base ↔ local sync |
+| `larc send` | ✅ stable | IM message to any chat |
+| `larc task list/create/done` | ✅ stable | Lark Project ops |
+| `larc agent list/register` | ✅ stable | YAML batch registration |
+| `larc auth suggest` | ✅ stable | 32 task types, tested 8 real cases |
+| `larc auth router` | ✅ stable | user/bot/blocked routing |
+| `larc auth check/login` | ✅ stable | Profile-based scope check |
+| `larc approve gate/create` | ✅ stable | Gate check + Approval flow creation |
+| `larc ingress enqueue/list/run-once/done/prune/retry/stats` | ✅ stable | Full queue lifecycle |
+| `larc ingress delegate` | ✅ stable | main → specialist agent routing |
+| `larc ingress context/openclaw` | ✅ stable | OpenClaw-first bundle output |
+| `larc kg build/query/show/status` | ✅ stable | Lark Wiki knowledge graph |
+| `larc quickstart` | ✅ stable | 7-step idempotent onboarding |
+| `larc status` | ✅ stable | Keychain + token + daemon state |
+| Base table provisioning | ✅ stable | Internal to `larc quickstart` |
+| IM daemon (`lib/daemon.sh`) | ⚠️ experimental | PID management not hardened |
+| Windows support | ✅ implemented | Git Bash / WSL / PS1 launcher |
+| `lib/mergegate.sh` | 🔴 stub | Phase 3, not integrated |
+
+---
+
+## Section 3 — Architecture
+
+### Execution modes
 
 ```
-Claude Code / 上位エージェント
-    ↓
-LARC (Lark への runtime / governance interface)
-    ↓
-Lark (Drive / Base / IM / Wiki / Approval)
+Mode 1: Supervised (STABLE)
+  Human CLI → larc ingress enqueue → run-once → done
+  Gate = preview/approval → human confirms → resume
+
+Mode 2: OpenClaw-assisted (PARTIALLY VERIFIED)
+  OpenClaw agent → larc ingress openclaw → next-action bundle → agent executes → done
+
+Mode 3: IM Daemon (EXPERIMENTAL)
+  Lark IM message → lib/daemon.sh → auto-enqueue → run-once loop
+  Risk: PID management / restart reliability not verified
 ```
 
-### live 検証済みの実行面
-- `larc bootstrap --agent main`
-- `larc memory pull --agent main`
-- `larc memory push --agent main`
-- `larc send "..."`
-- `larc task list/create/done`
-- `larc agent list/register`
-- `larc auth suggest "<task>"`
-- `larc approve gate <type>`
-- `larc kg build / query / show`
+### Storage topology
 
-### 実装済みだが自律化されていない面
-- IM 受信をトリガーに `larc` を自動起動する webhook / bot ingress
-- `approve gate` / `approve create` 後に承認完了イベントで処理を再開する continuation
-- Base をキューとして扱う agent task queue
-- main から専門エージェントへ委任する routing / dispatch
-- 過去 memory の横断検索
+```
+~/.larc/
+  config.env            ← LARC_BASE_APP_TOKEN, LARC_DRIVE_FOLDER_TOKEN, etc.
+  runtime/              ← bin/larc symlink target
+  cache/
+    workspace/<agent_id>/
+      SOUL.md / USER.md / MEMORY.md / RULES.md / HEARTBEAT.md
+      AGENT_CONTEXT.md  ← consolidated context
 
-### フォークのトリガー条件
-- `Approval` 起票を業務上どうしても MVP に入れたい
-- 現行 `lark-cli` の shortcut では表現できない引数組み立てが継続的に必要
-- `larc` 側で raw API ラップが増えすぎて、実質 `lark-cli` の再実装になり始める
+Lark Drive (LARC_DRIVE_FOLDER_TOKEN)
+  SOUL.md / USER.md / MEMORY.md / RULES.md / HEARTBEAT.md
+  memory/YYYY-MM-DD.md
 
----
+Lark Base (LARC_BASE_APP_TOKEN)
+  agents_registry   ← agent metadata + declared scopes
+  agent_memory      ← daily memory records
+  agent_heartbeat   ← system state log
+  agent_logs        ← audit trail
+  agent_queue       ← queue ledger (mirror of local queue)
+```
 
-## 実装戦略
+### Permission model
 
-### Strategy A — MVP First（採用）
-1. `larc` を現行 `lark-cli` shortcut ベースに寄せる
-2. `Drive` / `Base` / `Task` / `Auth` を通す
-3. `Approval` は既存タスクの参照・処理だけを扱う
-4. 起票だけ別スパイクで検証する
+```
+larc auth suggest "<task>"
+  → keyword match against config/scope-map.json (32 types)
+  → minimum required scopes
+  → identity type: user_access_token | tenant_access_token | bot_token
+  → gate level: none | preview | approval
+  → authority explanation (why user/bot/blocked)
 
-### Strategy B — 局所フォーク
-- `approval instances create`
-- `drive list`
-- `base tables list`
-- `base records list`
+larc auth router
+  → per-operation routing: user_token | bot_token | blocked
+  → blocked = Lark enforces User OAuth only (cannot be automated)
 
-上記のような **`larc` が必要とする抽象だけ** を `lark-cli` 側に足す。
+config/gate-policy.json
+  → 32 task types × risk level × gate
+  → none:  agent executes immediately
+  → preview: human reviews, then `larc ingress approve <id>`
+  → approval: Lark Approval flow created, human approves in UI, then `larc ingress resume <id>`
+```
 
-### Strategy C — 全面フォーク
-- `lark-cli` 全体を自前 CLI として保守する
-- 今回は採用しない
-- 根拠: 保守コストが大きく、MVP の前進速度を落とすため
+### HITL constraints (permanent — Lark API enforces User OAuth)
 
----
+These operations **cannot** be automated. Human must act in Lark UI:
 
-## 再定義したフェーズ
+- `approval.tasks.approve` — approve a pending approval
+- `approval.tasks.reject` — reject an approval
+- `approval.tasks.transfer` — transfer approver
+- `approval.instances.cancel` — cancel an approval instance
 
-### PHASE 0 — CLI 整合化（最優先）
-**目的**: 現行 `lark-cli` と `larc` 実装のコマンド差分を解消する
-
-- [x] `bootstrap.sh` の `Drive` 呼び出しを `drive files list` / `drive +download` に寄せる
-- [x] `setup-workspace.sh` の `Drive` 呼び出しを `drive files create_folder` / `drive +upload` に寄せる
-- [x] `memory.sh` / `send.sh` / `heartbeat.sh` の `Base` 呼び出しを shortcut ベースへ寄せる
-- [x] `task.sh` を `task +create` / `+update` / `+complete` ベースへ寄せる
-- [x] `auth.sh` を `auth status` / `check` / `scopes` ベースへ寄せる
-
-### PHASE 0.5 — Approval スパイク
-**目的**: 新規承認起票の現実ルートを確定する
-
-- [x] `lark-cli api` で Approval 起票 API を直接叩けるか確認
-- [x] 必要スコープと payload 仕様を確定
-- [x] raw API で十分か、局所フォークが必要か判断
-
-補足:
-- 詳細は `docs/approval-spike.md`
-- 現時点の判断は「局所フォーク必須ではない。まず raw API helper で進める」
-
-### PHASE 1 — MVP 成立
-**完了条件**:
-- `larc init`
-- `larc bootstrap --agent main`
-- `larc memory pull/push --agent main`
-- `larc send --agent main`
-- `larc task list/create/done`
-- `larc auth check/login`
-- `scripts/smoke-check.sh` が通る
-
-**現在地（2026-04-14）**:
-- `bootstrap` / `memory` / `send` / `task` の live path は確認済み
-- `scripts/smoke-check.sh` は通過済み
-- `scripts/live-check.sh` により OpenClaw → LARC → Lark IM の実動確認あり
-- Phase A: 完了。runtime の全 live path が通った
-- Phase B: 完了。`auth suggest` が 8件の現実タスクで期待スコープを返す。authority explanation 実装済み。
-- Phase C: 完了。`larc agent list/register/show` が live Lark Base と連動。4エージェントを `agents.yaml` からバッチ登録済み。scopes フィールドをレジストリに保存。
-- Phase D: 完了。`config/gate-policy.json` 導入（32 task types × none/preview/approval）。`larc approve gate` コマンド実装。`auth suggest` 出力に gate 警告セクションを追加。
-- Phase E: 完了。`larc kg build/query/show/status` 実装。Lark Wiki を BFS 走査し 37 ノードをグラフ化。keyword query で親子・兄弟関係まで返す。
-- 残課題: Workstream 6 — OSS リリース準備（repo cleanliness, release packaging, MergeGate integration）
+`lib/approve.sh` intentionally does NOT implement these.
 
 ---
 
-## PHASE 1 — 基盤整備（並列実行可）
+## Section 4 — Setup Runbook
 
-### 1A: larc CLI 完成 ✅
-**担当**: Agent-CLI  
-**状態**: 完了  
-**成果物**: `bin/larc`, `lib/*.sh`
-
-### 1B: Lark Drive ワークスペース初期化スクリプト
-**担当**: Agent-Drive  
-**ファイル**: `scripts/setup-workspace.sh`  
-**タスク**:
-- [x] Lark Drive に `agent-workspace/` フォルダ構造を自動作成
-- [x] テンプレートファイル（SOUL/USER/MEMORY）をアップロード
-- [x] agents_registry Base テーブルを自動プロビジョニング
-
-**状態メモ**:
-- 実装済み。現在は runtime sync の完全往復が次の論点
-- 以後は `setup` の有無ではなく `hydrate / publish` の完成度で評価する
+### Prerequisites
 
 ```bash
-# 実行コマンド
-./scripts/setup-workspace.sh --agent main --drive-folder <token>
+# Required
+brew install jq python3
+npm install -g @larksuite/cli
+
+# Verify
+lark-cli --version
+jq --version
 ```
 
-### 1C: 権限マッピング定義
-**担当**: Agent-Perms  
-**ファイル**: `config/scope-map.json`  
-**タスク**:
-- [x] タスク種別 → 必要スコープのマスターマップ作成
-- [x] `readonly` / `writer` / `admin` の3段階プロファイル定義
-- [x] `larc auth suggest "<task>"` の初期実装
-- [x] compound office tasks のスコープ推論: CRM / expense / drive / calendar 複合タスク対応（v0.2.0）
-- [x] keyword matching の根本バグ3件修正（語順・ハイフン・bare keyword）
-- [x] 検証ケース 8件を `docs/auth-suggest-cases.md` に期待値付きで固定
-- [x] authority explanation の追加（user / tenant / bot の理由表示）
-- [x] Case 7 の over-permission (1 scope) 解消: CRM+follow-up で IM が不要な場合の除外ロジック
-- [x] `scripts/auth-suggest-check.sh` による回帰確認導線の追加
-- [x] 三言語 README 初版 (`README.md` / `README.zh-CN.md` / `README.ja.md`) と OSS 準備ドキュメント追加
+### Install
 
-**状態メモ（2026-04-14）**:
-- `auth suggest` は「存在する」段階を抜け、8件の現実タスクで期待スコープを返せる「信頼できる初期実装」段階に入った
-- Playbook §14 マイルストーン「minimum likely scopes を説明できる」は達成
-- authority path の説明は CLI 出力に追加済み
-- 残る差別化: 最小権限化の精度向上、docs / tests / implementation の継続同期、private から三言語 OSS へ移るための衛生整備
+```bash
+git clone https://github.com/ShunsukeHayashi/lark-agent-runtime ~/study/larc
+ln -sf ~/study/larc/bin/larc ~/bin/larc
+export PATH="$PATH:$HOME/bin"
 
-### 1D: インストールスクリプト
-**担当**: Agent-Install  
-**ファイル**: `install.sh`  
-**タスク**:
-- [ ] `larc` を `/usr/local/bin/` にシンボリックリンク
-- [ ] lark-cli インストール確認
-- [ ] 初回設定ウィザード呼び出し
+# Verify
+larc --version   # → v0.2.0
+```
+
+### Configuration (`~/.larc/config.env`)
+
+```bash
+LARC_DRIVE_FOLDER_TOKEN=fldcnXXXXXX   # Lark Drive folder for agent workspace
+LARC_BASE_APP_TOKEN=bascXXXXXX        # Lark Base app for memory/registry
+LARC_IM_CHAT_ID=oc_XXXXXX             # Default IM chat for agent messages
+LARC_WIKI_SPACE_ID=XXXXXXXX           # Optional: Wiki space for knowledge base
+LARC_CACHE_TTL=300                    # Cache TTL seconds (default: 5 min)
+LARC_APPROVAL_CODE=XXXXXXXX           # Optional: Lark Approval flow code
+```
+
+### Quickstart (7 steps, idempotent)
+
+```bash
+larc quickstart
+```
+
+Internally runs:
+1. `larc init` — config.env check + keychain setup
+2. Base table provisioning (internal — 5 tables: agent_queue, agent_logs, agent_memory, agents_registry, wiki_knowledge_graph)
+3. `larc bootstrap --agent main` — load disclosure chain
+4. `larc agent register` — register agents from agents.yaml
+5. `larc memory pull --agent main` — sync memory from Base
+6. `larc ingress enqueue --text "quickstart test" --source claude-code`
+7. `larc ingress run-once` → `larc ingress done --queue-id <id>`
 
 ---
 
-## PHASE 2 — エージェントテンプレート整備（並列実行可）
+## Section 5 — Daily Operations
 
-### 2A: バックオフィスエージェント定義
-**担当**: Agent-BO  
-**ファイル**: `agent-workspace/templates/backoffice/`  
-**タスク**:
-- [ ] 経費処理エージェント (SOUL.md)
-- [ ] 議事録作成エージェント (SOUL.md)
-- [ ] CRM更新エージェント (SOUL.md)
-- [ ] 稟議起案エージェント (SOUL.md)
-- [ ] 採用管理エージェント (SOUL.md)
+### Morning startup
 
-各テンプレートに含めるもの:
-- アイデンティティ・役割
-- 必要権限スコープ（最小権限原則）
-- 実行できる操作リスト
-- 承認が必要な操作リスト
+```bash
+larc status                          # verify keychain + tokens
+larc memory pull --agent main        # sync overnight memory
+larc ingress list --status pending   # see what's queued
+larc ingress list --status failed    # any failures to triage
+```
 
-### 2B: ナレッジグラフ連携
-**担当**: Agent-KG  
-**ファイル**: `lib/knowledge-graph.sh`  
-**タスク**:
-- [x] Lark Wiki のリンク構造をエージェントコンテキストに取り込む
-- [x] `larc kg build` — Wiki リンク構造をグラフとしてBase に記録
-- [x] `larc kg query <concept>` — 概念に関連するドキュメントを検索
-- [ ] OpenClaw の GitNexus 相当の「影響範囲分析」を Lark Wiki で実現
+### Task processing loop
 
-### 2C: OpenClaw 複数エージェント登録
-**担当**: Agent-Multi  
-**ファイル**: `scripts/register-agents.sh`  
-**タスク**:
-- [x] `larc agent register` の一括実行スクリプト
-- [x] YAML定義ファイルから複数エージェントを一括登録
-- [ ] openclaw agents list 形式との互換出力
+```bash
+# Standard supervised flow
+larc ingress enqueue --text "CRM顧客フォローアップリストを更新" --agent main --source claude-code
+larc ingress run-once
+# → if gate=preview: human reviews, then:
+larc ingress approve <queue-id>
+# → if gate=approval: Lark Approval flow created, human approves in UI, then:
+larc ingress resume <queue-id>
+# → mark done
+larc ingress done --queue-id <id>
+```
+
+### Delegation flow
+
+```bash
+# main delegates to specialist
+larc ingress delegate --queue-id <id> --agent crm-agent
+# specialist picks up
+larc ingress run-once --agent crm-agent
+```
+
+### End of day
+
+```bash
+larc memory push --agent main        # persist memory to Base
+larc ingress stats                   # daily queue summary
+larc heartbeat --agent main          # log system state
+```
+
+---
+
+## Section 6 — Permission Model Deep Dive
+
+### `larc auth suggest`
+
+```bash
+larc auth suggest "経費申請書を作成して承認フローを起動"
+# Output:
+# Task type: expense_approval
+# Required scopes: base:record:created, approval:approval:write, im:message:send_as_bot
+# Identity: user_access_token
+# Gate: approval
+# Authority: User OAuth required for approval flow creation
+# Minimum profile: writer
+```
+
+### `larc auth router`
+
+```bash
+larc auth router --operation "drive:download"     # → user_access_token
+larc auth router --operation "im:message:send"    # → bot_token
+larc auth router --operation "approval:tasks:approve"  # → BLOCKED (User OAuth only, cannot automate)
+```
+
+### `larc auth check`
+
+```bash
+larc auth check --profile writer       # verify current token has writer profile scopes
+larc auth check --profile backoffice_agent
+```
+
+### `larc auth login`
+
+```bash
+larc auth login --profile backoffice_agent  # opens browser OAuth flow for required scopes
+```
+
+### Gate policy reference
+
+| Gate | When | Human action |
+|------|------|-------------|
+| `none` | Safe read / notification ops | None required |
+| `preview` | Write ops, data changes | Review content → `larc ingress approve <id>` |
+| `approval` | Financial, HR, legal ops | Lark UI approval → `larc ingress resume <id>` |
+
+---
+
+## Section 7 — Queue Lifecycle
+
+### States
+
+```
+pending → in_progress → done
+                      → failed   → retry with: larc ingress retry <id>
+                      → blocked  → resume with: larc ingress resume <id>
+                      → partial  → followup with: larc ingress followup <id>
+```
+
+Additional states:
+- `pending_preview` — awaiting human preview confirmation
+- `blocked_approval` — awaiting Lark Approval flow completion
+- `delegated` — transferred to specialist agent
+
+### Enqueue options
+
+```bash
+larc ingress enqueue \
+  --text "<task description>" \
+  --agent main \
+  --source <claude-code|lark_im|github|voice|manual> \
+  --priority <high|normal|low>
+```
+
+### Triage commands
+
+```bash
+larc ingress prune --days 7 --status failed    # remove old failed items
+larc ingress retry --queue-id <id>             # retry a failed item
+larc ingress retry --status failed --limit 5   # bulk retry
+larc ingress stats                             # queue health summary
+```
+
+### Stale queue recovery
+
+```bash
+# Reset all stale in_progress items (stuck > timeout minutes, default 120)
+larc ingress recover
+
+# Dry-run first to see what would be reset
+larc ingress recover --dry-run
+
+# Custom timeout threshold
+larc ingress recover --timeout 60
+```
+
+---
+
+## Section 8 — Agent Management
+
+### Register from YAML
+
+```bash
+larc agent register   # reads agents.yaml in current dir or ~/.larc/agents.yaml
+```
+
+### `agents.yaml` format
 
 ```yaml
-# agents.yaml の例
 agents:
-  - id: office-assistant
-    name: オフィスアシスタント
+  - id: main
+    name: Main Orchestrator
     model: claude-sonnet-4-6
-    scopes: [docs:doc:readonly, im:message:send_as_bot]
+    scopes:
+      - docs:doc:readonly
+      - im:message:send_as_bot
+      - base:record:readonly
     workspace: general
+
   - id: expense-processor
     name: 経費処理エージェント
     model: claude-haiku-4-5
-    scopes: [base:record:created, approval:approval:write]
+    scopes:
+      - base:record:created
+      - approval:approval:write
     workspace: finance
+
   - id: crm-agent
     name: CRMエージェント
     model: claude-sonnet-4-6
-    scopes: [base:record:created, base:record:readonly]
+    scopes:
+      - base:record:created
+      - base:record:readonly
     workspace: sales
+
+  - id: doc-agent
+    name: ドキュメントエージェント
+    model: claude-sonnet-4-6
+    scopes:
+      - docs:doc:readonly
+      - docs:doc:created
+      - drive:drive:readonly
+    workspace: knowledge
 ```
 
----
-
-## PHASE 3 — 権限自動判定エンジン（最重要）
-
-### 3A: スコープ推論エンジン
-**担当**: Agent-Auth  
-**ファイル**: `lib/auth.sh`, `config/scope-map.json`  
-**タスク**:
-- [x] 「このタスクをしたい」→ 必要スコープを即座に判定するロジック
-- [x] `larc auth suggest "<タスク説明>"` コマンド実装
-- [ ] lark-cli auth login --scope で承認URLを発行
+### List / show agents
 
 ```bash
-# 使用例
-larc auth suggest "経費申請を作成して承認を求める"
-# → 推奨スコープ: base:record:created, approval:approval:write, im:message:send_as_bot
-# → 承認URL: [lark-cli auth login --scope "..." がURLを発行]
-```
-
-### 3B: 権限チェックフック
-**担当**: Agent-Hook  
-**ファイル**: `lib/auth-hook.sh`  
-**タスク**:
-- [ ] 各コマンド実行前に権限を事前チェック
-- [ ] 不足権限がある場合は自動で承認URL発行
-- [ ] miyabi-lark-os の tool-policies.json パターンを適用
-
----
-
-## PHASE 4 — OpenClaw エコシステム統合
-
-### 4A: openclaw-lark プラグイン互換層
-**担当**: Agent-OC  
-**ファイル**: `lib/openclaw-compat.sh`  
-**タスク**:
-- [ ] `openclaw agent --agent main --json -m` → `larc send` への変換レイヤー
-- [ ] openclaw agents list 出力形式との互換
-- [ ] BOOTSTRAP.md 形式の自動生成
-
-### 4B: MergeGate 統合
-**担当**: Agent-MG  
-**ファイル**: `lib/mergegate.sh`  
-**タスク**:
-- [ ] mergegate（ShunsukeHayashi/mergegate）との連携
-- [ ] `larc approve` → mergegate review フロー
-- [ ] 承認前のドキュメントをLark Approval に通す
-
----
-
-## PHASE 5 — Agentic LARC MVP
-
-**目的**: LARC を「人が叩く便利 CLI」から「OpenClaw の上で継続動作する Lark runtime」へ進める
-
-**主経路**:
-- `OpenClaw Agent -> official openclaw-lark plugin -> Lark`
-- `LARC -> permission / gate / queue / delegation / memory`
-
-**補足**:
-- Lark IM / webhook bot ingress は便利な追加入口だが、現時点では primary path ではない
-- 先に固めるべきなのは OpenClaw-first の supervised / semi-agentic runtime
-- supervised test の first scope は 3 scenarios のみ:
-  - CRM follow-up
-  - expense approval
-  - document update
-- planning docs:
-  - `docs/supervised-test-plan-2026-04-14.md`
-  - `docs/adapter-schema-2026-04-14.md`
-
-### 5A: OpenClaw-first ingress
-**担当**: Agent-Loop  
-**ファイル候補**: `lib/bot-ingress.sh`, `scripts/run-bot-loop.sh`
-
-**タスク**:
-- [x] CLI-based ingress surface: `lib/ingress.sh` に `enqueue` / `list` 実装
-- [x] `openclaw` bundle で OpenClaw agent 向けの次アクションを返す
-- [x] `enqueue` 時に `larc auth suggest` 相当の scope inference と gate evaluation を内蔵
-- [ ] Lark IM / webhook 受信イベントから task intent を直接取り出す（optional ingress）
-
-### 5B: Queue / continuation
-**担当**: Agent-Queue  
-**ファイル候補**: `lib/queue.sh`
-
-**タスク**:
-- [x] Local queue ledger を最小実装（Base は補助書き込み）
-- [x] `pending / pending_preview / blocked_approval / approved / delegated / in_progress / done / failed / partial` 状態を持つ
-- [x] `approve` / `resume` で blocked task の continuation を実装
-- [ ] approval 完了イベントを受けて自動再開する
-
-### 5C: Delegation
-**担当**: Agent-Dispatch  
-**ファイル候補**: `lib/delegate.sh`
-
-**タスク**:
-- [x] main が `expense-processor` / `crm-agent` / `doc-agent` へ委任する routing
-- [x] `agents.yaml` の scopes と workspace を見て最適 agent を選ぶ
-- [ ] Base registry を source-of-truth にした委任へ昇格
-- [ ] 実行ログと memory push を agent 単位で残す
-
-### 5D: Searchable memory
-**担当**: Agent-Memory  
-**ファイル候補**: `lib/memory-search.sh`
-
-**タスク**:
-- [x] Base 上の過去 memory を日付範囲・キーワードで検索
-- [x] retrieval hook を `context` / `handoff` / `run-once` bundle に統合
-- [x] queue / delegation の文脈復元に使う
-
-### 5E: Worker loop
-**担当**: Agent-Worker
-**ファイル候補**: `lib/ingress.sh`
-
-**タスク**:
-- [x] `next` で agent ごとの次タスクを pull
-- [x] `run-once` で queue item を `in_progress` に claim
-- [x] `execute-stub` で task type ごとの placeholder 実行計画を生成
-- [x] `execute-apply` で安全な adapter のみ限定実行
-- [x] `followup` で `partial` item を回収
-- [x] supervised pilot で PPAL marketing case を `in_progress -> partial -> followup -> done` まで live 確認
-- [x] queue lifecycle の Base mirror を復旧し、`agent_queue` に最終状態を書き戻せる
-- [ ] task type ごとの本実行 adapter を拡張
-- [ ] worker の常駐ループ化
-
-### 成功条件
-- [x] IM 相当の依頼文が queue に入る
-- [x] 実行前に scope / gate が自動判定される
-- [x] approval が必要な処理は blocked になり、承認後に resumed される
-- [x] main agent が専門 agent に委任できる
-- [x] worker が task を pull / claim / stub-execute できる
-- [x] `partial` follow-up を別レーンで見られる
-- [x] OpenClaw agent が queue item の次アクション bundle を取得できる
-- [x] supervised pilot として 1 つの live scenario が end-to-end で閉じる
-- [ ] IM webhook 経由で Lark 内から自動起動する（optional）
-- [ ] 完了後に memory と audit trail が自動で残る
-
----
-
-## 並列実行マトリクス
-
-```
-時間軸 →
-
-Phase 1: [1A✅][1B  ][1C  ][1D  ]  ← 全部並列
-Phase 2:      [2A  ][2B  ][2C  ]   ← Phase1完了後，全部並列
-Phase 3:           [3A  ][3B  ]    ← Phase2完了後，並列
-Phase 4:                [4A  ][4B] ← Phase3完了後，並列
+larc agent list                    # all registered agents
+larc agent show --agent crm-agent  # detail for one agent
 ```
 
 ---
 
-## エージェントチーム割り当て
+## Section 9 — Memory Management
 
-| エージェント | 担当フェーズ | 優先タスク |
-|---|---|---|
-| Agent-CLI   | 1A ✅       | `bin/larc` 完成 |
-| Agent-Drive | 1B, 2A, 2C  | Driveワークスペース + エージェントテンプレート |
-| Agent-Perms | 1C, 3A, 3B  | 権限マッピング + スコープ推論 |
-| Agent-KG    | 2B          | Larkナレッジグラフ連携 |
-| Agent-OC    | 4A, 4B      | OpenClaw互換 + MergeGate |
+### Sync cycle
 
----
+```
+Daily:
+  larc memory pull --agent main   → Lark Base → ~/.larc/cache/workspace/main/
+  [agent work happens]
+  larc memory push --agent main   → ~/.larc/cache/workspace/main/ → Lark Base
 
-## 次の即時アクション
+Bootstrap (on session start):
+  larc bootstrap --agent main
+  → downloads SOUL.md / USER.md / MEMORY.md / RULES.md / HEARTBEAT.md from Drive
+  → consolidates into AGENT_CONTEXT.md
+```
+
+### Memory search
 
 ```bash
-# 1. larc をPATHに追加
-export PATH="$PATH:/Users/shunsukehayashi/study/larc-openclaw-coding-agent/bin"
+larc memory search --query "CRM顧客フォローアップ" --days 30
+larc memory search --query "expense" --agent expense-processor --days 7
+```
 
-# 2. 初期化
+### Memory file structure
+
+```
+~/.larc/cache/workspace/main/
+  SOUL.md          ← agent identity & principles (from Drive)
+  USER.md          ← user profile (from Drive)
+  MEMORY.md        ← long-term memory index (from Drive)
+  RULES.md         ← operating rules (from Drive)
+  HEARTBEAT.md     ← system state (from Drive)
+  memory/
+    2026-04-14.md  ← daily context files
+    2026-04-15.md
+    ...
+  AGENT_CONTEXT.md ← consolidated, used by agent at runtime
+```
+
+---
+
+## Section 10 — Knowledge Graph
+
+### Build and query
+
+```bash
+larc kg build    # BFS crawl of Lark Wiki space → 37+ nodes in Base
+larc kg status   # index freshness + node count
+larc kg query "expense approval process"   # related nodes + parent/sibling context
+larc kg show --node-id <id>               # full node detail
+```
+
+### Use in agent context
+
+```bash
+# After building the KG, memory search and context bundles include KG-derived links
+larc ingress context --queue-id <id> --days 14
+```
+
+---
+
+## Section 11 — Daemon Operations (EXPERIMENTAL)
+
+> The IM daemon is functional but restart reliability is not verified. Do not use as primary path in production.
+
+### Start / stop
+
+```bash
+larc daemon start   # starts lib/daemon.sh as background process, writes PID
+larc daemon stop    # sends SIGTERM to PID
+larc daemon status  # checks PID + last heartbeat
+```
+
+### Configuration
+
+The daemon interval is passed as a positional argument (default: 30 seconds):
+
+```bash
+larc daemon start --agent main --interval 60   # poll every 60s
+```
+
+Logs are written to `~/.larc/logs/daemon-im.log` and `~/.larc/logs/daemon-worker.log`.
+
+### Known limitations
+
+- No automatic restart on crash
+- `nohup` equivalent on Windows (Git Bash) is weak — use Scheduled Task or NSSM for Windows
+- Health check / watchdog not yet implemented (T-015)
+
+---
+
+## Section 12 — Error Handling
+
+### Known Lark API error codes
+
+| Code | Meaning | Resolution |
+|------|---------|-----------|
+| 230038 | Cross-tenant DM blocked | Use tenant-internal chat only |
+| 232024 | Token scope insufficient | `larc auth check` → `larc auth login` |
+| 232033 | Bot not in chat | Add bot to target chat in Lark UI |
+| 131005 | External user API gap | External users cannot be managed via Bot API — human action required |
+
+### Retry policy
+
+- Failed queue items: manual `larc ingress retry <id>` or bulk `--status failed`
+- Lark API 5xx: LARC does not auto-retry (by design — prevents duplicate writes)
+- Token expiry: `larc status` detects → `larc auth login` refreshes
+
+### Cross-platform notes (Windows)
+
+- `fcntl.flock` → `msvcrt.locking` fallback implemented in `lib/billing.sh`
+- `realpath / stat / sed / date` → portable shims in `lib/shims.sh`
+- Git Bash and WSL2 tested; native PowerShell via `bin/larc.ps1`
+
+---
+
+## Section 13 — Launch Roadmap
+
+### Milestone overview
+
+| Milestone | Status | Description |
+|-----------|--------|-------------|
+| M1: Claude Code → LARC | ✅ COMPLETE | Supervised mode, full queue lifecycle |
+| M2: OpenClaw → LARC | 🔄 IN PROGRESS | Partially verified; env verification needed |
+| M3: Stable Daemon | 🔴 PENDING | PID mgmt + auto-restart hardening |
+| M4: MergeGate | 🔴 PENDING | Bot Webhook → merge gate integration |
+
+### Task backlog (from tasks.json)
+
+| ID | Title | Milestone | Priority |
+|----|-------|-----------|----------|
+| T-008 | Real-hardware smoke test (Windows 11 / AAI) | windows-support | medium |
+| T-010 | Commit 14 pending files + tag v0.2.0 | launch | HIGH |
+| T-011 | Set GitHub Topics + Description | launch | HIGH |
+| T-012 | Post to Feishu developer community (Chinese) | launch | HIGH |
+| T-013 | Publish X thread @The_AGI_WAY (39K followers) | launch | HIGH |
+| T-014 | AI Governance Diagnosis service proposal template | bizdev | medium |
+| T-015 | Stabilize IM daemon (experimental → stable) | operational-resilience | medium |
+| T-016 | Write Note/Zenn SFA case study article | launch | medium |
+| T-017 | Expand scope-map 32 → 50 task types | core-ux | low |
+| T-018 | MergeGate integration (lib/mergegate.sh) | milestone-2 | low |
+| T-019 | Publish GitHub Release v0.2.0 | launch | HIGH |
+| T-020 | OpenClaw-assisted autonomous mode env verification | milestone-2 | medium |
+
+### Immediate next actions (in order)
+
+1. `T-010` — Commit all 14 modified files, push, tag `v0.2.0`
+2. `T-019` — Create GitHub Release from CHANGELOG
+3. `T-011` — Set repo Topics: `lark feishu agent-runtime permissions openclaw bash`
+4. `T-012` — Post to open.feishu.cn + 掘金
+5. `T-013` — Publish X thread on @The_AGI_WAY
+
+---
+
+## Section 14 — Business Playbook
+
+### Market priority
+
+| Market | Platform | Language | Channel |
+|--------|---------|---------|---------|
+| Primary | Feishu (飞书) China | 中文 | open.feishu.cn dev community, 掘金 (juejin.cn) |
+| Secondary | Lark Japan | 日本語 | Zenn, Note, @The_AGI_WAY (39K) |
+| Tertiary | Lark International | English | GitHub, Dev.to |
+
+### OSS strategy
+
+- MIT license — maximum adoption
+- LARC as the governed runtime; OpenClaw as the agent engine
+- GitHub discoverability depends on Topics + Description (T-011 blocks this)
+- README trilingual: `README.md` (EN) / `README.zh-CN.md` (ZH) / `README.ja.md` (JA)
+
+### AI Governance Diagnosis service (T-014)
+
+Target: Any enterprise deploying AI agents (not Lark-dependent)
+
+```
+Service: AI業務導入 権限設計診断
+Price: ¥60〜80万/社
+Flow:
+  1. 4-question intake (LARCの質問ベース)
+  2. Task × Risk classification map
+  3. 危険箇所レポート (high-risk operations without gates)
+  4. Continuous improvement proposal
+```
+
+This service monetizes LARC's scope-map and gate-policy concepts directly.
+
+### KPIs to track
+
+| Metric | Target | Tracking |
+|--------|--------|---------|
+| GitHub stars | 100 in 30 days | GitHub Insights |
+| Feishu community posts | 3 in first week | open.feishu.cn |
+| X thread impressions | 50K in 7 days | @The_AGI_WAY analytics |
+| Diagnosis service inquiries | 2 in 60 days | Lark IM / DM |
+| Queue tasks processed (production) | 50/month | `larc ingress stats` |
+
+---
+
+## Appendix A — Lark App Required Scopes
+
+Minimum scopes for each agent profile:
+
+| Profile | Scopes |
+|---------|--------|
+| `readonly` | `drive:drive:readonly`, `docs:doc:readonly`, `base:record:readonly`, `wiki:wiki:readonly` |
+| `writer` | readonly + `docs:doc:created`, `base:record:created`, `im:message:send_as_bot` |
+| `admin` | writer + `approval:approval:write`, `task:task:write`, `contact:user:readonly` |
+| `backoffice_agent` | admin + `calendar:calendar:write`, `attendance:sheet:write` |
+
+---
+
+## Appendix B — Tenant Constraints Reference
+
+Full documentation: `docs/known-issues/lark-external-user-api-gap.md`
+
+Key constraints:
+- External users (cross-tenant): cannot be DM'd by bot (error 230038)
+- External users: cannot be looked up via `contact:user:readonly` from foreign tenant
+- Approval actions: User OAuth enforced, bot cannot approve/reject
+- Wiki space: read requires explicit space membership — bootstrap will fail if agent not added
+
+---
+
+## Appendix C — Quick Command Reference
+
+```bash
+# Setup
 larc init
+larc quickstart
 
-# 3. ブートストラップテスト
+# Bootstrap
 larc bootstrap --agent main
-
-# 4. エージェント登録テスト
-larc agent register
-```
-
----
-
-## Current Status — 2026-04-16
-
-### アクティブなマイルストーン
-
-- **core-ux** — `larc status` / `ingress context` のエラーサーフェス改善（PR #10 review 中）
-- **windows-support** — macOS 以外での実行可能化（PR #19, #20, #21, #23 review 中）
-- **operational-resilience** — failed キュー triage ヘルパー（#8 未着手）
-
-### タスク台帳
-
-実行待ち・実行中のタスクは `tasks.json` に集約した。各エージェントはタスクを claim する前に `locked_by` + `lock_expires_at` を書き込むこと。stale lock（now > lock_expires_at）は誰でも奪える。
-
-```bash
-# 現在のタスク状態を見る
-jq '.tasks[] | [.id, .status, .title, .locked_by] | @tsv' tasks.json -r
-
-# ロックを取得してタスクを進める（手動例）
-jq --arg now "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-   --arg exp "$(date -u -v+60M +%Y-%m-%dT%H:%M:%SZ 2>/dev/null \
-               || date -u -d '+60 minutes' +%Y-%m-%dT%H:%M:%SZ)" \
-   --arg me "claude" --arg id "T-008" \
-   '.tasks |= map(if .id == $id then
-      .locked_by = $me | .lock_expires_at = $exp | .status = "in_progress"
-    else . end)' tasks.json > tasks.json.tmp && mv tasks.json.tmp tasks.json
-
-# 完了時にロック解放
-jq --arg id "T-008" \
-   '.tasks |= map(if .id == $id then
-      .locked_by = null | .lock_expires_at = null | .status = "done"
-    else . end)' tasks.json > tasks.json.tmp && mv tasks.json.tmp tasks.json
-```
-
-### ステータス遷移
-
-```
-pending → in_progress → review → done
-             │              │
-             └────────→ blocked ←──┘
-```
-
-- `pending` : 未着手、誰でも claim できる
-- `in_progress` : claim 済み。`locked_by` が所有者
-- `review` : PR 作成済み、オーナー/CI レビュー待ち
-- `blocked` : 外部依存（ハードウェア・オーナー判断）待ち
-- `done` : マージ済み＋動作確認済み
-
----
-
-## Windows Support Milestone — プレイブック
-
-GitHub milestone: [Windows Support](../../milestone/1)
-Tracking issue: #9
-
-### ゴール
-
-LARC を **macOS 以外でも安定動作**させる。native PowerShell 書き換えは out-of-scope。推奨ランタイムは順に：
-
-1. **Git Bash** (Git for Windows 経由) — 既存のシェルスクリプトがほぼそのまま動く
-2. **WSL2** — Linux として扱われる。`$HOME` が Windows と分離される点に注意
-3. **PowerShell ランチャー** (`bin/larc.ps1`) — 内部で bash を exec する薄いラッパー
-
-### フェーズ別ロードマップ
-
-| Phase | 内容 | タスク | 状態 |
-|---|---|---|---|
-| W1 | **エラー可視化** — keychain / Python の失敗理由をユーザーに見せる | T-001, T-005 | 🟡 review |
-| W2 | **ポータブル化** — BSD/GNU 両対応のヘルパーで call site を差し替える | T-002 | 🟡 review |
-| W3 | **CI** — windows-latest を matrix に入れて退行を自動検知する | T-003 | 🟡 review |
-| W4 | **PS1 ランチャー** — PowerShell から直接 `larc` を打てるようにする | T-004 | 🟡 review |
-| W5 | **残 BSD/POSIX 固有ロジック** — fcntl / kill -0 / PID ファイル / daemon | T-006 | 🔴 pending |
-| W6 | **実機検証** — AAI (Windows 11) で Git Bash / WSL 両方 smoke test | T-008 | 🔴 pending |
-| W7 | **ドキュメント** — Windows 向けインストールガイド | T-007 | 🔴 pending |
-
-### W6 実機テスト計画（AAI, Windows 11 build 26200.8037）
-
-**前提**: read-only モード。daemon 起動しない。Base 書き込みしない。
-
-**対象コマンド**:
-```bash
-# 最小疎通
-larc --help
 larc status
-larc auth suggest "経費精算と承認申請を作成"
 
-# ingress 読み取り
-larc ingress list --status pending --limit 5
-larc ingress list --status failed --limit 5
+# Auth
+larc auth suggest "タスク説明"
+larc auth router --operation "docs:download"
+larc auth check --profile writer
+larc auth login --profile backoffice_agent
 
-# キャッシュ読み取り
-larc memory search --query "test" --days 7  # network 要らなければ
+# Queue
+larc ingress enqueue --text "..." --agent main --source claude-code
+larc ingress list --status pending
+larc ingress run-once
+larc ingress approve <id>    # preview gate
+larc ingress resume <id>     # approval gate
+larc ingress done --queue-id <id>
+larc ingress retry --queue-id <id>
+larc ingress prune --days 7 --status failed
+larc ingress stats
+larc ingress recover               # reset stale in_progress items → pending
+larc ingress recover --dry-run
+larc ingress followup --agent crm-agent   # pick up partial items
+larc ingress delegate --queue-id <id> --agent crm-agent
+larc ingress context --queue-id <id> --days 14   # context bundle for agent
+larc ingress openclaw --agent main --days 14     # OpenClaw-format next-action bundle
+
+# Memory
+larc memory pull --agent main
+larc memory push --agent main
+larc memory search --query "..." --days 30
+
+# Agent
+larc agent list
+larc agent register
+larc agent show --agent <id>
+
+# Knowledge graph
+larc kg build
+larc kg query "concept"
+larc kg status
+
+# Daemon (experimental)
+larc daemon start
+larc daemon stop
+larc daemon status
+
+# Triage
+larc ingress list --status failed
+larc ingress retry --status failed --limit 10
+larc heartbeat --agent main
 ```
-
-**対象環境**:
-1. Git Bash (`C:\Program Files\Git\bin\bash.exe` 経由)
-2. WSL2 (`bash.exe` 経由)
-3. PowerShell + `bin/larc.ps1` （#21 マージ後）
-
-**記録先**: GitHub issue #9 にコメント追記。失敗は該当サブ issue にも反映。
-
-### Phase 間の依存関係
-
-```
-W1 (core-ux)  ─┐
-               ├─→ W6 (AAI smoke test) ─→ W7 (docs)
-W2 (portable) ─┤
-W3 (CI)       ─┤   ← W3 は常時並列、他を block しない
-W4 (PS1)      ─┤
-W5 (residual) ─┘
-```
-
-W1-W4 がマージされれば W6 が走れる。W5 はそれと並列で進む。
-
-### W5 残タスクの詳細（T-006）
-
-`lib/billing.sh` の `fcntl.flock` が Unix-only。Windows Python には存在しない。対応案：
-
-```python
-# 現状
-import fcntl
-fcntl.flock(f.fileno(), fcntl.LOCK_EX)
-
-# 提案（cross-platform）
-try:
-    import fcntl
-    def _lock(f):   fcntl.flock(f.fileno(), fcntl.LOCK_EX)
-    def _unlock(f): fcntl.flock(f.fileno(), fcntl.LOCK_UN)
-except ImportError:
-    import msvcrt
-    def _lock(f):   msvcrt.locking(f.fileno(), msvcrt.LK_LOCK, 1)
-    def _unlock(f): msvcrt.locking(f.fileno(), msvcrt.LK_UNLCK, 1)
-```
-
-`daemon.sh` / `webhook.sh` の `kill -0` + PID ファイルは Windows Git Bash で部分的に動くが、`nohup` 相当が弱い。Windows 本格対応は **Scheduled Task** か **NSSM** を使うパスをドキュメント化する方向で整理する（ツール内蔵の detach は最小限）。
-

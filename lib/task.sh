@@ -56,7 +56,7 @@ _task_create() {
   lark-cli task +create \
     --summary "$title" \
     --due "$due_value" \
-    2>/dev/null && log_ok "Task created" || log_warn "Create failed"
+    2>/dev/null && log_ok "Task created" || { log_error "Task create failed (title: '$title')"; return 1; }
 }
 
 _task_done() {
@@ -65,7 +65,7 @@ _task_done() {
   log_head "Complete task: $task_id"
   lark-cli task +complete \
     --task-id "$task_id" \
-    2>/dev/null && log_ok "Completed" || log_warn "Update failed"
+    2>/dev/null && log_ok "Completed" || { log_error "Update failed for task_id: $task_id"; return 1; }
 }
 
 _task_due_value() {
