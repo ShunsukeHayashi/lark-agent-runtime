@@ -1693,10 +1693,19 @@ _ingress_write_audit_log() {
 
   local audit_record
   audit_record=$(python3 - "$completed_json" "$final_status" <<'PY'
-import json, sys
+import json, re, sys
 from datetime import datetime, timezone
 d = json.loads(sys.argv[1])
 status = sys.argv[2]
+note = (d.get("execution_note") or "").lower()
+# Issue #38: classify rows so failure KPI excludes notification noise.
+# Caller may pre-set result_class explicitly; otherwise infer from execution_note.
+result_class = d.get("result_class") or ""
+if not result_class:
+    if re.search(r"bot echo|echo loop|outbound echo|purged", note):
+        result_class = "noise"
+    else:
+        result_class = "business"
 row = {
     "log_at":        datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
     "agent_id":      d.get("worker_agent_id") or d.get("agent_id", ""),
@@ -1711,6 +1720,8 @@ row = {
     "completed_at":  d.get("completed_at", ""),
     "message_text":  (d.get("message_text") or "")[:200],
     "next_human_action": d.get("next_human_action", ""),
+    "result_class":  result_class,
+    "delivery_status": d.get("delivery_status", ""),
 }
 print(json.dumps(row, ensure_ascii=False))
 PY
@@ -2863,7 +2874,7 @@ _get_or_create_logs_table() {
   _ensure_table_fields "$LARC_BASE_APP_TOKEN" "$table_id" \
     log_at agent_id queue_id source sender task_types gate status \
     execution_note started_at completed_at message_text \
-    next_human_action
+    next_human_action result_class delivery_status
 
   echo "$table_id"
 }
