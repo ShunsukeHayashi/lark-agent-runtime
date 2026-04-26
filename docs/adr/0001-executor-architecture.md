@@ -1,7 +1,8 @@
 # 0001 — Executor architecture for generic-scenario adapters
 
-- **Status:** Proposed
+- **Status:** Approved
 - **Date:** 2026-04-26
+- **Approved:** 2026-04-26 (after .py-vs-.sh correction below)
 - **Driver:** post-v0.2 stabilization (playbook/post-v0.2-stabilization.yaml Phase 2)
 - **Related:** #41, #44, #45, #46, #47
 
@@ -45,14 +46,18 @@ scenario-blind.
 Adopt **Option C — Hybrid**:
 
 - Existing four inline scenarios stay where they are. Do **not** refactor them.
-- New executors land as **separate files** under `lib/executors/<scenario>.sh`,
-  each exposing a known function name (e.g. `executor_read_task_extract_fields`).
-- A small dispatcher in `ingress.sh` checks for an external executor file
-  matching `scenario_id` before falling back to the inline branches.
+- New executors land as **Python modules** under `lib/executors/<scenario>.py`,
+  each exposing `extract_fields(text) -> (fields, missing, blocked, partial, ask_user)`.
+  Python (not shell) because `extract_fields` is invoked inside Python heredocs
+  in `ingress.sh` — a bash executor cannot return five Python objects to the
+  caller heredoc.
+- A small dispatcher in `ingress.sh`'s heredocs checks for an external executor
+  file matching `scenario_id` and `exec()`s it before falling back to the
+  inline `if/elif` chain.
 - The duplicate `extract_fields` at lines 700 and 922 is **not unified** as part
   of this ADR; that is a separate pre-existing problem and should be tracked in
-  its own issue. Leaving them duplicated is the lower-blast-radius choice for
-  the post-v0.2 cycle.
+  its own issue. Both copies will receive the same dispatcher hook so external
+  executors stay consistent across them.
 
 ### Why Option C over A and B
 
@@ -84,15 +89,16 @@ Adopt **Option C — Hybrid**:
 
 ### What becomes true
 
-- A new file `lib/executors/<name>.sh` in the repo means: "this is a typed
+- A new file `lib/executors/<name>.py` in the repo means: "this is a typed
   executor; the dispatcher in ingress.sh will route `scenario_id=<name>` to it
   before falling back to the inline path."
-- Each executor file owns one scenario_id and exports:
-  - `executor_<name>_extract_fields(text) -> JSON {fields, missing, blocked, partial, ask_user}`
-  - `executor_<name>_run(claimed_json) -> rc + writes audit rows directly`
-- `executor_<name>_run` may emit **multiple** audit rows for the same queue_id
-  (resolves #41 mechanically — `create_crm_record` and `send_followup_message`
-  become two `_ingress_write_audit_log` calls inside a single `executor_crm_run`).
+- Each executor module owns one scenario_id and exports `extract_fields(text)`
+  returning the 5-tuple `(fields, missing, blocked, partial, ask_user)`.
+- For #41 (CRM step split), the executor module additionally exports a callable
+  that emits two audit rows when invoked from worker.sh — implemented by writing
+  a small bash shim alongside the .py file (e.g. `crm.sh` next to `crm.py`) that
+  worker.sh calls, OR by extending `larc ingress run-once` bundle templates.
+  The exact mechanism for the runtime side is finalized when #41 is implemented.
 - Acceptance test for new executors: `scripts/verify-post-v0.2.sh --check executors`
   (to be added once the first executor lands).
 

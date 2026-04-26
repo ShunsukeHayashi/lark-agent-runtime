@@ -33,4 +33,4 @@ right one.
 
 | # | Title | Status |
 |---|---|---|
-| 0001 | [Executor architecture](0001-executor-architecture.md) | Proposed |
+| 0001 | [Executor architecture](0001-executor-architecture.md) | Approved |
