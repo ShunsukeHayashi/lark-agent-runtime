@@ -1,0 +1,403 @@
+---
+# Lark Harness — Post-v0.2.0 Stabilization Playbook (v3)
+# Purpose: Post-release cleanup of agent_logs schema and generic-scenario executor coverage.
+# Source: GTD triage of 10 open issues on 2026-04-26 — clusters A (observability), B (executors), C (Windows).
+#
+# v3 changes vs v2:
+#  - Schema "migration" mechanics corrected:
+#      agent_logs fields are auto-applied via _ensure_table_fields() at lib/ingress.sh:2840.
+#      "Add column" really means: edit that argument list + clear the 24h cache.
+#  - All fields are TEXT type (see _ensure_table_fields lib/ingress.sh:2767-2790).
+#      Numeric semantics (attempt_no comparisons) require CAST in queries OR a typed
+#      _ensure_table_fields refactor — playbook makes this explicit.
+#  - Phase 2 fully parallel after ADR: read_task / search_content / crm / cross_search are independent.
+#  - p2-executor-adr now also bootstraps docs/adr/ + ADR template (no prior ADR convention).
+#  - Verification consolidated into scripts/verify-post-v0.2.sh (no test infrastructure exists).
+
+meta:
+  version: 3
+  agent: main
+  gate: preview
+  source: playbook
+  branch_prefix: feature/post-v0.2
+  related_docs:
+    - PLAYBOOK.md
+    - PARALLEL_PLAYBOOK.md
+    - docs/permission-model.md
+  tracked_issues:
+    cluster_a_observability: [38, 39, 40, 41, 42]
+    cluster_b_executors:     [44, 45, 46, 47]
+    cluster_c_tracking:      [9]
+
+  # ── Codebase facts (verified 2026-04-26) ────────────────────────────────
+  codebase_facts:
+    audit_log_writer: "lib/ingress.sh:1665 _ingress_write_audit_log"
+    audit_log_table_provisioner: "lib/ingress.sh:2819 _get_or_create_logs_table"
+    audit_log_field_ensure_call: "lib/ingress.sh:2840"
+    queue_table_field_ensure_call: "lib/ingress.sh:2811"
+    field_ensure_function: "lib/ingress.sh:2767 _ensure_table_fields"
+    field_type_default: "text"   # _ensure_table_fields creates fields as type=text only
+    field_cache_path: "$LARC_CACHE_DIR/fields/<base_token>/<table_id>"
+    field_cache_ttl: "24h"
+    cache_clear_command: "rm -rf $LARC_CACHE_DIR/fields/"
+    inline_scenarios: "lib/ingress.sh:685-794 extract_fields()"
+    no_test_infrastructure: true
+    no_existing_adr: true
+
+  pre_work_constraints:
+    - "agent_logs is a Lark Base table; column 'addition' = edit the field list at ingress.sh:2840 + clear cache"
+    - "ALL added fields will be text type. Numeric ops require CAST in views/queries unless _ensure_table_fields is refactored first (see optional p1-prereq-typed-fields)."
+    - "_ensure_table_fields is idempotent; safe to add fields via PR without manual migration"
+    - "After merge, operators must run: rm -rf ~/.larc/cache/fields/ on each running host"
+
+phases:
+  - id: phase-0-prereq
+    title: "Phase 0 — Optional Prerequisite (typed fields)"
+    goal: "If any later task wants numeric/datetime semantics, refactor _ensure_table_fields first."
+    optional: true
+
+  - id: phase-1-log-schema
+    title: "Phase 1 — Log Schema v2 (parallel)"
+    goal: "Separate notification noise from real failures; persist HITL intermediate states."
+    depends_on: []
+    issues: [38, 39, 40, 41, 42]
+    parallel: true
+
+  - id: phase-2-executors
+    title: "Phase 2 — Executor Framework + Adapters (parallel after ADR)"
+    goal: "Replace auto-resolved generic-scenario tasks with typed executors."
+    depends_on: [phase-1-log-schema]
+    issues: [44, 45, 46, 47]
+    parallel_after: p2-executor-adr
+
+  - id: phase-3-windows-tracking
+    title: "Phase 3 — Windows Support Tracking"
+    goal: "Triage user reproductions; file sub-issues."
+    depends_on: []
+    issues: [9]
+    cadence: "monthly review on the 1st; close if zero reproductions for 90 days"
+
+# ── Task list ───────────────────────────────────────────────────────────────
+tasks:
+
+  # ============================================================
+  # Phase 0 — OPTIONAL: type-aware field ensure
+  # Skip unless a downstream task explicitly demands non-text storage.
+  # ============================================================
+
+  - id: p0-typed-fields
+    phase: phase-0-prereq
+    optional: true
+    title: "Refactor _ensure_table_fields to accept per-field type"
+    files:
+      code:
+        - "lib/ingress.sh:2767-2790"
+    instruction: |
+      Current API:  _ensure_table_fields <base> <table> field1 field2 ...   (all text)
+      Target API:   _ensure_table_fields <base> <table> field1:text field2:number ...
+      Backwards compatibility: bare names default to text.
+      Map type tokens to lark-cli +field-create JSON:
+        text   → {"type":"text"}
+        number → {"type":"number"}
+        date   → {"type":"datetime"}
+    acceptance:
+      - "ingress.sh:2840 unchanged (still works with bare names)"
+      - "A new field declared as 'attempt_no:number' is created with type=number on a fresh Base"
+      - "rm -rf ~/.larc/cache/fields/ then re-run; field type is preserved (idempotent)"
+    risk: medium
+
+  # ============================================================
+  # Phase 1 — Log Schema v2 (PARALLEL)
+  # ============================================================
+
+  - id: p1-state-machine-dedup
+    phase: phase-1-log-schema
+    issue: 39
+    title: "Suppress duplicate in_progress audit rows for same queue_id"
+    files:
+      code:
+        - "lib/ingress.sh: in_progress emission at line 2141"
+        - "lib/ingress.sh: edit field list at line 2840 — add: attempt_no attempt_reason"
+      operator_action:
+        - "rm -rf ~/.larc/cache/fields/   # on each running host after deploy"
+    instruction: |
+      1. Add 'attempt_no attempt_reason' to the _ensure_table_fields call at line 2840.
+         Note: attempt_no will be stored as TEXT (e.g., '1', '2'). If numeric is required,
+         depend on p0-typed-fields and use 'attempt_no:number'.
+      2. In the in_progress emission path (around line 2141), look up the most recent
+         agent_logs row for this queue_id (use lark-cli base +record-list with a filter).
+         If status='in_progress' already, SKIP the new audit row.
+      3. Genuine retry path: set attempt_no = (prior_text + 1) and
+         attempt_reason = "retry_after_<prior_status>".
+    acceptance:
+      - "Run scripts/verify-post-v0.2.sh --check dedup; 0 queue_ids with consecutive in_progress"
+      - "Force a retry; agent_logs has a row with attempt_no='2' and non-empty attempt_reason"
+      - "After deploy, ALL hosts ran 'rm -rf ~/.larc/cache/fields/' to refresh schema cache"
+    risk: high
+    parallel_safe_with: [p1-hitl-persistence, p1-noise-classification, p1-crm-split]
+    soft_depends_on: [p0-typed-fields]   # only if numeric attempt_no is required
+
+  - id: p1-hitl-persistence
+    phase: phase-1-log-schema
+    issue: 40
+    title: "Persist blocked_approval / approved / partial in agent_logs"
+    context: |
+      Queue states ALREADY exist (lib/ingress.sh:232, 1597; CLI commands at lines 60-61).
+      Issue #40's complaint: transitions through these states do NOT consistently produce audit rows.
+    files:
+      code:
+        - "lib/ingress.sh: edit field list at line 2840 — add: next_human_action"
+        - "lib/ingress.sh: emit-on-transition for status in {blocked_approval, approved, partial}"
+        - "lib/approve.sh: ensure approve/reject paths call _ingress_write_audit_log"
+      operator_action:
+        - "rm -rf ~/.larc/cache/fields/"
+    instruction: |
+      1. Grep all _ingress_write_audit_log call sites. Verify each transition writes a row:
+           approval gate hit            → status=blocked_approval
+           larc ingress approve         → status=approved
+           partial completion           → status=partial
+      2. On blocked_approval, populate next_human_action with the structured prompt
+         (e.g., "approve in Lark UI: <approval_url>").
+      3. Approval-pending must NEVER collapse to status=failed.
+      4. Field is TEXT; if structured JSON is desired, store as compact JSON string.
+    acceptance:
+      - "Run scripts/verify-post-v0.2.sh --check hitl"
+      - "End-to-end approval-gated task: agent_logs has rows for blocked_approval, approved, done"
+      - "Query: status='blocked_approval' AND (next_human_action IS NULL OR next_human_action='') → 0 rows"
+    risk: medium
+    parallel_safe_with: [p1-state-machine-dedup, p1-noise-classification, p1-crm-split]
+
+  - id: p1-noise-classification
+    phase: phase-1-log-schema
+    issues: [38, 42]
+    title: "Add result_class column; subdivide source=im"
+    files:
+      code:
+        - "lib/ingress.sh: edit field list at line 2840 — add: result_class delivery_status"
+        - "lib/ingress.sh: writer caller-side enums"
+        - "lib/send.sh: emit delivery_status (delivered | delivery_failed | retried_<n>)"
+      operator_action:
+        - "rm -rf ~/.larc/cache/fields/"
+        - "Update Lark Base view '❌ 失敗ログ' filter: result_class = 'business' OR result_class IS NULL"
+    instruction: |
+      1. result_class enum (caller-side, TEXT):
+           business | noise | delivery
+      2. source enum subdivision (caller-side, no schema change):
+           im_user_request | im_system_echo | im_delivery
+      3. delivery_status (TEXT, nullable):
+           delivered | delivery_failed | retried_<n>
+      4. Update Lark Base view to exclude result_class='noise' from failure rollups.
+    acceptance:
+      - "Run scripts/verify-post-v0.2.sh --check noise"
+      - "Query: status='failed' AND result_class='noise' returns rows (split is happening)"
+      - "View '❌ 失敗ログ' contains zero rows where result_class='noise' (post-view-update)"
+      - "Failure KPI in monthly Base report drops within ±10% of business-only failures"
+    risk: high
+    parallel_safe_with: [p1-state-machine-dedup, p1-hitl-persistence, p1-crm-split]
+
+  - id: p1-crm-split
+    phase: phase-1-log-schema
+    issue: 41
+    title: "Split CRM follow-up into create_record + send_message audit steps"
+    files:
+      code:
+        - "lib/ingress.sh: extract_fields() crm_followup branch lines 747-760"
+        - "lib/worker.sh: emit two audit rows under same queue_id"
+      base_schema_change: "none (reuses status=partial + execution_note JSON)"
+    instruction: |
+      1. crm_followup worker emits two task-typed audit rows for the same queue_id:
+           agent_logs(status='in_progress', task_types='create_crm_record', queue_id=X)
+           agent_logs(status='in_progress', task_types='send_followup_message', queue_id=X)
+      2. If create succeeds but send fails → status=partial with execution_note JSON:
+           {"step_done":"create_crm_record","step_pending":"send_followup_message","retry_only_eligible":true}
+      3. retry_only_eligible=true triggers a 'send-only' retry path; do NOT re-create the record.
+    acceptance:
+      - "Run scripts/verify-post-v0.2.sh --check crm-split"
+      - "Force send_message failure; final row has status='partial' and parseable execution_note JSON"
+      - "Retry path skips create_crm_record (one new audit row, not two)"
+    risk: medium
+    parallel_safe_with: [p1-state-machine-dedup, p1-noise-classification]
+    soft_depends_on: [p1-hitl-persistence]
+
+  # ============================================================
+  # Phase 2 — Executor Framework
+  # ============================================================
+
+  - id: p2-executor-adr
+    phase: phase-2-executors
+    title: "Bootstrap docs/adr/ + ADR-0001 executor architecture"
+    files:
+      code:
+        - "docs/adr/template.md   # new (establishes ADR convention)"
+        - "docs/adr/0001-executor-architecture.md   # new"
+        - "docs/adr/README.md   # numbering + status policy"
+    instruction: |
+      Step 1 — establish ADR convention (no prior ADRs in repo):
+        - Create docs/adr/README.md with numbering rules (NNNN-kebab-title.md, four digits, monotonic)
+        - Create docs/adr/template.md (Status / Context / Decision / Consequences sections)
+      Step 2 — write ADR-0001:
+        - Read lib/ingress.sh:685-794 (extract_fields) and 825-840 (TASK_PLANS)
+        - Existing scenarios are inline Python heredoc branches: ppal_marketing_ops, crm_followup,
+          expense_approval, document_update.
+        - Decide one option:
+            A — extend extract_fields() with new branches (zero refactor, low test isolation)
+            B — extract scenarios to lib/executors/*.sh + dispatcher (better isolation, refactor cost)
+            C — hybrid: existing 4 stay inline, new ones as files (low blast radius, two patterns)
+        - Mark Status: Proposed → require team approval before Phase 2 code work begins.
+    acceptance:
+      - "docs/adr/{README.md, template.md, 0001-executor-architecture.md} exist"
+      - "ADR-0001 status flips to APPROVED (manual edit by reviewer) before any p2-* adapter PR opens"
+      - "All four adapter PRs reference ADR-0001 in their description"
+    risk: low
+    blocks: [p2-read-task-adapter, p2-search-content-adapter, p2-crm-executor, p2-cross-search-executor]
+
+  - id: p2-read-task-adapter
+    phase: phase-2-executors
+    issue: 44
+    title: "Implement read_task adapter for queue triage"
+    target_queue: "840204e9-0943-46c9-830a-9f76cbf8ce85 (NO.545)"
+    files: { conditional_on: p2-executor-adr }
+    instruction: |
+      Per ADR pattern (whichever option is APPROVED). Inputs: queue_id_filter (optional),
+      time_window. Output: classification (recover/delegate/approval-waiting) +
+      recommended next action, written to execution_note as JSON.
+    acceptance:
+      - "Re-run target_queue end-to-end: status=done with execution_note containing classification breakdown"
+      - "Auto-resolve message no longer triggers for this queue_id"
+    risk: medium
+    depends_on: [p2-executor-adr]
+    parallel_safe_with: [p2-search-content-adapter, p2-crm-executor, p2-cross-search-executor]
+
+  - id: p2-search-content-adapter
+    phase: phase-2-executors
+    issue: 45
+    title: "Implement search_content adapter (document/invoice)"
+    target_queue: "2e516c46-34cb-42d4-ad8c-b04f02179400 (NO.546)"
+    files: { conditional_on: p2-executor-adr }
+    instruction: |
+      Inputs: document_id OR invoice_target. Detect missing context (recipient, attachments,
+      send_method). On missing → status=partial with next_human_action populated
+      (depends on p1-hitl-persistence schema).
+    acceptance:
+      - "Target queue runs without auto-resolve"
+      - "Forced missing-context case: status=partial with next_human_action naming the missing field"
+    risk: medium
+    depends_on: [p2-executor-adr]
+    soft_depends_on: [p1-hitl-persistence]
+    parallel_safe_with: [p2-read-task-adapter, p2-crm-executor, p2-cross-search-executor]
+
+  - id: p2-crm-executor
+    phase: phase-2-executors
+    issue: 46
+    title: "Implement CRM executor (read_base / update_base_record)"
+    target_queue: "923416bd-7bfd-49e4-8e73-571a6206c309 (NO.547)"
+    files:
+      code:
+        - "(per ADR)"
+        - "config/scope-map.json   # bundle read_base + update_base_record under 'crm-agent'"
+    instruction: |
+      Required enqueue schema: base_token, record_id, field_path. Reject enqueue without
+      these (return nonzero exit + clear error; do NOT auto-resolve later).
+      Classify candidates: re-runnable / permission-missing / input-missing.
+      permission-missing → emit blocked_approval with next_human_action="grant scope X".
+    acceptance:
+      - "Target queue executes or returns explicit blocked/partial (no auto-resolve)"
+      - "larc ingress enqueue without base_token returns nonzero exit and prints required schema"
+    risk: medium
+    depends_on: [p2-executor-adr]
+    parallel_safe_with: [p2-read-task-adapter, p2-search-content-adapter, p2-cross-search-executor]
+
+  - id: p2-cross-search-executor
+    phase: phase-2-executors
+    issue: 47
+    title: "Implement Wiki/Drive/Base cross-search executor"
+    target_queue: "f6614a6d-d7f3-4e21-a83a-e064ab83d267 (NO.548)"
+    files: { conditional_on: p2-executor-adr }
+    instruction: |
+      Inputs: search_scope {wiki_space_id | drive_folder_token | base_list[]},
+              output_target {lark_doc_token | wiki_node_token}.
+      Aggregate frequency + category over recent done/failed records.
+      Emit Lark Doc / Wiki node update at output_target.
+    acceptance:
+      - "Target queue produces an improvement-area report at the configured output_target"
+      - "Empty search_scope returns nonzero exit (no silent auto-resolve)"
+    risk: medium
+    depends_on: [p2-executor-adr]
+    parallel_safe_with: [p2-read-task-adapter, p2-search-content-adapter, p2-crm-executor]
+
+  # ============================================================
+  # Phase 3 — Windows Tracking
+  # ============================================================
+
+  - id: p3-windows-status-doc
+    phase: phase-3-windows-tracking
+    issue: 9
+    title: "Maintain Windows reproduction log + cadence"
+    files:
+      code:
+        - "docs/windows-support.md   # new"
+    instruction: |
+      Create docs/windows-support.md with:
+        - Last reviewed date (updated on each monthly check)
+        - Open reproductions table (env, error, file:line, sub-issue link)
+        - Closed reproductions archive
+      Cadence:
+        - Monthly review on the 1st: triage incoming reports, close stale (>90 days no activity)
+        - For each new reproduction: file sub-issue under #9, add to open table
+        - Do NOT attempt blind fixes without a reproduction
+    acceptance:
+      - "docs/windows-support.md exists and is referenced from #9"
+      - "First monthly review entry within 30 days of merge"
+    risk: low
+    blocked_on: "external user reproduction reports"
+
+# ── Verification harness ───────────────────────────────────────────────────
+verification:
+  script: scripts/verify-post-v0.2.sh
+  purpose: "Replaces missing test infrastructure. Each task above references a --check <name> mode."
+  required_checks:
+    - dedup       # p1-state-machine-dedup
+    - hitl        # p1-hitl-persistence
+    - noise       # p1-noise-classification
+    - crm-split   # p1-crm-split
+    - executors   # phase 2 (after ADR APPROVED, runs target_queue probes)
+  invocation: |
+    scripts/verify-post-v0.2.sh --check all      # run every check
+    scripts/verify-post-v0.2.sh --check dedup    # one task
+  notes:
+    - "Script must read LARC_BASE_APP_TOKEN from ~/.larc/config.env"
+    - "Each check exits 0 on pass, 1 on fail, with structured stdout (one line per assertion)"
+
+# ── Post-merge operator runbook ────────────────────────────────────────────
+operator_runbook:
+  after_phase_1_merge:
+    - "On every host running larc:  rm -rf ~/.larc/cache/fields/"
+    - "Run: scripts/verify-post-v0.2.sh --check all"
+    - "Update Lark Base views per p1-noise-classification step 4 (manual UI work)"
+  after_phase_2_merge:
+    - "Re-enqueue NO.545–NO.548 manually: larc ingress enqueue ..."
+    - "Confirm ADR-0001 status=APPROVED (no further adapter PRs without this)"
+
+# ── Acceptance summary ─────────────────────────────────────────────────────
+acceptance_global:
+  phase-1-log-schema:
+    - "agent_logs has fields: attempt_no, attempt_reason, next_human_action, result_class, delivery_status (all text)"
+    - "❌ 失敗ログ view excludes result_class='noise'"
+    - "🟡 要確認・承認 view = rows with status='blocked_approval' AND next_human_action != ''"
+    - "Same queue_id never has two consecutive in_progress rows"
+    - "CRM follow-ups produce 2 typed audit rows per queue_id"
+    - "scripts/verify-post-v0.2.sh --check all exits 0"
+  phase-2-executors:
+    - "ADR-0001 status=APPROVED in docs/adr/0001-executor-architecture.md"
+    - "Four target queue_ids (NO.545–548) execute end-to-end without auto-resolve"
+    - "Enqueue without required inputs returns nonzero exit"
+  phase-3-windows-tracking:
+    - "docs/windows-support.md exists; first monthly review entry recorded"
+
+# ── Out of scope ───────────────────────────────────────────────────────────
+out_of_scope:
+  - "OpenClaw / Codex protocol changes"
+  - "New scope additions beyond existing 50-task scope-map (except CRM bundling in #46)"
+  - "lark-cli command alignment (already in playbook/phase0-alignment.yaml)"
+  - "Refactoring extract_fields() beyond what ADR-0001 mandates"
+  - "Migrating agent_logs to a relational store (out of scope for v0.2.x)"
