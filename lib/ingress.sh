@@ -279,6 +279,21 @@ PY
   if [[ -n "$LARC_BASE_APP_TOKEN" ]]; then
     _ingress_write_base "$summary_json"
     _ingress_write_audit_log "$summary_json" "enqueued"
+    # Issue #40: approval-gated tasks need a dedicated blocked_approval audit row so the
+    # 🟡 要確認・承認 view can surface them. Otherwise only "enqueued" is recorded and
+    # the human-pending state is invisible to operators.
+    local _enq_status
+    _enq_status=$(python3 -c "import json,sys; print(json.loads(sys.argv[1]).get('status',''))" "$summary_json" 2>/dev/null)
+    if [[ "$_enq_status" == "blocked_approval" ]]; then
+      local _blocked_json
+      _blocked_json=$(python3 -c '
+import json, sys
+d = json.loads(sys.argv[1])
+d["next_human_action"] = "approve in Lark UI"
+print(json.dumps(d, ensure_ascii=False))
+' "$summary_json")
+      _ingress_write_audit_log "$_blocked_json" "blocked_approval"
+    fi
   else
     log_warn "LARC_BASE_APP_TOKEN not set — recorded to local queue only"
   fi
@@ -1695,6 +1710,7 @@ row = {
     "started_at":    d.get("started_at", ""),
     "completed_at":  d.get("completed_at", ""),
     "message_text":  (d.get("message_text") or "")[:200],
+    "next_human_action": d.get("next_human_action", ""),
 }
 print(json.dumps(row, ensure_ascii=False))
 PY
@@ -2839,7 +2855,8 @@ _get_or_create_logs_table() {
   # Always ensure fields exist — even when table ID was pinned in config.env
   _ensure_table_fields "$LARC_BASE_APP_TOKEN" "$table_id" \
     log_at agent_id queue_id source sender task_types gate status \
-    execution_note started_at completed_at message_text
+    execution_note started_at completed_at message_text \
+    next_human_action
 
   echo "$table_id"
 }
