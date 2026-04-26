@@ -1,21 +1,17 @@
 ---
-# Lark Harness — Post-v0.2.0 Stabilization Playbook (v3)
+# Lark Harness — Post-v0.2.0 Stabilization Playbook (v4 — completed)
 # Purpose: Post-release cleanup of agent_logs schema and generic-scenario executor coverage.
 # Source: GTD triage of 10 open issues on 2026-04-26 — clusters A (observability), B (executors), C (Windows).
 #
-# v3 changes vs v2:
-#  - Schema "migration" mechanics corrected:
-#      agent_logs fields are auto-applied via _ensure_table_fields() at lib/ingress.sh:2840.
-#      "Add column" really means: edit that argument list + clear the 24h cache.
-#  - All fields are TEXT type (see _ensure_table_fields lib/ingress.sh:2767-2790).
-#      Numeric semantics (attempt_no comparisons) require CAST in queries OR a typed
-#      _ensure_table_fields refactor — playbook makes this explicit.
-#  - Phase 2 fully parallel after ADR: read_task / search_content / crm / cross_search are independent.
-#  - p2-executor-adr now also bootstraps docs/adr/ + ADR template (no prior ADR convention).
-#  - Verification consolidated into scripts/verify-post-v0.2.sh (no test infrastructure exists).
+# v4 changes vs v3:
+#  - All planned tasks implemented and merged to main on 2026-04-26.
+#  - Status added per task; #41 explicitly marked deferred (extract side
+#    landed in p2-crm-executor; runtime two-row split needs worker.sh changes).
+#  - completion_log records the 10 commits that delivered this playbook.
+#  - next_followups section captures remaining work that outgrew this playbook.
 
 meta:
-  version: 3
+  version: 4
   agent: main
   gate: preview
   source: playbook
@@ -49,6 +45,90 @@ meta:
     - "ALL added fields will be text type. Numeric ops require CAST in views/queries unless _ensure_table_fields is refactored first (see optional p1-prereq-typed-fields)."
     - "_ensure_table_fields is idempotent; safe to add fields via PR without manual migration"
     - "After merge, operators must run: rm -rf ~/.larc/cache/fields/ on each running host"
+
+# ── Completion log ──────────────────────────────────────────────────────────
+# All planned tasks landed on main 2026-04-26. Order reflects merge order.
+completion_log:
+  date: "2026-04-26"
+  branch: main
+  verify_status: "scripts/verify-post-v0.2.sh --check all → 25/25 pass"
+  commits:
+    - sha: "2323d88"
+      task: "(playbook bootstrap)"
+      message: "chore(playbook): post-v0.2 stabilization plan + ignore local skill mirrors"
+    - sha: "49888b2"
+      task: "p1-hitl-persistence"
+      issue: 40
+      message: "fix(audit): emit blocked_approval row + add next_human_action column"
+    - sha: "f0d2638"
+      task: "p1-state-machine-dedup"
+      issue: 39
+      message: "fix(audit): suppress duplicate in_progress audit rows on re-claim"
+    - sha: "301fad2"
+      task: "p1-noise-classification"
+      issues: [38, 42]
+      message: "fix(audit): classify noise rows + subdivide source=im"
+    - sha: "f747c2b"
+      task: "(verification harness)"
+      message: "test(verify): add Phase 1 verification harness"
+    - sha: "0105a64"
+      task: "p2-executor-adr (Proposed)"
+      message: "docs(adr): bootstrap docs/adr + ADR-0001 executor architecture"
+    - sha: "033c853"
+      task: "p2-executor-adr (Approved)"
+      message: "docs(adr): correct ADR-0001 to .py + flip Status to Approved"
+    - sha: "b7c2a35"
+      task: "p2-read-task-adapter"
+      issue: 44
+      message: "feat(executor): add dispatcher + queue_triage executor"
+    - sha: "b35b7af"
+      task: "p2-search-content / p2-crm-executor / p2-cross-search-executor"
+      issues: [45, 46, 47]
+      message: "feat(executor): add doc_search, crm_admin, cross_search executors"
+    - sha: "d305dc7"
+      task: "p3-windows-status-doc"
+      issue: 9
+      message: "docs(windows): add windows-support.md reproduction log"
+  issues_closed: [38, 39, 40, 42, 44, 45, 46, 47]
+  issues_remaining_open: [9, 41]
+
+# ── Follow-up work outside this playbook ────────────────────────────────────
+next_followups:
+  - id: f-41-runtime-step-split
+    parent_issue: 41
+    summary: "CRM follow-up runtime two-audit-row split"
+    why_deferred: |
+      Worker.sh dispatches the whole queue item to openclaw or run-once;
+      it has no per-step concept. The audit-row split requires either
+      worker.sh becoming scenario-aware OR openclaw-lark plugin emitting
+      step-specific audit calls. ADR-0001 explicitly defers this; the
+      extract-side groundwork landed in p2-crm-executor.
+    next_action: "File ADR-0002 to choose: worker.sh extension vs openclaw-lark integration."
+
+  - id: f-9-windows-reproductions
+    parent_issue: 9
+    summary: "Windows-specific defect tracking"
+    why_open: "External — awaits user reproductions."
+    next_action: "Monthly review on the 1st (per docs/windows-support.md cadence)."
+
+  - id: f-extract-fields-dedup
+    parent_issue: null
+    summary: "Unify duplicate extract_fields() in lib/ingress.sh"
+    why_deferred: |
+      lib/ingress.sh defines extract_fields() at lines 700 and 922 in
+      separate Python heredocs. Both received the ADR-0001 dispatcher
+      hook via replace_all. ADR-0001 explicitly leaves unification to
+      a separate ticket to keep post-v0.2 blast radius small.
+    next_action: "File a refactor issue when someone has bandwidth + a regression-safety plan."
+
+  - id: f-typed-fields
+    parent_issue: null
+    summary: "Refactor _ensure_table_fields to accept per-field type"
+    why_deferred: |
+      All agent_logs fields are stored as TEXT today. attempt_no, etc.
+      could benefit from numeric type. Phase 0 of this playbook noted
+      it as optional and was never triggered.
+    next_action: "Pick up if a future task explicitly needs non-text storage."
 
 phases:
   - id: phase-0-prereq
@@ -86,6 +166,8 @@ tasks:
   # ============================================================
 
   - id: p0-typed-fields
+    status: not_started
+    status_note: "Optional; never triggered."
     phase: phase-0-prereq
     optional: true
     title: "Refactor _ensure_table_fields to accept per-field type"
@@ -111,6 +193,8 @@ tasks:
   # ============================================================
 
   - id: p1-state-machine-dedup
+    status: completed
+    status_note: "Commit f0d2638 (#39)"
     phase: phase-1-log-schema
     issue: 39
     title: "Suppress duplicate in_progress audit rows for same queue_id"
@@ -138,6 +222,8 @@ tasks:
     soft_depends_on: [p0-typed-fields]   # only if numeric attempt_no is required
 
   - id: p1-hitl-persistence
+    status: completed
+    status_note: "Commit 49888b2 (#40)"
     phase: phase-1-log-schema
     issue: 40
     title: "Persist blocked_approval / approved / partial in agent_logs"
@@ -168,6 +254,8 @@ tasks:
     parallel_safe_with: [p1-state-machine-dedup, p1-noise-classification, p1-crm-split]
 
   - id: p1-noise-classification
+    status: completed
+    status_note: "Commit 301fad2 (#38, #42)"
     phase: phase-1-log-schema
     issues: [38, 42]
     title: "Add result_class column; subdivide source=im"
@@ -196,6 +284,8 @@ tasks:
     parallel_safe_with: [p1-state-machine-dedup, p1-hitl-persistence, p1-crm-split]
 
   - id: p1-crm-split
+    status: deferred
+    status_note: "Extract side handled by p2-crm-executor; runtime two-row split = follow-up f-41-runtime-step-split"
     phase: phase-1-log-schema
     issue: 41
     title: "Split CRM follow-up into create_record + send_message audit steps"
@@ -224,6 +314,8 @@ tasks:
   # ============================================================
 
   - id: p2-executor-adr
+    status: completed
+    status_note: "Commits 0105a64 (Proposed) → 033c853 (Approved)"
     phase: phase-2-executors
     title: "Bootstrap docs/adr/ + ADR-0001 executor architecture"
     files:
@@ -252,6 +344,8 @@ tasks:
     blocks: [p2-read-task-adapter, p2-search-content-adapter, p2-crm-executor, p2-cross-search-executor]
 
   - id: p2-read-task-adapter
+    status: completed
+    status_note: "Commit b7c2a35 (#44)"
     phase: phase-2-executors
     issue: 44
     title: "Implement read_task adapter for queue triage"
@@ -269,6 +363,8 @@ tasks:
     parallel_safe_with: [p2-search-content-adapter, p2-crm-executor, p2-cross-search-executor]
 
   - id: p2-search-content-adapter
+    status: completed
+    status_note: "Commit b35b7af (#45)"
     phase: phase-2-executors
     issue: 45
     title: "Implement search_content adapter (document/invoice)"
@@ -287,6 +383,8 @@ tasks:
     parallel_safe_with: [p2-read-task-adapter, p2-crm-executor, p2-cross-search-executor]
 
   - id: p2-crm-executor
+    status: completed
+    status_note: "Commit b35b7af (#46) — partial #41 too"
     phase: phase-2-executors
     issue: 46
     title: "Implement CRM executor (read_base / update_base_record)"
@@ -308,6 +406,8 @@ tasks:
     parallel_safe_with: [p2-read-task-adapter, p2-search-content-adapter, p2-cross-search-executor]
 
   - id: p2-cross-search-executor
+    status: completed
+    status_note: "Commit b35b7af (#47)"
     phase: phase-2-executors
     issue: 47
     title: "Implement Wiki/Drive/Base cross-search executor"
@@ -330,6 +430,8 @@ tasks:
   # ============================================================
 
   - id: p3-windows-status-doc
+    status: completed
+    status_note: "Commit d305dc7 (#9 stays open as parent tracking)"
     phase: phase-3-windows-tracking
     issue: 9
     title: "Maintain Windows reproduction log + cadence"
