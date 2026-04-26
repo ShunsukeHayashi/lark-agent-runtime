@@ -698,6 +698,16 @@ TASK_OPENCLAW_TOOLS = {
 }
 
 def extract_fields(scenario_id, text):
+    # ADR-0001 Hybrid: external executor module takes precedence over inline branches.
+    # See lib/executors/README.md and docs/adr/0001-executor-architecture.md.
+    import os as _os
+    _exec_path = _os.path.join(_os.environ.get("LIB_DIR", "lib"), "executors", f"{scenario_id}.py")
+    if _os.path.exists(_exec_path):
+        _ns = {}
+        exec(open(_exec_path).read(), _ns)
+        if "extract_fields" in _ns:
+            return _ns["extract_fields"](text)
+
     fields = {}
     missing = []
     blocked = []
@@ -802,7 +812,7 @@ def extract_fields(scenario_id, text):
 
     return fields, missing, blocked, partial, ask_user
 
-scenario_id = detect_scenario(task_types)
+scenario_id = detect_scenario(task_types, message)
 fields, missing_fields, blocked_fields, partial_fields, ask_user_prompt = extract_fields(scenario_id, message)
 finish_hint = []
 adapter_cmds = []
@@ -920,6 +930,16 @@ TASK_OPENCLAW_TOOLS = {
 }
 
 def extract_fields(scenario_id, text):
+    # ADR-0001 Hybrid: external executor module takes precedence over inline branches.
+    # See lib/executors/README.md and docs/adr/0001-executor-architecture.md.
+    import os as _os
+    _exec_path = _os.path.join(_os.environ.get("LIB_DIR", "lib"), "executors", f"{scenario_id}.py")
+    if _os.path.exists(_exec_path):
+        _ns = {}
+        exec(open(_exec_path).read(), _ns)
+        if "extract_fields" in _ns:
+            return _ns["extract_fields"](text)
+
     fields = {}
     missing = []
     blocked = []
@@ -1016,7 +1036,7 @@ def extract_fields(scenario_id, text):
             ask_user = ask_user or "Please provide the edit instruction for the target document."
     return fields, missing, blocked, partial, ask_user
 
-scenario_id = detect_scenario(task_types)
+scenario_id = detect_scenario(task_types, message)
 fields, missing_fields, blocked_fields, partial_fields, ask_user_prompt = extract_fields(scenario_id, message)
 
 for task_type in task_types:
@@ -2324,7 +2344,7 @@ def extract_normalized_fields(scenario_id, text):
     })
     return fields
 
-scenario_id = detect_scenario(task_types)
+scenario_id = detect_scenario(task_types, message)
 normalized_fields = extract_normalized_fields(scenario_id, message)
 session_id = f"larc-{target_agent}-{queue_id}"
 next_action = "ready_for_execution"

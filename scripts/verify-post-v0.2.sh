@@ -50,6 +50,7 @@ Checks:
   --check hitl       audit row schema includes next_human_action (#40)
   --check dedup      in_progress dedup conditional present (#39)
   --check schema     agent_logs auto-ensure list contains the new fields
+  --check executors  external executor dispatcher + queue_triage (#44)
   --check all        run all checks (default)
   --help             show this help
 
@@ -145,6 +146,32 @@ check_syntax() {
   assert "lib/daemon.sh syntax" bash -n "$DAEMON_SH"
 }
 
+check_executors() {
+  echo "${CYAN}[executors]${RESET} ADR-0001 dispatcher + queue_triage (#44)"
+  assert "lib/executors/README.md exists" test -f lib/executors/README.md
+  assert "lib/executors/queue_triage.py exists" test -f lib/executors/queue_triage.py
+  assert "queue_triage.py is valid Python" python3 -c "import ast; ast.parse(open('lib/executors/queue_triage.py').read())"
+  assert "extract_fields dispatcher hook present in ingress.sh" \
+    grep -q '_LARC_LIB_DIR\|LIB_DIR.*executors\|lib/executors' "$INGRESS_SH"
+  assert "detect_scenario routes queue_triage on triage keywords" \
+    python3 -c '
+import sys
+sys.path.insert(0, "lib")
+import ingress_scenario as s
+assert s.detect_scenario(["read_task"], "triage the queue") == "queue_triage"
+assert s.detect_scenario(["read_task"], "show me todos") == "generic"
+'
+  assert "queue_triage extract_fields returns 5-tuple" \
+    python3 -c '
+import sys
+sys.path.insert(0, "lib/executors")
+import queue_triage as qt
+r = qt.extract_fields("classify failed queue items")
+assert len(r) == 5, "extract_fields must return 5 values"
+assert "queue_filter" in r[0], "queue_filter field must be set on success path"
+'
+}
+
 # ── dispatcher ───────────────────────────────────────────────────────────────
 
 run_all() {
@@ -154,6 +181,7 @@ run_all() {
   check_im_source
   check_hitl
   check_dedup
+  check_executors
 }
 
 case "${1:---check}" in
@@ -172,6 +200,7 @@ case "$mode" in
   hitl)       check_hitl ;;
   dedup)      check_dedup ;;
   schema)     check_schema ;;
+  executors)  check_executors ;;
   syntax)     check_syntax ;;
   *) echo "Unknown check: $mode"; usage; exit 2 ;;
 esac

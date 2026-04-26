@@ -18,7 +18,13 @@ REQUIRED_RUNTIME_FIELDS = [
 ]
 
 
-def detect_scenario(task_types):
+def detect_scenario(task_types, text=""):
+    """Map a task-type set (and optionally the message text) to a scenario_id.
+
+    The optional `text` parameter lets us disambiguate scenarios whose task
+    types alone are too generic — e.g. a `read_task` that is really a queue
+    triage request vs. a normal todo lookup.
+    """
     task_set = set(task_types)
     if {"read_base", "send_message"} <= task_set and {"create_document", "update_document", "read_document"} & task_set:
         return "ppal_marketing_ops"
@@ -28,6 +34,17 @@ def detect_scenario(task_types):
         return "expense_approval"
     if "update_document" in task_set or "write_wiki" in task_set:
         return "document_update"
+
+    # Issue #44: queue triage / improvement-cycle requests.
+    # Triggered by read_task plus explicit triage/棚卸し/改善サイクル keywords,
+    # so plain todo/task lookups still fall through to "generic".
+    if "read_task" in task_set and re.search(
+        r"triage|棚卸し|改善\s*サイクル|improvement\s+cycle|classify\s+queue|queue\s+health|stale\s+in_progress",
+        text or "",
+        re.IGNORECASE,
+    ):
+        return "queue_triage"
+
     return "generic"
 
 
