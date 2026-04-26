@@ -31,3 +31,6 @@ remain `"generic"`).
 | File | Scenario | Issue |
 |---|---|---|
 | `queue_triage.py` | `queue_triage` — stale in_progress + failed queue classification | #44 |
+| `doc_search.py` | `doc_search` — document/invoice failure triage | #45 |
+| `crm_admin.py` | `crm_admin` — CRM read/update queue triage (operator side) | #46 |
+| `cross_search.py` | `cross_search` — Wiki/Drive/Base cross-source improvement-area extraction | #47 |

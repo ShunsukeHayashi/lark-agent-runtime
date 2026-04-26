@@ -147,28 +147,43 @@ check_syntax() {
 }
 
 check_executors() {
-  echo "${CYAN}[executors]${RESET} ADR-0001 dispatcher + queue_triage (#44)"
+  echo "${CYAN}[executors]${RESET} ADR-0001 dispatcher + executors (#44, #45, #46, #47)"
   assert "lib/executors/README.md exists" test -f lib/executors/README.md
-  assert "lib/executors/queue_triage.py exists" test -f lib/executors/queue_triage.py
-  assert "queue_triage.py is valid Python" python3 -c "import ast; ast.parse(open('lib/executors/queue_triage.py').read())"
   assert "extract_fields dispatcher hook present in ingress.sh" \
-    grep -q '_LARC_LIB_DIR\|LIB_DIR.*executors\|lib/executors' "$INGRESS_SH"
-  assert "detect_scenario routes queue_triage on triage keywords" \
+    grep -q 'LIB_DIR.*executors\|lib/executors' "$INGRESS_SH"
+  for mod in queue_triage doc_search crm_admin cross_search; do
+    assert "lib/executors/${mod}.py exists" test -f "lib/executors/${mod}.py"
+    assert "${mod}.py is valid Python" python3 -c "import ast; ast.parse(open('lib/executors/${mod}.py').read())"
+  done
+  assert "detect_scenario routing covers all 4 new scenarios" \
     python3 -c '
 import sys
 sys.path.insert(0, "lib")
 import ingress_scenario as s
-assert s.detect_scenario(["read_task"], "triage the queue") == "queue_triage"
-assert s.detect_scenario(["read_task"], "show me todos") == "generic"
+
+cases = [
+    (["read_task"], "show me todos", "generic"),
+    (["read_task"], "triage stale in_progress queue", "queue_triage"),
+    (["read_task"], "改善サイクル: document update と invoice send", "doc_search"),
+    (["read_base"], "改善サイクル: CRM系の failed と preview", "crm_admin"),
+    (["read_task"], "改善サイクル: Wiki Drive Base 横断", "cross_search"),
+    (["create_crm_record","send_message"], "create CRM record", "crm_followup"),
+]
+for tt, txt, want in cases:
+    got = s.detect_scenario(tt, txt)
+    assert got == want, f"detect_scenario({tt!r}, {txt!r}) -> {got!r} (want {want!r})"
 '
-  assert "queue_triage extract_fields returns 5-tuple" \
+  assert "all 4 executors return 5-tuple from extract_fields" \
     python3 -c '
 import sys
 sys.path.insert(0, "lib/executors")
-import queue_triage as qt
-r = qt.extract_fields("classify failed queue items")
-assert len(r) == 5, "extract_fields must return 5 values"
-assert "queue_filter" in r[0], "queue_filter field must be set on success path"
+for mod_name in ("queue_triage", "doc_search", "crm_admin", "cross_search"):
+    m = __import__(mod_name)
+    r = m.extract_fields("test message")
+    assert len(r) == 5, f"{mod_name}: must return 5-tuple, got {len(r)}"
+    assert isinstance(r[0], dict), f"{mod_name}: fields must be dict"
+    assert all(isinstance(x, list) for x in r[1:4]), f"{mod_name}: missing/blocked/partial must be lists"
+    assert isinstance(r[4], str), f"{mod_name}: ask_user must be str"
 '
 }
 
