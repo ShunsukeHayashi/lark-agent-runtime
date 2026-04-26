@@ -2154,7 +2154,14 @@ PY
 
   if [[ -n "${LARC_BASE_APP_TOKEN:-}" ]]; then
     _ingress_write_base "$claimed_json" >&2
-    _ingress_write_audit_log "$claimed_json" "in_progress" >&2
+    # Issue #39: dedup. If the queue was already in_progress before this claim
+    # (e.g., a re-claim or restart), don't emit another in_progress audit row.
+    # Genuine retries (from partial/failed/pending → in_progress) still emit.
+    local _prev_status
+    _prev_status=$(python3 -c "import json,sys; print(json.loads(sys.argv[1]).get('status',''))" "$queue_json" 2>/dev/null)
+    if [[ "$_prev_status" != "in_progress" ]]; then
+      _ingress_write_audit_log "$claimed_json" "in_progress" >&2
+    fi
   fi
 
   printf '%s\n' "$claimed_json"
