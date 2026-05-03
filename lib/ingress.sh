@@ -132,8 +132,9 @@ _ingress_enqueue() {
   [[ ! -f "$gate_path" ]] && { log_error "gate-policy.json not found"; return 1; }
 
   local summary_json
-  summary_json=$(python3 - "$map_path" "$gate_path" "$text" "$agent_id" "$source" "$sender" "$event_id" <<'PY'
+  summary_json=$(LARC_LIB_DIR="$LIB_DIR" python3 - "$map_path" "$gate_path" "$text" "$agent_id" "$source" "$sender" "$event_id" <<'PY'
 import json
+import os
 import re
 import sys
 import uuid
@@ -149,6 +150,20 @@ with open(gate_path, "r", encoding="utf-8") as f:
 
 tasks = scope_map.get("tasks", {})
 gate_tasks = gate_policy.get("tasks", {})
+
+matched_tasks = set()
+if not os.environ.get("LARC_CLASSIFIER_DISABLE_LLM"):
+    lib_dir = os.environ.get("LARC_LIB_DIR", "")
+    helper = os.path.join(lib_dir, "classify_task_llm.py")
+    if lib_dir and os.path.isfile(helper):
+        sys.path.insert(0, lib_dir)
+        try:
+            import classify_task_llm  # type: ignore
+            for tk in classify_task_llm.classify(task_desc, tasks):
+                if tk in tasks:
+                    matched_tasks.add(tk)
+        except Exception as exc:
+            print(f"[ingress] LLM classifier error: {exc}", file=sys.stderr)
 
 KEYWORD_MAP = {
     r"\bdoc\b|document": ["read_document"],
@@ -183,6 +198,8 @@ KEYWORD_MAP = {
     r"\bexpense\b|\breimbursement\b|expense\s+report|expense\s+claim|receipt\s+submission": ["create_expense"],
     r"(?:submit|send|create|trigger|start)\s+\w*\s*approval|approval\s+flow|approval\s+request|route\s+\w+\s+to\s+approval": ["submit_approval"],
     r"(?:approve|reject|process|handle)\s+\w*\s*approval|approval\s+task|approver|reject\s+task": ["act_approval_task"],
+    r"請求書.*承認|承認.*請求書|承認をお願いします|承認してください": ["act_approval_task"],
+    r"承認申請|稟議|申請.*承認|承認.*申請": ["submit_approval"],
     r"(?:check|read|get|view)\s+\w*\s*approval|approval\s+status|pending\s+approval": ["read_approval"],
     r"contact|employee\s+info|user\s+info|directory|lookup\s+user|find\s+user|\bhr\b": ["read_contact"],
     r"update\s+\w*\s*contact|manage\s+\w*\s*contact|add\s+\w*\s*employee": ["manage_contact"],
@@ -196,12 +213,12 @@ KEYWORD_MAP = {
     r"slide|\bppt\b|presentation|deck": ["manage_slides"],
 }
 
-matched_tasks = set()
-for pattern, task_keys in KEYWORD_MAP.items():
-    if re.search(pattern, task_desc_l):
-        for tk in task_keys:
-            if tk in tasks:
-                matched_tasks.add(tk)
+if not matched_tasks:
+    for pattern, task_keys in KEYWORD_MAP.items():
+        if re.search(pattern, task_desc_l):
+            for tk in task_keys:
+                if tk in tasks:
+                    matched_tasks.add(tk)
 
 all_scopes = sorted({scope for tk in matched_tasks for scope in tasks[tk]["scopes"]})
 identities = {tasks[tk]["identity"] for tk in matched_tasks}

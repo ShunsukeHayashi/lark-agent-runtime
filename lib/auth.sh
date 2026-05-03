@@ -332,6 +332,8 @@ KEYWORD_MAP = {
     # "route X to approval", "submit approval", "approval flow" → submit_approval
     r"(?:submit|send|create|trigger|start)\s+\w*\s*approval|approval\s+flow|approval\s+request|route\s+\w+\s+to\s+approval": ["submit_approval"],
     r"(?:approve|reject|process|handle)\s+\w*\s*approval|approval\s+task|approver|reject\s+task": ["act_approval_task"],
+    r"請求書.*承認|承認.*請求書|承認をお願いします|承認してください": ["act_approval_task"],
+    r"承認申請|稟議|申請.*承認|承認.*申請": ["submit_approval"],
     r"(?:check|read|get|view)\s+\w*\s*approval|approval\s+status|pending\s+approval": ["read_approval"],
 
     # ── Contact / Directory ────────────────────────────────────────────

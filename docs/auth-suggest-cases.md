@@ -211,6 +211,7 @@ Expected minimum scope sets:
 [drive:file:create, wiki:node:write, wiki:space:read] upload the contract file to drive and update the wiki with the key terms
 [bitable:app, bitable:app:readonly, calendar:calendar, contact:user.base:readonly] create a lead record and schedule a follow-up meeting
 [attendance:task:readonly, sheets:spreadsheet] read the attendance records and generate a timesheet report
+[approval:task:write] 請求書発行の承認をお願いします
 ```
 
 ---
