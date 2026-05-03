@@ -5,7 +5,7 @@
   "tasks": {
     "read_document": {
       "scopes": [
-        "docs:doc:readonly"
+        "docs:document:readonly"
       ],
       "identity": "user",
       "description": "飞书文档の読み取り"
@@ -19,21 +19,21 @@
     },
     "update_document": {
       "scopes": [
-        "docs:doc"
+        "docs:document"
       ],
       "identity": "user",
       "description": "飞书文档の編集・更新"
     },
     "read_wiki": {
       "scopes": [
-        "wiki:wiki:readonly"
+        "wiki:space:read"
       ],
       "identity": "user",
       "description": "Wikiスペース・ノードの読み取り"
     },
     "write_wiki": {
       "scopes": [
-        "wiki:wiki"
+        "wiki:node:write"
       ],
       "identity": "user",
       "description": "Wikiノードの作成・更新"
@@ -62,7 +62,7 @@
     },
     "read_drive": {
       "scopes": [
-        "drive:drive:readonly"
+        "drive:drive.metadata:readonly"
       ],
       "identity": "user",
       "description": "Drive ファイル・フォルダの読み取り"
@@ -323,7 +323,7 @@
         "minutes:content"
       ],
       "identity": "user",
-      "description": "飞书妙记（会議録）の作成・編集"
+      "description": "飞书妙記（会議録）の作成・編集"
     },
     "translate_content": {
       "scopes": [
@@ -406,16 +406,16 @@
     "readonly": {
       "description": "読み取り専用プロファイル — データ閲覧・分析用途",
       "scopes": [
-        "docs:doc:readonly",
-        "wiki:wiki:readonly",
-        "base:record:readonly",
-        "drive:drive:readonly",
+        "docs:document:readonly",
+        "wiki:space:read",
+        "bitable:app:readonly",
+        "drive:drive.metadata:readonly",
         "calendar:calendar:readonly",
         "approval:approval:readonly",
         "contact:user.base:readonly",
         "contact:department.base:readonly",
-        "task:task:readonly",
-        "attendance:record:readonly",
+        "task:task:read",
+        "attendance:task:readonly",
         "minutes:content:readonly",
         "vc:record:readonly"
       ]
@@ -423,10 +423,10 @@
     "writer": {
       "description": "書き込みプロファイル — 日常業務・コンテンツ作成用途",
       "scopes": [
-        "docs:doc:create",
-        "docs:doc",
-        "wiki:wiki",
-        "base:record:created",
+        "docs:document:create",
+        "docs:document",
+        "wiki:node:write",
+        "bitable:app",
         "drive:file:create",
         "im:message:send_as_bot",
         "calendar:calendar",
@@ -437,9 +437,9 @@
     "admin": {
       "description": "管理者プロファイル — ワークスペース・フロー管理用途",
       "scopes": [
-        "docs:doc",
-        "wiki:wiki",
-        "wiki:wiki.node",
+        "docs:document",
+        "wiki:space:write",
+        "wiki:node:write",
         "bitable:app",
         "bitable:table",
         "bitable:record",
@@ -460,12 +460,12 @@
     "backoffice_agent": {
       "description": "バックオフィスエージェント — 経費・稟議・ドキュメント処理用途",
       "scopes": [
-        "docs:doc:readonly",
-        "wiki:wiki:readonly",
-        "base:record:created",
-        "base:record:readonly",
+        "docs:document:readonly",
+        "wiki:space:read",
+        "bitable:app",
+        "bitable:app:readonly",
         "drive:file:create",
-        "drive:drive:readonly",
+        "drive:drive.metadata:readonly",
         "im:message:send_as_bot",
         "approval:approval:write",
         "approval:instance:write",

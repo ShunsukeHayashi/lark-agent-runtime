@@ -3,8 +3,8 @@
 > Canonical test cases for `larc auth suggest`. Each case has a task description,
 > expected minimum scopes, and the authority reasoning behind each scope.
 >
-> Status as of: 2026-04-14
-> Scope-map version: 0.2.0
+> Status as of: 2026-04-20
+> Scope-map version: 0.3.0
 
 These cases were derived from realistic office-work scenarios that span multiple
 Lark surfaces. They serve as regression tests and as evidence that the permission
@@ -47,9 +47,9 @@ Extra scopes are a warning (over-permission) but not a failure.
 **Expected scopes:**
 | Scope | Why |
 |---|---|
-| `docs:doc:readonly` | Reading a Lark Doc requires read scope |
-| `wiki:wiki:readonly` | Traversing the wiki space to find the page |
-| `wiki:wiki` | Updating a wiki node requires write scope |
+| `docs:document:readonly` | Reading a Lark Doc requires read scope |
+| `wiki:space:read` | Traversing the wiki space to find the page |
+| `wiki:node:write` | Updating a wiki node requires write scope |
 
 **Authority path:** user — doc reading and wiki editing are user-identity operations.
 
@@ -130,8 +130,8 @@ required "create expense" rather than bare "expense".
 | Scope | Why |
 |---|---|
 | `drive:file:create` | Uploading a file to Lark Drive |
-| `wiki:wiki:readonly` | Traversing the wiki space |
-| `wiki:wiki` | Updating wiki node content |
+| `wiki:space:read` | Traversing the wiki space |
+| `wiki:node:write` | Updating wiki node content |
 
 **Authority path:** user — both Drive upload and wiki edit are user-identity actions.
 
@@ -204,11 +204,11 @@ bash scripts/auth-suggest-check.sh --verify
 Expected minimum scope sets:
 ```
 [approval:instance:write, bitable:app] create expense report and request approval
-[docs:doc:readonly, wiki:wiki, wiki:wiki:readonly] read a document and update the wiki page
+[docs:document:readonly, wiki:node:write, wiki:space:read] read a document and update the wiki page
 [bitable:app, bitable:app:readonly, contact:user.base:readonly, im:message:send_as_bot] create crm record and send a follow-up message
 [bitable:app, bitable:app:readonly, bitable:record] update the customer record after the meeting
 [approval:instance:write, bitable:app, im:message:send_as_bot] route expense to approval and notify the manager
-[drive:file:create, wiki:wiki, wiki:wiki:readonly] upload the contract file to drive and update the wiki with the key terms
+[drive:file:create, wiki:node:write, wiki:space:read] upload the contract file to drive and update the wiki with the key terms
 [bitable:app, bitable:app:readonly, calendar:calendar, contact:user.base:readonly] create a lead record and schedule a follow-up meeting
 [attendance:task:readonly, sheets:spreadsheet] read the attendance records and generate a timesheet report
 ```
@@ -277,7 +277,7 @@ Expected minimum scope sets:
 
 **Expected decision:** `bot`  
 **Rule:** Rule 3 — Bot default  
-**Expected scopes:** `wiki:wiki:readonly`
+**Expected scopes:** `wiki:space:read`
 
 **Status:** ✅ passing
 
