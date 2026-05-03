@@ -65,11 +65,14 @@ metadata:
 用于管理 Base 本体，或从用户给出的链接进入后续 Base 操作。  
 模块索引：[`references/lark-base-workspace.md`](references/lark-base-workspace.md)
 
+> **新規 Base 作成依頼を受けたら、まず [`lark-base-templates-catalog.md`](references/lark-base-templates-catalog.md) を確認する。** カタログに該当テンプレートがあれば `+base-copy` でコピー → カスタマイズ。なければ `+base-create` でゼロから作る、にフォールバック。先にカタログ確認しないと、既存テンプレで済んだケースで時間を浪費する。
+
 | 命令 | 用途 / 何时使用 | 必读 reference | 路由提醒 |
 |------|------------------|----------------|----------|
-| `+base-create` | 创建新的 Base | [`lark-base-base-create.md`](references/lark-base-base-create.md)、[`lark-base-workspace.md`](references/lark-base-workspace.md) | 写入操作；执行前先读 reference；`--folder-token`、`--time-zone` 都是可选项 |
+| **テンプレートカタログ確認** | 新規 Base 作成の最初のステップ | [`lark-base-templates-catalog.md`](references/lark-base-templates-catalog.md) | `+base-create` / `+base-copy` の前に必ず確認。該当テンプレがあれば copy、なければ create |
+| `+base-create` | 创建新的 Base（カタログに該当テンプレートがないとき） | [`lark-base-base-create.md`](references/lark-base-base-create.md)、[`lark-base-templates-catalog.md`](references/lark-base-templates-catalog.md)、[`lark-base-workspace.md`](references/lark-base-workspace.md) | 写入操作；执行前先读 reference；`--folder-token`、`--time-zone` 都是可选项 |
 | `+base-get` | 获取 Base 信息 | [`lark-base-base-get.md`](references/lark-base-base-get.md)、[`lark-base-workspace.md`](references/lark-base-workspace.md) | 适合确认 Base 本体信息，不替代表/字段结构读取 |
-| `+base-copy` | 复制已有 Base | [`lark-base-base-copy.md`](references/lark-base-base-copy.md)、[`lark-base-workspace.md`](references/lark-base-workspace.md) | 写入操作；执行前先读 reference；复制成功后应主动返回新 Base 标识信息 |
+| `+base-copy` | 复制已有 Base（カタログテンプレ採用時の主経路） | [`lark-base-base-copy.md`](references/lark-base-base-copy.md)、[`lark-base-templates-catalog.md`](references/lark-base-templates-catalog.md)、[`lark-base-workspace.md`](references/lark-base-workspace.md) | 写入操作；执行前先读 reference；复制成功后应主动返回新 Base 标识信息 |
 
 ### 2.3 表与数据模块
 

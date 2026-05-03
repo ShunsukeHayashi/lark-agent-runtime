@@ -1,8 +1,18 @@
 # base +base-create
 
 > **前置条件：** 先阅读 [`../lark-shared/SKILL.md`](../../lark-shared/SKILL.md) 了解认证、全局参数和安全规则。
+>
+> **MUST READ FIRST**: 新規 Base 作成依頼の場合は、`+base-create` でゼロ作成する前に必ず [`lark-base-templates-catalog.md`](lark-base-templates-catalog.md) を確認すること。テンプレートに該当があれば `+base-copy` を使う方が早い。**ゼロ作成は「カタログに該当テンプレートがない場合のフォールバック」**。
 
 创建一个新的 Base；可选指定父文件夹和时区。
+
+## ⚠️ 实行前必做：テンプレートカタログ確認
+
+ユーザーから「○○ Base を作って」と依頼された場合、まず以下を確認：
+
+1. [`lark-base-templates-catalog.md`](lark-base-templates-catalog.md) で類似テンプレートの有無を確認
+2. 該当があれば `+base-copy --base-token <obj_token>` を提案して採用 → このページの `+base-create` は使わない
+3. 該当がない、またはユーザーが明示的にゼロから作りたい場合のみ、本ページの `+base-create` を使う
 
 ## 推荐命令
 

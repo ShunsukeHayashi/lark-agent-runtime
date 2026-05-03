@@ -11,7 +11,7 @@ Design notes:
 - Exit code is always 0 so the caller can fall back to regex on empty result.
 
 Env vars:
-  LARC_CLASSIFIER_API_KEY    API key (falls back to ZAI_API_KEY, ANTHROPIC_API_KEY)
+  LARC_CLASSIFIER_API_KEY    API key (falls back to ZAI_API_KEY)
   LARC_CLASSIFIER_BASE_URL   OpenAI-compatible base (default: z.ai GLM endpoint)
   LARC_CLASSIFIER_MODEL      Model id (default: glm-4.6)
   LARC_CLASSIFIER_TIMEOUT    Seconds (default: 8)
@@ -71,11 +71,7 @@ def _extract_json(text: str) -> dict | None:
 
 
 def classify(task_desc: str, task_catalog: dict) -> list[str]:
-    api_key = (
-        os.environ.get("LARC_CLASSIFIER_API_KEY")
-        or os.environ.get("ZAI_API_KEY")
-        or os.environ.get("ANTHROPIC_API_KEY")
-    )
+    api_key = os.environ.get("LARC_CLASSIFIER_API_KEY") or os.environ.get("ZAI_API_KEY")
     if not api_key:
         _log("no API key found; returning empty")
         return []

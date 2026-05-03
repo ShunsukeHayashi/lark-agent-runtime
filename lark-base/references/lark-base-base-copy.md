@@ -1,8 +1,25 @@
 # base +base-copy
 
 > **前置条件：** 先阅读 [`../lark-shared/SKILL.md`](../../lark-shared/SKILL.md) 了解认证、全局参数和安全规则。
+>
+> **MUST READ FIRST**: テンプレートカタログ採用時の主要経路。新規 Base 作成依頼の最初のステップとして [`lark-base-templates-catalog.md`](lark-base-templates-catalog.md) を確認し、該当 obj_token があれば本コマンドでコピー → カスタマイズに進む。
 
 复制一个已有 Base；可选只复制结构，不复制内容。
+
+## ⚠️ 典型用途：テンプレートからのコピー作成
+
+ユーザーから「○○ Base を作って」と依頼された場合の主経路：
+
+1. [`lark-base-templates-catalog.md`](lark-base-templates-catalog.md) から該当テンプレートを選定
+2. 確定後、本コマンドでコピー：
+   ```bash
+   lark-cli base +base-copy \
+     --base-token <obj_token from catalog> \
+     --name "<新Base名>" \
+     --time-zone Asia/Tokyo
+   ```
+3. コピー後にサンプルレコード削除 / テーブル / フィールド / Dashboard / Workflow のカスタマイズ
+4. bot 経由作成時は user に full_access 付与（下記 IMPORTANT 参照）
 
 ## 推荐命令
 

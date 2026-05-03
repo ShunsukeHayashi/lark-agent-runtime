@@ -35,3 +35,8 @@ scripts/lop_*.md
 scripts/crm_daily_ops.md
 scripts/crm_wiki_content.md
 scripts/larc_sfa_wiki.md
+
+# Local-only skill mirrors — symlinks pointing at the user's canonical skill hub.
+# Already-tracked skills under this directory are unaffected by this rule.
+# To intentionally add a new skill to the repo, use: git add -f <path>
+.claude/skills/*

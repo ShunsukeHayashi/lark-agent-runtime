@@ -18,7 +18,13 @@ REQUIRED_RUNTIME_FIELDS = [
 ]
 
 
-def detect_scenario(task_types):
+def detect_scenario(task_types, text=""):
+    """Map a task-type set (and optionally the message text) to a scenario_id.
+
+    The optional `text` parameter lets us disambiguate scenarios whose task
+    types alone are too generic — e.g. a `read_task` that is really a queue
+    triage request vs. a normal todo lookup.
+    """
     task_set = set(task_types)
     if {"read_base", "send_message"} <= task_set and {"create_document", "update_document", "read_document"} & task_set:
         return "ppal_marketing_ops"
@@ -28,6 +34,52 @@ def detect_scenario(task_types):
         return "expense_approval"
     if "update_document" in task_set or "write_wiki" in task_set:
         return "document_update"
+
+    improvement_cycle = re.search(
+        r"triage|棚卸し|改善\s*サイクル|improvement\s+cycle|classify\s+queue|queue\s+health|stale\s+in_progress",
+        text or "",
+        re.IGNORECASE,
+    )
+
+    # Order matters: most specific scenario wins. queue_triage is the catch-all
+    # for read_task and must run LAST among improvement-cycle branches.
+
+    # Issue #47: improvement-cycle that explicitly spans multiple data sources.
+    if improvement_cycle and (
+        sum(bool(re.search(p, text or "", re.IGNORECASE))
+            for p in (r"wiki|知识库|ナレッジ", r"drive|ドライブ", r"base|bitable|多维表格"))
+        >= 2
+    ):
+        return "cross_search"
+
+    # Issue #45: document/invoice triage in the improvement cycle.
+    # Distinguished from `document_update` (the operational edit flow) by the
+    # improvement-cycle keyword and read/triage intent.
+    if improvement_cycle and re.search(
+        r"document\s+update|invoice\s+send|invoice|請求書|送付|ドキュメント.*更新",
+        text or "",
+        re.IGNORECASE,
+    ):
+        return "doc_search"
+
+    # Issue #46: CRM admin triage. Distinct from `crm_followup` (customer-facing
+    # create+send) — this is the operator-side classification of failed/preview
+    # CRM queue items.
+    # NOTE: "crm" used without \b because Python's unicode word boundary fails
+    # on CJK adjacent text like "CRM系" ("M" and "系" are both word chars).
+    # The improvement_cycle prefix already disambiguates from coincidental matches.
+    if improvement_cycle and re.search(
+        r"crm|customer\s+record|lead\s+record|deal\s+record",
+        text or "",
+        re.IGNORECASE,
+    ):
+        return "crm_admin"
+
+    # Issue #44: catch-all queue triage for read_task. Runs last so the more
+    # specific scenarios above win when they match.
+    if "read_task" in task_set and improvement_cycle:
+        return "queue_triage"
+
     return "generic"
 
 

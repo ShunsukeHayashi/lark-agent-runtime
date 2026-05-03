@@ -205,9 +205,11 @@ try:
             new_ids.append(msg_id)
             continue
 
+        # Issue #42: subdivide source=im. Bot/echo senders are filtered above,
+        # so anything reaching this point is a real user request from IM.
         cmd = ["larc", "ingress", "enqueue",
                "--text", text, "--sender", sender,
-               "--source", "im", "--agent", agent_id]
+               "--source", "im_user_request", "--agent", agent_id]
         result = subprocess.run(cmd, capture_output=True, text=True)
         if result.returncode == 0:
             print(f"[im-poller] Enqueued: {msg_id[:16]}... from {sender[:20]}", flush=True)
