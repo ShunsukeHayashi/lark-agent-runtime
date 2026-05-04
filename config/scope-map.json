@@ -1,7 +1,7 @@
 {
   "_comment": "タスク種別 → 必要 Lark スコープのマッピング定義。identity は user / bot / either のいずれか。",
   "_version": "0.3.0",
-  "_updated": "2026-04-17",
+  "_updated": "2026-05-04",
   "tasks": {
     "read_document": {
       "scopes": [
