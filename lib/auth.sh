@@ -60,7 +60,7 @@ ${BOLD}Examples:${RESET}
   larc auth check
   larc auth check --task create_expense
   larc auth check --profile writer
-  larc auth login --scope "docs:document:copy base:record:create"
+  larc auth login --scope "docs:document:copy bitable:app"
   larc auth login --profile backoffice_agent
   larc auth refresh
   larc auth refresh --force
@@ -289,6 +289,7 @@ KEYWORD_MAP = {
     r"wiki|knowledge\s*base|knowledge\s*hub": ["read_wiki"],
     r"wiki.*(?:create|update|write|add|edit)|(?:create|update|write|add|edit).*wiki": ["write_wiki"],
     r"update\s+wiki|write\s+to\s+wiki": ["write_wiki"],
+    r"manage\s+\w*\s*wiki|wiki\s+admin|wiki\s+member": ["manage_wiki"],
 
     # ── Drive ──────────────────────────────────────────────────────────
     # "upload X file", "upload file", "upload to drive", "attach file"
@@ -346,16 +347,48 @@ KEYWORD_MAP = {
 
     # ── Attendance ─────────────────────────────────────────────────────
     r"attendance|check.?in|check.?out|timesheet|punch\s+in|punch\s+out|clock\s+in": ["read_attendance"],
+    r"fix\s+\w*\s*attendance|correct\s+\w*\s*(?:check.?in|timesheet)|attendance\s+(?:fix|update|correct)": ["write_attendance"],
 
     # ── Minutes / VC ───────────────────────────────────────────────────
     r"minutes|miaoji|meeting\s+notes|transcript": ["read_minutes"],
     r"video\s+meeting|vc\s+record|video\s+conference\s+record": ["read_vc"],
+    r"(?:create|write|edit)\s+\w*\s*(?:minute|miaoji|meeting\s+note)": ["write_minutes"],
+    r"book\s+\w*\s*(?:meeting\s+room|video\s+call)|reserve\s+\w*\s*(?:room|vc)": ["manage_vc"],
 
     # ── Sheets ─────────────────────────────────────────────────────────
     r"spreadsheet|sheet|excel|\bcsv\b": ["manage_sheets"],
+    r"read\s+\w*\s*(?:sheet|spreadsheet)|view\s+\w*\s*(?:sheet|excel)": ["read_sheets"],
+    r"write\s+\w*\s*(?:sheet|spreadsheet)|update\s+\w*\s*(?:sheet|cell|row)": ["write_sheets"],
 
     # ── Slides ─────────────────────────────────────────────────────────
     r"slide|\bppt\b|presentation|deck": ["manage_slides"],
+    r"read\s+\w*\s*(?:slide|ppt|presentation)|view\s+\w*\s*(?:slide|deck)": ["read_slides"],
+    r"write\s+\w*\s*(?:slide|ppt|presentation)|edit\s+\w*\s*(?:slide|deck)": ["write_slides"],
+
+    # ── OCR ────────────────────────────────────────────────────────────
+    r"ocr|image\s+(?:to\s+)?text|scan\s+\w*\s*(?:image|receipt|doc)": ["ocr_image"],
+
+    # ── Chat groups ────────────────────────────────────────────────────
+    r"create\s+\w*\s*(?:group|chat)|new\s+\w*\s*chat": ["create_chat_group"],
+    r"manage\s+\w*\s*(?:group|chat)|add\s+\w*\s*(?:member|user)\s+to\s+(?:group|chat)": ["manage_chat_group"],
+
+    # ── Email / Mail ───────────────────────────────────────────────────
+    r"read\s+\w*\s*(?:email|mail|inbox)|check\s+\w*\s*(?:email|mail)": ["read_email"],
+    r"send\s+\w*\s*(?:email|mail)|email\s+\w*\s*(?:to|someone)": ["send_email"],
+
+    # ── Translation / Search ───────────────────────────────────────────
+    r"translat|(?:convert|change)\s+\w*\s*(?:language|lang)": ["translate_content"],
+    r"search|find\s+\w*\s*(?:across|in)\s+(?:lark|drive|wiki|doc)": ["search_content"],
+
+    # ── Hire / Recruiting ──────────────────────────────────────────────
+    r"hire|recruit|(?:job|candidate|applicant)\s+(?:list|read|view)": ["read_hire"],
+    r"(?:update|move|progress)\s+\w*\s*(?:candidate|applicant|hire|recruit)": ["manage_hire"],
+
+    # ── Helpdesk ───────────────────────────────────────────────────────
+    r"helpdesk|support\s+ticket|raise\s+\w*\s*ticket|create\s+\w*\s*ticket": ["create_helpdesk_ticket"],
+
+    # ── Workflow ───────────────────────────────────────────────────────
+    r"(?:trigger|run|start|execute)\s+\w*\s*(?:workflow|automation|flow)": ["trigger_workflow"],
 }
 
 matched_tasks = set()
