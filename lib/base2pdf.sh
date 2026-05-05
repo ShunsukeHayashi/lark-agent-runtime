@@ -20,6 +20,16 @@ B2P_BUILTIN_TEMPLATE_DIR="$(cd "$LIB_DIR/../templates/base2pdf" && pwd)"
 B2P_USER_TEMPLATE_DIR="$LARC_HOME/templates/base2pdf"
 B2P_RENDER_SCRIPT="$(cd "$LIB_DIR/../scripts" && pwd)/base2pdf-render.py"
 
+# Identity used for Lark API calls. Default user, override via env (e.g. for bot-only tenants).
+B2P_AS="${B2P_AS:-user}"
+
+# Tenant-aware Drive deep-link host. Override via env when running on a non-default tenant.
+# Examples:
+#   B2P_DRIVE_HOST=miyabi-g-k.jp.larksuite.com
+#   B2P_DRIVE_HOST=ts5qh2dyt4l.jp.larksuite.com
+# Empty string falls back to www.larksuite.com (only correct for the global default tenant).
+B2P_DRIVE_HOST="${B2P_DRIVE_HOST:-${LARC_LARK_HOST:-www.larksuite.com}}"
+
 cmd_base2pdf() {
   local subcmd="${1:-}"
   if [[ -z "$subcmd" ]]; then
@@ -220,33 +230,33 @@ print((d.get("data", {}) or {}).get("markdown", "") or d.get("markdown", ""))
     [[ -z "$md" ]] && { log_error "Failed to fetch Lark Doc content"; exit 1; }
 
     # Auto-derive required_fields from {{var}} occurrences if no frontmatter present.
-    local body="$md"
     local has_fm=false
     [[ "$md" == "---"* ]] && has_fm=true
 
     if [[ "$has_fm" == "false" ]]; then
       local fields
-      fields="$(echo "$md" | python3 -c '
+      fields="$(printf '%s' "$md" | python3 -c '
 import sys, re
 text = sys.stdin.read()
 fields = sorted({m.group(1) for m in re.finditer(r"\{\{\s*([\w\.]+)\s*\}\}", text) if "." not in m.group(1)})
 for f in fields:
     print(f"  - {f}")
 ')"
-      cat > "$out" <<EOF
----
-name: $name
-industry: $industry
-description: Imported from Lark Doc $doc_token
-required_fields:
-$fields
-calculations: {}
----
-
-$body
-EOF
+      # Build frontmatter via printf (variable-expansion controlled), then append the
+      # raw body verbatim — this is critical so that backslashes / dollar-signs / EOF
+      # markers inside the doc body do not get expanded by a heredoc.
+      {
+        printf -- '---\n'
+        printf 'name: %s\n' "$name"
+        printf 'industry: %s\n' "$industry"
+        printf 'description: Imported from Lark Doc %s\n' "$doc_token"
+        printf 'required_fields:\n%s\n' "$fields"
+        printf 'calculations: {}\n'
+        printf -- '---\n\n'
+        printf '%s' "$md"
+      } > "$out"
     else
-      printf "%s" "$md" > "$out"
+      printf '%s' "$md" > "$out"
     fi
 
   elif [[ "$from_stdin" == "true" ]]; then
@@ -367,12 +377,16 @@ _b2p_batch() {
   log_info "Concurrency: $concurrency (sequential in MVP, parallel in v0.2)"
 
   # List records (paginated). MVP: single page up to 100.
-  local params; params="$(python3 -c "
-import json
-p = {'app_token': '$base_token', 'table_id': '$table_id', 'page_size': 100}
-if '$view_id': p['view_id'] = '$view_id'
-if '$filter': p['filter'] = '$filter'
-print(json.dumps(p))")"
+  local params
+  params="$(B2P_APP="$base_token" B2P_TBL="$table_id" B2P_VIEW="$view_id" B2P_FILTER="$filter" \
+    python3 -c '
+import json, os
+p = {"app_token": os.environ["B2P_APP"], "table_id": os.environ["B2P_TBL"], "page_size": 100}
+v = os.environ.get("B2P_VIEW", "")
+f = os.environ.get("B2P_FILTER", "")
+if v: p["view_id"] = v
+if f: p["filter"] = f
+print(json.dumps(p))')"
 
   local list_resp; list_resp="$(lark-cli base record list --params "$params" --as "$B2P_AS" 2>/dev/null)"
   local record_ids; record_ids="$(echo "$list_resp" | python3 -c '
@@ -412,9 +426,6 @@ for it in items:
 # ---------------------------------------------------------------------------
 # Internal: lark-cli wrappers
 # ---------------------------------------------------------------------------
-
-# Identity used for Lark API calls. Default user, override via env (e.g. for bot-only tenants).
-B2P_AS="${B2P_AS:-user}"
 
 _b2p_fetch_record() {
   local base_token="$1" table_id="$2" record_id="$3"
@@ -522,21 +533,22 @@ _b2p_writeback() {
   # Update Base record with PDF link/attachment.
   # MVP: write the file_token URL (Lark Drive deep link) to a single-line text field.
   local base_token="$1" table_id="$2" record_id="$3" field="$4" pdf_token="$5"
-  local pdf_url="https://www.larksuite.com/file/${pdf_token}"
+  local pdf_url="https://${B2P_DRIVE_HOST}/file/${pdf_token}"
 
   local payload
-  payload="$(python3 -c "
-import json, sys
+  payload="$(B2P_APP="$base_token" B2P_TBL="$table_id" B2P_REC="$record_id" \
+    python3 -c '
+import json, os
 print(json.dumps({
-    'app_token': '$base_token',
-    'table_id': '$table_id',
-    'record_id': '$record_id',
-}))")"
+    "app_token": os.environ["B2P_APP"],
+    "table_id": os.environ["B2P_TBL"],
+    "record_id": os.environ["B2P_REC"],
+}))')"
 
   local data
-  data="$(python3 -c "
-import json
-print(json.dumps({'fields': {'$field': '$pdf_url'}}, ensure_ascii=False))")"
+  data="$(B2P_FIELD="$field" B2P_URL="$pdf_url" python3 -c '
+import json, os
+print(json.dumps({"fields": {os.environ["B2P_FIELD"]: os.environ["B2P_URL"]}}, ensure_ascii=False))')"
 
   lark-cli base record update \
     --params "$payload" \
