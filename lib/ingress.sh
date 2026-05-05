@@ -731,6 +731,46 @@ def extract_fields(scenario_id, text):
     partial = []
     ask_user = ""
 
+    def extract_followup_message(value):
+        value = value.strip()
+        if not re.search(r"follow.?up|send|message|notify", value, re.I):
+            return ""
+        colon = re.search(
+            r"(?:follow.?up|message|notify|send)[^:\n]{0,160}:\s*(.+)$",
+            value,
+            re.I,
+        )
+        if colon:
+            candidate = colon.group(1).strip()
+        else:
+            quoted = re.findall(
+                r"(?:send|notify|message|follow.?up)[^'\"]{0,80}['\"]([^'\"]{2,500})['\"]",
+                value,
+                re.I,
+            )
+            if quoted:
+                candidate = quoted[-1].strip()
+            else:
+                explicit = re.search(
+                    r"(?:follow.?up\s+(?:message|note)?|message|notify|send)\s+(?:with\s+(?:message|text)\s+|saying\s+|that\s+)(.+)$",
+                    value,
+                    re.I,
+                )
+                if explicit:
+                    candidate = explicit.group(1).strip()
+                else:
+                    trailing = re.search(r"(?:^|\band\s+)(?:send|notify|message)\s+(.+)$", value, re.I)
+                    candidate = trailing.group(1).strip() if trailing else ""
+        candidate = re.sub(r"^[\"']|[\"']$", "", candidate.strip())
+        candidate = re.sub(r"\s+", " ", candidate).strip()
+        if re.fullmatch(
+            r"(?:a\s+|the\s+)?(?:crm\s+)?(?:follow.?up\s+)?(?:message|note|notification)(?:\s+(?:to|for|about|regarding)\b.*)?",
+            candidate,
+            re.I,
+        ):
+            return ""
+        return candidate
+
     if scenario_id == "ppal_marketing_ops":
         lower = text.lower()
         fields.update(load_scenario_defaults(lower))
@@ -790,8 +830,15 @@ def extract_fields(scenario_id, text):
         m = re.search(r"\bfor\s+([A-Za-z0-9._-][A-Za-z0-9._ -]{1,60})", text, re.I)
         q = re.search(r"['\"]([^'\"]{2,80})['\"]", text)
         customer_key = (m.group(1).strip() if m else (q.group(1).strip() if q else ""))
+        if customer_key:
+            customer_key = re.split(
+                r"\s+(?:and\s+)?(?:send|notify|message|follow.?up)\b",
+                customer_key,
+                maxsplit=1,
+                flags=re.I,
+            )[0].strip()
         fields["customer_key"] = customer_key
-        fields["followup_message"] = text.strip() if re.search(r"follow.?up|send|message|notify", text, re.I) else ""
+        fields["followup_message"] = extract_followup_message(text)
         if not fields["customer_key"]:
             missing.append("customer_key")
             blocked.append("customer_key")
@@ -963,6 +1010,46 @@ def extract_fields(scenario_id, text):
     partial = []
     ask_user = ""
 
+    def extract_followup_message(value):
+        value = value.strip()
+        if not re.search(r"follow.?up|send|message|notify", value, re.I):
+            return ""
+        colon = re.search(
+            r"(?:follow.?up|message|notify|send)[^:\n]{0,160}:\s*(.+)$",
+            value,
+            re.I,
+        )
+        if colon:
+            candidate = colon.group(1).strip()
+        else:
+            quoted = re.findall(
+                r"(?:send|notify|message|follow.?up)[^'\"]{0,80}['\"]([^'\"]{2,500})['\"]",
+                value,
+                re.I,
+            )
+            if quoted:
+                candidate = quoted[-1].strip()
+            else:
+                explicit = re.search(
+                    r"(?:follow.?up\s+(?:message|note)?|message|notify|send)\s+(?:with\s+(?:message|text)\s+|saying\s+|that\s+)(.+)$",
+                    value,
+                    re.I,
+                )
+                if explicit:
+                    candidate = explicit.group(1).strip()
+                else:
+                    trailing = re.search(r"(?:^|\band\s+)(?:send|notify|message)\s+(.+)$", value, re.I)
+                    candidate = trailing.group(1).strip() if trailing else ""
+        candidate = re.sub(r"^[\"']|[\"']$", "", candidate.strip())
+        candidate = re.sub(r"\s+", " ", candidate).strip()
+        if re.fullmatch(
+            r"(?:a\s+|the\s+)?(?:crm\s+)?(?:follow.?up\s+)?(?:message|note|notification)(?:\s+(?:to|for|about|regarding)\b.*)?",
+            candidate,
+            re.I,
+        ):
+            return ""
+        return candidate
+
     if scenario_id == "ppal_marketing_ops":
         lower = text.lower()
         fields.update(load_scenario_defaults(lower))
@@ -1015,8 +1102,16 @@ def extract_fields(scenario_id, text):
     elif scenario_id == "crm_followup":
         m = re.search(r"\bfor\s+([A-Za-z0-9._-][A-Za-z0-9._ -]{1,60})", text, re.I)
         q = re.search(r"['\"]([^'\"]{2,80})['\"]", text)
-        fields["customer_key"] = (m.group(1).strip() if m else (q.group(1).strip() if q else ""))
-        fields["followup_message"] = text.strip() if re.search(r"follow.?up|send|message|notify", text, re.I) else ""
+        customer_key = (m.group(1).strip() if m else (q.group(1).strip() if q else ""))
+        if customer_key:
+            customer_key = re.split(
+                r"\s+(?:and\s+)?(?:send|notify|message|follow.?up)\b",
+                customer_key,
+                maxsplit=1,
+                flags=re.I,
+            )[0].strip()
+        fields["customer_key"] = customer_key
+        fields["followup_message"] = extract_followup_message(text)
         if not fields["customer_key"]:
             missing.append("customer_key")
             blocked.append("customer_key")
@@ -1056,8 +1151,68 @@ def extract_fields(scenario_id, text):
 scenario_id = detect_scenario(task_types, message)
 fields, missing_fields, blocked_fields, partial_fields, ask_user_prompt = extract_fields(scenario_id, message)
 
-for task_type in task_types:
-    if task_type == "create_document":
+def load_execution_note(raw):
+    if isinstance(raw, dict):
+        return raw
+    if isinstance(raw, str) and raw.strip().startswith("{"):
+        try:
+            return json.loads(raw)
+        except Exception:
+            return {}
+    return {}
+
+execution_note = load_execution_note(queue.get("execution_note"))
+
+def truthy_flag(value):
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return value != 0
+    if isinstance(value, str):
+        return value.strip().lower() in {"1", "true", "yes", "y", "on"}
+    return False
+
+send_only_retry = any(
+    truthy_flag(execution_note.get(key))
+    for key in ("retry_only_eligible", "send_only_retry", "resend_only_can_close")
+)
+
+ordered_task_types = list(task_types)
+if scenario_id == "crm_followup":
+    crm_order = {
+        "create_crm_record": 0,
+        "read_base": 1,
+        "send_crm_followup": 2,
+        "send_message": 3,
+    }
+    ordered_task_types = sorted(task_types, key=lambda t: crm_order.get(t, 99))
+
+for task_type in ordered_task_types:
+    if task_type == "create_crm_record":
+        if scenario_id == "crm_followup" and send_only_retry:
+            results.append({
+                "task_type": task_type,
+                "mode": "skip",
+                "optional": True,
+                "note": "Skipped CRM record creation for send-only retry",
+                "tool_hints": TASK_OPENCLAW_TOOLS.get(task_type, []),
+            })
+        else:
+            results.append({
+                "task_type": task_type,
+                "mode": "run",
+                "dispatch": "openclaw",
+                "message": (
+                    "Using the official openclaw-lark plugin, create or upsert the CRM/Base record "
+                    f"for customer or lead '{fields.get('customer_key', '')}'. "
+                    f"Use this original request as the source of truth: {message}. "
+                    "Return the CRM record id, created/updated fields, and any missing data."
+                ),
+                "note": "Created or updated CRM record",
+                "tool_hints": TASK_OPENCLAW_TOOLS.get(task_type, []),
+                "session_id": f"larc-step-{queue.get('queue_id', '')}-create-crm-record",
+            })
+    elif task_type == "create_document":
         results.append({
             "task_type": task_type,
             "mode": "run",
@@ -1076,6 +1231,21 @@ for task_type in task_types:
             "session_id": f"larc-step-{queue.get('queue_id', '')}-create-document"
         })
     elif task_type == "read_base":
+        if scenario_id == "crm_followup":
+            results.append({
+                "task_type": task_type,
+                "mode": "run",
+                "dispatch": "openclaw",
+                "message": (
+                    "Using the official openclaw-lark plugin, read the CRM/Base context "
+                    f"for customer or lead '{fields.get('customer_key', '')}'. "
+                    "Return only facts needed to avoid duplicate CRM records or duplicate follow-up messages."
+                ),
+                "note": "Read CRM context",
+                "tool_hints": TASK_OPENCLAW_TOOLS.get(task_type, []),
+                "session_id": f"larc-step-{queue.get('queue_id', '')}-read-crm-context"
+            })
+            continue
         results.append({
             "task_type": task_type,
             "mode": "run",
@@ -1108,15 +1278,33 @@ for task_type in task_types:
             "session_id": f"larc-step-{queue.get('queue_id', '')}-read-document"
         })
     elif task_type == "send_crm_followup":
+        if scenario_id == "crm_followup" and "followup_message" in partial_fields:
+            results.append({
+                "task_type": task_type,
+                "mode": "skip",
+                "optional": False,
+                "note": "Missing follow-up message content",
+                "tool_hints": TASK_OPENCLAW_TOOLS.get(task_type, [])
+            })
+            continue
         results.append({
             "task_type": task_type,
             "mode": "run",
             "dispatch": "lark_send",
-            "message": f"Follow-up prepared from queue {queue.get('queue_id')}",
-            "note": "Sent CRM follow-up placeholder",
+            "message": fields.get("followup_message") or f"Follow-up prepared from queue {queue.get('queue_id')}",
+            "note": "Sent CRM follow-up message",
             "tool_hints": TASK_OPENCLAW_TOOLS.get(task_type, [])
         })
     elif task_type == "send_message":
+        if scenario_id == "crm_followup" and "send_crm_followup" in task_types:
+            results.append({
+                "task_type": task_type,
+                "mode": "skip",
+                "optional": True,
+                "note": "Covered by send_crm_followup step",
+                "tool_hints": TASK_OPENCLAW_TOOLS.get(task_type, [])
+            })
+            continue
         results.append({
             "task_type": task_type,
             "mode": "run",
@@ -1187,7 +1375,7 @@ import json, sys
 plan = json.loads(sys.argv[1])
 print(",".join(plan.get("blocked_fields", [])))
 print(plan.get("ask_user_prompt", ""))
-print(sum(1 for s in plan["steps"] if s["mode"] == "skip"))
+print(sum(1 for s in plan["steps"] if s["mode"] == "skip" and not s.get("optional")))
 print(plan["agent"])
 for step in plan["steps"]:
     if step["mode"] == "run":
@@ -1208,52 +1396,146 @@ PY
   worker_agent=$(sed -n '4p' <<< "$_plan_out")
   run_steps=$(sed -n '5,$p' <<< "$_plan_out")
 
-  if [[ -z "$run_steps" ]]; then
+  local skipped_steps
+  skipped_steps=$(python3 - "$plan_json" <<'PY'
+import json, sys
+plan = json.loads(sys.argv[1])
+for step in plan["steps"]:
+    if step["mode"] == "skip" and not step.get("optional"):
+        print(json.dumps(step, ensure_ascii=False))
+PY
+  )
+
+  local completed_steps=()
+  local failed_steps=()
+
+  while IFS= read -r step_json; do
+    [[ -z "$step_json" ]] && continue
+    local skip_type skip_note
+    local _skip_out
+    _skip_out=$(python3 - "$step_json" <<'PY'
+import json, sys
+step = json.loads(sys.argv[1])
+print(step.get("task_type", ""))
+print(step.get("note", ""))
+PY
+    )
+    skip_type=$(sed -n '1p' <<< "$_skip_out")
+    skip_note=$(sed -n '2p' <<< "$_skip_out")
+    _ingress_write_step_audit_log "$queue_json" "$skip_type" "skipped" "$skip_note" || true
+  done <<< "$skipped_steps"
+
+  if [[ -z "$run_steps" && "$skipped_count" == "0" ]]; then
     log_warn "No safe adapters to execute for queue item $queue_id"
     return 0
   fi
 
-  local execution_notes=()
   while IFS= read -r step_json; do
     [[ -z "$step_json" ]] && continue
-    local step_message step_note step_dispatch step_session_id
+    local step_type step_message step_note step_dispatch step_session_id step_status
     # Extract all step fields in one subprocess; message is base64-encoded (may contain newlines).
     local _step_out
     _step_out=$(python3 - "$step_json" <<'PY'
 import base64, json, sys
 step = json.loads(sys.argv[1])
 msg_b64 = base64.b64encode(step.get("message", "").encode()).decode()
+print(step.get("task_type", ""))
 print(msg_b64)
 print(step.get("note", ""))
 print(step.get("dispatch", "lark_send"))
 print(step.get("session_id", ""))
 PY
     )
-    step_message=$(base64 --decode <<< "$(sed -n '1p' <<< "$_step_out")")
-    step_note=$(sed -n '2p' <<< "$_step_out")
-    step_dispatch=$(sed -n '3p' <<< "$_step_out")
-    step_session_id=$(sed -n '4p' <<< "$_step_out")
+    step_type=$(sed -n '1p' <<< "$_step_out")
+    step_message=$(base64 --decode <<< "$(sed -n '2p' <<< "$_step_out")")
+    step_note=$(sed -n '3p' <<< "$_step_out")
+    step_dispatch=$(sed -n '4p' <<< "$_step_out")
+    step_session_id=$(sed -n '5p' <<< "$_step_out")
 
     if [[ "$step_dispatch" == "openclaw" ]]; then
-      openclaw agent --agent "$worker_agent" --session-id "${step_session_id:-larc-step-$queue_id}" --json --local --message "$step_message" >/dev/null
+      if openclaw agent --agent "$worker_agent" --session-id "${step_session_id:-larc-step-$queue_id}" --json --local --message "$step_message" >/dev/null; then
+        step_status="done"
+      else
+        step_status="failed"
+      fi
     else
-      cmd_send --agent "$worker_agent" "$step_message"
+      if cmd_send --agent "$worker_agent" "$step_message"; then
+        step_status="done"
+      else
+        step_status="failed"
+      fi
     fi
-    execution_notes+=("$step_note")
+    _ingress_write_step_audit_log "$queue_json" "$step_type" "$step_status" "$step_note" || true
+    if [[ "$step_status" == "done" ]]; then
+      completed_steps+=("$step_type")
+    else
+      failed_steps+=("$step_type")
+      break
+    fi
   done <<< "$run_steps"
 
-  local finish_note
-  finish_note=$(printf '%s; ' "${execution_notes[@]}")
-  finish_note="${finish_note%; }"
-  local final_status="done"
-  if [[ "$skipped_count" != "0" ]]; then
-    final_status="partial"
-    if [[ -n "$finish_note" ]]; then
-      finish_note="${finish_note}; Manual follow-up still required"
-    else
-      finish_note="Manual follow-up still required"
-    fi
-  fi
+  local done_csv failed_csv summary_out finish_note final_status
+  done_csv=$(IFS=,; printf '%s' "${completed_steps[*]:-}")
+  failed_csv=$(IFS=,; printf '%s' "${failed_steps[*]:-}")
+  summary_out=$(python3 - "$plan_json" "$done_csv" "$failed_csv" <<'PY'
+import base64, json, sys
+
+plan = json.loads(sys.argv[1])
+done = [x for x in sys.argv[2].split(",") if x]
+failed = [x for x in sys.argv[3].split(",") if x]
+steps = plan["steps"]
+run_steps = [s["task_type"] for s in steps if s["mode"] == "run"]
+skipped_required = [s["task_type"] for s in steps if s["mode"] == "skip" and not s.get("optional")]
+not_reached = [s for s in run_steps if s not in done and s not in failed]
+partial_fields = plan.get("partial_fields", [])
+
+def alias(step):
+    return "send_followup_message" if step == "send_crm_followup" else step
+
+gaps = failed + skipped_required + not_reached
+if gaps or partial_fields:
+    final_status = "partial" if done or skipped_required else "failed"
+else:
+    final_status = "done"
+
+if plan.get("scenario_id") == "crm_followup":
+    done_aliases = [alias(s) for s in done]
+    pending_aliases = []
+    for step in gaps:
+        a = alias(step)
+        if a not in pending_aliases:
+            pending_aliases.append(a)
+    missing = []
+    for item in partial_fields + pending_aliases:
+        if item not in missing:
+            missing.append(item)
+    retry_only = "create_crm_record" in done_aliases and "send_followup_message" in pending_aliases
+    note = {
+        "scenario_id": "crm_followup",
+        "step_done": done_aliases,
+        "step_pending": pending_aliases,
+        "step_failed": [alias(s) for s in failed],
+        "successful_steps": done_aliases,
+        "missing_or_pending": missing,
+        "retry_only_eligible": retry_only,
+        "resend_only_can_close": bool(retry_only and set(pending_aliases) <= {"send_followup_message"}),
+        "next_action": "resend_followup_message" if retry_only else ("manual_followup_required" if pending_aliases or missing else "none"),
+    }
+    finish_note = json.dumps(note, ensure_ascii=False, separators=(",", ":"))
+else:
+    notes = [s.get("note", "") for s in steps if s["task_type"] in done and s.get("note")]
+    finish_note = "; ".join(notes) or "Completed safe adapter execution"
+    if final_status == "partial":
+        finish_note = f"{finish_note}; Manual follow-up still required"
+    elif final_status == "failed":
+        finish_note = f"Execution failed before completing safe adapter actions: {', '.join(failed) or ', '.join(gaps)}"
+
+print(final_status)
+print(base64.b64encode(finish_note.encode()).decode())
+PY
+  )
+  final_status=$(sed -n '1p' <<< "$summary_out")
+  finish_note=$(base64 --decode <<< "$(sed -n '2p' <<< "$summary_out")")
   _ingress_complete "$queue_id" "$final_status" "${finish_note:-Completed safe adapter execution}" "false"
 }
 
@@ -1776,6 +2058,39 @@ PY
   fi
 }
 
+_ingress_write_step_audit_log() {
+  local queue_json="$1"
+  local step_type="$2"
+  local step_status="$3"
+  local step_note="$4"
+
+  [[ -z "$step_type" ]] && return 0
+  [[ -z "${LARC_BASE_APP_TOKEN:-}" ]] && return 0
+
+  local step_json
+  step_json=$(python3 - "$queue_json" "$step_type" "$step_status" "$step_note" <<'PY'
+import json, sys
+from datetime import datetime, timezone
+
+queue = json.loads(sys.argv[1])
+step_type, step_status, step_note = sys.argv[2:5]
+now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+queue["task_types"] = [step_type]
+queue["status"] = step_status
+queue["execution_note"] = json.dumps({
+    "step": step_type,
+    "status": step_status,
+    "note": step_note,
+}, ensure_ascii=False, separators=(",", ":"))
+queue["completed_at"] = now
+queue["updated_at"] = now
+print(json.dumps(queue, ensure_ascii=False))
+PY
+)
+
+  _ingress_write_audit_log "$step_json" "$step_status"
+}
+
 _ingress_notify_completion() {
   local completed_json="$1"
   local final_status="$2"
@@ -2153,7 +2468,25 @@ if not items:
     print("(no partial follow-up items)")
 else:
     for d in items:
-        print(f"{d.get('queue_id','-')}  [{d.get('status','-')} / {d.get('gate','-')}]  {str(d.get('message_text',''))[:100]} -> {d.get('execution_note','manual follow-up required')}")
+        raw_note = d.get("execution_note") or ""
+        display_note = raw_note or "manual follow-up required"
+        if isinstance(raw_note, str) and raw_note.strip().startswith("{"):
+            try:
+                parsed = json.loads(raw_note)
+                if parsed.get("scenario_id") == "crm_followup":
+                    pending = parsed.get("step_pending") or parsed.get("missing_or_pending") or []
+                    if isinstance(pending, str):
+                        pending = [pending]
+                    retry = parsed.get("retry_only_eligible")
+                    resend = parsed.get("resend_only_can_close")
+                    display_note = (
+                        f"crm_followup step_pending={','.join(pending) or '-'} "
+                        f"retry_only_eligible={str(bool(retry)).lower()} "
+                        f"resend_only_can_close={str(bool(resend)).lower()}"
+                    )
+            except Exception:
+                display_note = raw_note
+        print(f"{d.get('queue_id','-')}  [{d.get('status','-')} / {d.get('gate','-')}]  {str(d.get('message_text',''))[:100]} -> {display_note}")
 PY
 }
 
