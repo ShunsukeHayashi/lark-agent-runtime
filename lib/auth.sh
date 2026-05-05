@@ -804,6 +804,39 @@ print(len([item for item in sys.argv[1].replace(",", " ").split() if item]))
 PYEOF
 }
 
+_auth_print_scope_lines() {
+  local scopes="$1"
+  printf '%s\n' "$scopes" | tr ' ' '\n' | sed '/^$/d' | while IFS= read -r scope; do
+    echo -e "    ${RED}✗${RESET} $scope"
+  done
+}
+
+_auth_console_permissions_url() {
+  local config_json app_id
+  config_json=$(lark-cli config show 2>/dev/null || true)
+  app_id=$(printf '%s\n' "$config_json" | python3 -c '
+import json
+import sys
+
+try:
+    data = json.load(sys.stdin)
+except Exception:
+    sys.exit(0)
+
+apps = data.get("apps")
+if isinstance(apps, list) and apps:
+    print(apps[0].get("appId", ""))
+else:
+    print(data.get("appId", ""))
+' 2>/dev/null || true)
+
+  if [[ -n "$app_id" ]]; then
+    echo "https://open.larksuite.com/app/${app_id}/permissions"
+  else
+    echo "https://open.larksuite.com/app"
+  fi
+}
+
 _auth_login() {
   local scopes=""
   local profile_name=""
@@ -924,10 +957,53 @@ for k, v in m.get('profiles',{}).items():
 
   # Issue auth URL via lark-cli auth login
   if lark-cli auth login --scope "$effective_scopes"; then
+    local granted_scopes=""
+    local missing_requested_scopes=""
+    local missing_effective_scopes=""
+
+    granted_scopes="$(_auth_current_granted_scopes 2>/dev/null || true)"
+    if [[ -z "$granted_scopes" ]]; then
+      echo ""
+      log_error "auth_error=granted_scope_validation_unavailable"
+      log_error "lark-cli auth login returned success, but LARC could not verify granted scopes afterward."
+      echo ""
+      echo -e "  Check manually:"
+      echo -e "    ${CYAN}lark-cli auth status${RESET}"
+      return 1
+    fi
+
+    missing_requested_scopes="$(_auth_scope_difference "$granted_scopes" "$normalized_scopes")"
+    if [[ -n "$missing_requested_scopes" ]]; then
+      echo ""
+      log_error "auth_error=requested_scopes_not_granted"
+      log_error "Authorization completed, but requested scope(s) were not granted."
+      echo ""
+      echo -e "  ${BOLD}Missing requested scopes:${RESET}"
+      _auth_print_scope_lines "$missing_requested_scopes"
+      echo ""
+      echo -e "  Enable the missing app permissions in Lark Developer Console, then retry:"
+      echo -e "    ${CYAN}$(_auth_console_permissions_url)${RESET}"
+      return 1
+    fi
+
+    missing_effective_scopes="$(_auth_scope_difference "$granted_scopes" "$effective_scopes")"
+    if [[ -n "$preserved_scopes" && -n "$missing_effective_scopes" ]]; then
+      echo ""
+      log_error "auth_error=effective_scopes_not_granted"
+      log_error "Authorization completed, but some previously granted scope(s) are no longer present."
+      echo ""
+      echo -e "  ${BOLD}Missing effective scopes:${RESET}"
+      _auth_print_scope_lines "$missing_effective_scopes"
+      echo ""
+      echo -e "  Re-authorize with a broad profile or check app permissions:"
+      echo -e "    ${CYAN}$(_auth_console_permissions_url)${RESET}"
+      return 1
+    fi
+
     echo ""
-    log_ok "Auth URL issued. Open the URL in your browser and approve the permissions."
+    log_ok "Authorization completed and requested scopes are granted."
     echo ""
-    echo -e "  After approving, verify permissions with:"
+    echo -e "  Verify permissions with:"
     echo -e "    ${CYAN}larc auth check${RESET}"
   else
     local exit_code=$?
