@@ -14,7 +14,7 @@
 #       If scopes are missing, runs lark-cli auth login with additive scopes to issue auth URL
 #
 #   larc auth login [--scope "<scope ...>"] [--add-scope "<scope ...>"]
-#       [--profile <profile_name>] [--replace]
+#       [--profile <profile_name>] [--replace] [--timeout <seconds>]
 #       Start authorization for the given scopes and display the auth URL.
 #       Existing granted scopes are preserved unless --replace is explicit.
 #
@@ -53,6 +53,7 @@ ${BOLD}Commands:${RESET}
          [--profile <name>]
   ${CYAN}login${RESET} [--scope "<scope ...>"]    Issue auth URL for specified scopes
          [--add-scope "<scope ...>"] [--profile <name>] [--replace]
+         [--timeout <seconds>] [--poll-interval <seconds>]
   ${CYAN}refresh${RESET} [--force]               Auto-refresh user_access_token if < 10 min remaining
 
 ${BOLD}Examples:${RESET}
@@ -64,6 +65,7 @@ ${BOLD}Examples:${RESET}
   larc auth check --profile writer
   larc auth login --scope "docs:document:copy bitable:app"
   larc auth login --add-scope "docs:document:copy"
+  larc auth login --add-scope "docs:document:copy" --timeout 600
   larc auth login --replace --scope "docs:document:copy"  # intentionally replace current scopes
   larc auth login --profile backoffice_agent
   larc auth refresh
@@ -837,10 +839,195 @@ else:
   fi
 }
 
+_auth_positive_int_or_default() {
+  local value="$1"
+  local default_value="$2"
+
+  if [[ "$value" =~ ^[0-9]+$ ]] && [[ "$value" -gt 0 ]]; then
+    echo "$value"
+  else
+    echo "$default_value"
+  fi
+}
+
+_auth_lark_cli_supports_device_flow_resume() {
+  local help_text
+  help_text=$(lark-cli auth login --help 2>/dev/null || true)
+  [[ "$help_text" == *"--no-wait"* && "$help_text" == *"--device-code"* ]]
+}
+
+_auth_parse_device_flow_json() {
+  python3 - "$1" <<'PYEOF'
+import json
+import sys
+
+try:
+    data = json.loads(sys.argv[1])
+except Exception:
+    sys.exit(1)
+
+containers = [data]
+for key in ("data", "result", "authorization", "device"):
+    value = data.get(key) if isinstance(data, dict) else None
+    if isinstance(value, dict):
+        containers.append(value)
+
+def pick(*names):
+    for container in containers:
+        for name in names:
+            value = container.get(name)
+            if value not in (None, ""):
+                return str(value)
+    return ""
+
+device_code = pick("device_code", "deviceCode", "code")
+user_code = pick("user_code", "userCode")
+verification_url = pick(
+    "verification_uri_complete",
+    "verificationUriComplete",
+    "verification_url",
+    "verificationUrl",
+    "verification_uri",
+    "verificationUri",
+    "url",
+)
+expires_in = pick("expires_in", "expiresIn", "expires")
+interval = pick("interval", "poll_interval", "pollInterval")
+
+print("\x1f".join([device_code, user_code, verification_url, expires_in, interval]))
+PYEOF
+}
+
+_auth_run_device_code_poll_once() {
+  local device_code="$1"
+  local max_seconds="$2"
+  local stdout_file="$3"
+  local stderr_file="$4"
+  local pid now deadline
+
+  lark-cli auth login --device-code "$device_code" --json >"$stdout_file" 2>"$stderr_file" &
+  pid=$!
+  now=$(date +%s)
+  deadline=$(( now + max_seconds ))
+
+  while kill -0 "$pid" 2>/dev/null; do
+    now=$(date +%s)
+    if [[ "$now" -ge "$deadline" ]]; then
+      kill "$pid" 2>/dev/null || true
+      wait "$pid" 2>/dev/null || true
+      return 124
+    fi
+    sleep 1
+  done
+
+  wait "$pid"
+}
+
+_auth_device_flow_login() {
+  local effective_scopes="$1"
+  local requested_timeout="$2"
+  local requested_poll_interval="$3"
+  local start_output parsed
+  local device_code user_code verification_url expires_in interval
+  local auth_timeout poll_interval wait_seconds now deadline remaining
+  local poll_out poll_err poll_status poll_text
+
+  auth_timeout="$(_auth_positive_int_or_default "$requested_timeout" 600)"
+  poll_interval="$(_auth_positive_int_or_default "$requested_poll_interval" 5)"
+
+  if ! _auth_lark_cli_supports_device_flow_resume; then
+    log_warn "Installed lark-cli does not expose --no-wait/--device-code; falling back to direct auth login."
+    lark-cli auth login --scope "$effective_scopes"
+    return $?
+  fi
+
+  start_output=$(lark-cli auth login --scope "$effective_scopes" --no-wait --json 2>&1)
+  local start_status=$?
+  if [[ $start_status -ne 0 ]]; then
+    printf '%s\n' "$start_output" >&2
+    return $start_status
+  fi
+
+  parsed="$(_auth_parse_device_flow_json "$start_output" 2>/dev/null || true)"
+  IFS=$'\x1f' read -r device_code user_code verification_url expires_in interval <<<"$parsed"
+  if [[ -z "$device_code" ]]; then
+    log_error "auth_error=device_flow_parse_failed"
+    log_error "Could not read device_code from lark-cli --no-wait output."
+    printf '%s\n' "$start_output"
+    return 1
+  fi
+
+  poll_interval="$(_auth_positive_int_or_default "${interval:-$poll_interval}" "$poll_interval")"
+  wait_seconds="$auth_timeout"
+  if [[ "$expires_in" =~ ^[0-9]+$ && "$expires_in" -gt 0 && "$expires_in" -lt "$wait_seconds" ]]; then
+    wait_seconds="$expires_in"
+  fi
+
+  log_info "Device authorization started."
+  [[ -n "$verification_url" ]] && echo -e "  Open: ${CYAN}${verification_url}${RESET}"
+  [[ -n "$user_code" ]] && echo -e "  Code: ${BOLD}${user_code}${RESET}"
+  echo -e "  Waiting up to ${BOLD}${wait_seconds}s${RESET} (poll interval: ${poll_interval}s)"
+  echo ""
+
+  now=$(date +%s)
+  deadline=$(( now + wait_seconds ))
+
+  while true; do
+    now=$(date +%s)
+    remaining=$(( deadline - now ))
+    if [[ "$remaining" -le 0 ]]; then
+      log_error "auth_error=authorization_poll_timeout"
+      log_error "Authorization polling reached the ${wait_seconds}s timeout before completion."
+      echo ""
+      echo -e "  If the browser page is still open, resume with:"
+      echo -e "    ${CYAN}lark-cli auth login --device-code \"$device_code\"${RESET}"
+      return 124
+    fi
+
+    poll_out=$(mktemp)
+    poll_err=$(mktemp)
+    _auth_run_device_code_poll_once "$device_code" "$remaining" "$poll_out" "$poll_err"
+    poll_status=$?
+    poll_text="$(cat "$poll_out" "$poll_err" 2>/dev/null || true)"
+    rm -f "$poll_out" "$poll_err"
+
+    if [[ $poll_status -eq 0 ]]; then
+      [[ -n "$poll_text" ]] && printf '%s\n' "$poll_text"
+      return 0
+    fi
+
+    if [[ $poll_status -eq 124 ]]; then
+      log_error "auth_error=authorization_poll_timeout"
+      log_error "Authorization polling reached the ${wait_seconds}s timeout before completion."
+      echo ""
+      echo -e "  If the browser page is still open, resume with:"
+      echo -e "    ${CYAN}lark-cli auth login --device-code \"$device_code\"${RESET}"
+      return 124
+    fi
+
+    if [[ "$poll_text" == *"expired"* || "$poll_text" == *"20001"* ]]; then
+      printf '%s\n' "$poll_text" >&2
+      log_error "auth_error=device_code_expired"
+      return $poll_status
+    fi
+
+    if [[ "$poll_text" == *"Authorization timed out"* || "$poll_text" == *"timed out"* || "$poll_text" == *"authorization_pending"* ]]; then
+      log_warn "Authorization is still pending; continuing until ${wait_seconds}s timeout."
+      sleep "$poll_interval"
+      continue
+    fi
+
+    printf '%s\n' "$poll_text" >&2
+    return $poll_status
+  done
+}
+
 _auth_login() {
   local scopes=""
   local profile_name=""
   local replace=false
+  local auth_timeout="${LARC_AUTH_LOGIN_TIMEOUT:-600}"
+  local poll_interval="${LARC_AUTH_LOGIN_POLL_INTERVAL:-5}"
 
   while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -854,6 +1041,8 @@ _auth_login() {
         ;;
       --profile) profile_name="$2"; shift 2 ;;
       --replace) replace=true; shift ;;
+      --timeout) auth_timeout="$2"; shift 2 ;;
+      --poll-interval) poll_interval="$2"; shift 2 ;;
       *) log_warn "Unknown option: $1"; shift ;;
     esac
   done
@@ -897,6 +1086,7 @@ PYEOF
     echo "  Examples:"
     echo "    larc auth login --scope \"docs:document:copy base:record:create\""
     echo "    larc auth login --add-scope \"docs:document:copy\""
+    echo "    larc auth login --add-scope \"docs:document:copy\" --timeout 600"
     echo "    larc auth login --replace --scope \"docs:document:copy\"  # intentionally replace current scopes"
     echo "    larc auth login --profile readonly"
     echo "    larc auth login --profile writer"
@@ -950,13 +1140,14 @@ for k, v in m.get('profiles',{}).items():
     echo -e "    ${CYAN}larc auth login --replace --scope \"$normalized_scopes\"${RESET}"
   fi
   log_info "Effective scopes: $effective_scopes"
+  log_info "Authorization timeout: $(_auth_positive_int_or_default "$auth_timeout" 600)s"
   echo ""
 
   log_info "Running lark-cli auth login..."
   echo ""
 
   # Issue auth URL via lark-cli auth login
-  if lark-cli auth login --scope "$effective_scopes"; then
+  if _auth_device_flow_login "$effective_scopes" "$auth_timeout" "$poll_interval"; then
     local granted_scopes=""
     local missing_requested_scopes=""
     local missing_effective_scopes=""
