@@ -377,25 +377,20 @@ _b2p_batch() {
   log_info "Concurrency: $concurrency (sequential in MVP, parallel in v0.2)"
 
   # List records (paginated). MVP: single page up to 100.
-  local params
-  params="$(B2P_APP="$base_token" B2P_TBL="$table_id" B2P_VIEW="$view_id" B2P_FILTER="$filter" \
-    python3 -c '
-import json, os
-p = {"app_token": os.environ["B2P_APP"], "table_id": os.environ["B2P_TBL"], "page_size": 100}
-v = os.environ.get("B2P_VIEW", "")
-f = os.environ.get("B2P_FILTER", "")
-if v: p["view_id"] = v
-if f: p["filter"] = f
-print(json.dumps(p))')"
+  # Note: filter is unsupported by `+record-list` shortcut; use --view-id with a
+  # pre-filtered view in Lark for the same effect.
+  local list_args=(--base-token "$base_token" --table-id "$table_id" --limit 100 --format json --as "$B2P_AS")
+  [[ -n "$view_id" ]] && list_args+=(--view-id "$view_id")
+  [[ -n "$filter" ]] && log_warn "--filter is ignored in MVP; use a pre-filtered view via --view-id"
 
-  local list_resp; list_resp="$(lark-cli base record list --params "$params" --as "$B2P_AS" 2>/dev/null)"
+  local list_resp; list_resp="$(lark-cli base +record-list "${list_args[@]}" 2>/dev/null)"
   local record_ids; record_ids="$(echo "$list_resp" | python3 -c '
 import sys, json
 try:
     d = json.loads(sys.stdin.read())
 except Exception:
     sys.exit(0)
-items = (d.get("data", {}).get("items", []))
+items = (d.get("data", {}) or {}).get("items", []) or (d.get("data", {}) or {}).get("records", [])
 for it in items:
     print(it.get("record_id", ""))
 ')"
@@ -429,8 +424,10 @@ for it in items:
 
 _b2p_fetch_record() {
   local base_token="$1" table_id="$2" record_id="$3"
-  lark-cli base record get \
-    --params "{\"app_token\":\"${base_token}\",\"table_id\":\"${table_id}\",\"record_id\":\"${record_id}\"}" \
+  lark-cli base +record-get \
+    --base-token "$base_token" \
+    --table-id "$table_id" \
+    --record-id "$record_id" \
     --as "$B2P_AS" 2>/dev/null
 }
 
@@ -518,10 +515,16 @@ _b2p_export_doc_to_pdf() {
 
   rm -rf "$tmp_dir"
 
+  # lark-cli +upload prints a "Uploading: ..." progress line before the JSON
+  # body, so we extract the trailing {...} block before parsing.
   echo "$upload_resp" | python3 -c '
-import sys, json
+import sys, json, re
+text = sys.stdin.read()
+m = re.search(r"\{[\s\S]*\}\s*$", text)
+if not m:
+    sys.exit(0)
 try:
-    d = json.loads(sys.stdin.read())
+    d = json.loads(m.group(0))
 except Exception:
     sys.exit(0)
 data = d.get("data", {})
@@ -535,24 +538,16 @@ _b2p_writeback() {
   local base_token="$1" table_id="$2" record_id="$3" field="$4" pdf_token="$5"
   local pdf_url="https://${B2P_DRIVE_HOST}/file/${pdf_token}"
 
-  local payload
-  payload="$(B2P_APP="$base_token" B2P_TBL="$table_id" B2P_REC="$record_id" \
-    python3 -c '
+  local fields_json
+  fields_json="$(B2P_FIELD="$field" B2P_URL="$pdf_url" python3 -c '
 import json, os
-print(json.dumps({
-    "app_token": os.environ["B2P_APP"],
-    "table_id": os.environ["B2P_TBL"],
-    "record_id": os.environ["B2P_REC"],
-}))')"
+print(json.dumps({os.environ["B2P_FIELD"]: os.environ["B2P_URL"]}, ensure_ascii=False))')"
 
-  local data
-  data="$(B2P_FIELD="$field" B2P_URL="$pdf_url" python3 -c '
-import json, os
-print(json.dumps({"fields": {os.environ["B2P_FIELD"]: os.environ["B2P_URL"]}}, ensure_ascii=False))')"
-
-  lark-cli base record update \
-    --params "$payload" \
-    --data "$data" \
+  lark-cli base +record-upsert \
+    --base-token "$base_token" \
+    --table-id "$table_id" \
+    --record-id "$record_id" \
+    --json "$fields_json" \
     --as "$B2P_AS" >/dev/null 2>&1 || {
     log_warn "writeback failed (field may not be a text type, or field name mismatch)"
     return 1
