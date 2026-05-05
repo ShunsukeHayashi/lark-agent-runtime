@@ -51,6 +51,7 @@ Checks:
   --check dedup      in_progress dedup conditional present (#39)
   --check schema     agent_logs auto-ensure list contains the new fields
   --check executors  external executor dispatcher + queue_triage (#44)
+  --check crm-split  CRM follow-up step audit split (#41)
   --check all        run all checks (default)
   --help             show this help
 
@@ -187,6 +188,165 @@ for mod_name in ("queue_triage", "doc_search", "crm_admin", "cross_search"):
 '
 }
 
+check_crm_split() {
+  echo "${CYAN}[crm-split]${RESET} #41 CRM follow-up step audit split"
+  assert "crm_admin extractor tags retry_only_eligible groundwork" \
+    grep -q 'retry_only_eligible' lib/executors/crm_admin.py
+  assert "runtime has a dedicated step audit writer" \
+    grep -q '_ingress_write_step_audit_log' "$INGRESS_SH"
+  assert "partial CRM note includes step_done JSON key" \
+    grep -q 'step_done' "$INGRESS_SH"
+  assert "partial CRM note includes step_pending JSON key" \
+    grep -q 'step_pending' "$INGRESS_SH"
+  assert "partial CRM note includes resend-only closure key" \
+    grep -q 'resend_only_can_close' "$INGRESS_SH"
+  assert "send-only retry path skips create_crm_record" \
+    grep -q 'send_only_retry\|retry_only_eligible' "$INGRESS_SH"
+  assert "send-only retry emits one step audit row" bash -c '
+set -euo pipefail
+tmp_home=$(mktemp -d)
+trap "rm -rf \"$tmp_home\"" EXIT
+export HOME="$tmp_home"
+export LARC_TENANT_ID=default
+export LARC_HOME="$HOME/.larc"
+export LARC_CACHE="$LARC_HOME/cache"
+export LARC_CONFIG="$LARC_HOME/config.env"
+export LARC_BASE_APP_TOKEN=""
+export LIB_DIR="$PWD/lib"
+export _LARC_SCENARIO_PY="$LIB_DIR/ingress_scenario.py"
+mkdir -p "$LARC_CACHE/queue"
+log_info() { :; }; log_ok() { :; }; log_warn() { :; }; log_error() { echo "$*" >&2; }; log_head() { :; }
+source "$LIB_DIR/runtime-common.sh"
+source "$LIB_DIR/ingress.sh"
+cmd_send() { return 0; }
+_ingress_write_step_audit_log() { printf "audit:%s:%s\n" "$2" "$3"; }
+cat > "$LARC_CACHE/queue/main.jsonl" <<'"'"'JSON'"'"'
+{"queue_id":"fixture-crm-retry-only","agent_id":"main","worker_agent_id":"main","source":"fixture","message_text":"Send follow-up message for Acme Verification: Thanks for joining onboarding.","task_types":["create_crm_record","send_crm_followup"],"scopes":[],"authority":"bot","gate":"preview","status":"in_progress","execution_note":"{\"scenario_id\":\"crm_followup\",\"step_done\":[\"create_crm_record\"],\"step_pending\":[\"send_followup_message\"],\"retry_only_eligible\":true,\"resend_only_can_close\":true}"}
+JSON
+out=$(_ingress_execute_apply --queue-id fixture-crm-retry-only)
+[[ $(printf "%s\n" "$out" | grep -c "^audit:") -eq 1 ]]
+printf "%s\n" "$out" | grep -q "^audit:send_crm_followup:done$"
+'
+  assert "missing CRM follow-up closes as partial without run steps" bash -c '
+set -euo pipefail
+tmp_home=$(mktemp -d)
+trap "rm -rf \"$tmp_home\"" EXIT
+export HOME="$tmp_home"
+export LARC_TENANT_ID=default
+export LARC_HOME="$HOME/.larc"
+export LARC_CACHE="$LARC_HOME/cache"
+export LARC_CONFIG="$LARC_HOME/config.env"
+export LARC_BASE_APP_TOKEN=""
+export LIB_DIR="$PWD/lib"
+export _LARC_SCENARIO_PY="$LIB_DIR/ingress_scenario.py"
+mkdir -p "$LARC_CACHE/queue"
+log_info() { :; }; log_ok() { :; }; log_warn() { :; }; log_error() { echo "$*" >&2; }; log_head() { :; }
+source "$LIB_DIR/runtime-common.sh"
+source "$LIB_DIR/ingress.sh"
+_ingress_write_step_audit_log() { :; }
+cat > "$LARC_CACHE/queue/main.jsonl" <<'"'"'JSON'"'"'
+{"queue_id":"fixture-crm-missing-followup","agent_id":"main","worker_agent_id":"main","source":"fixture","message_text":"CRM task for Acme Verification","task_types":["send_crm_followup"],"scopes":[],"authority":"bot","gate":"preview","status":"in_progress"}
+JSON
+_ingress_execute_apply --queue-id fixture-crm-missing-followup >/dev/null
+python3 - "$LARC_CACHE/queue/main.jsonl" <<'"'"'PY'"'"'
+import json, sys
+row = json.loads(open(sys.argv[1], encoding="utf-8").readline())
+note = json.loads(row["execution_note"])
+assert row["status"] == "partial", row
+assert note["step_pending"] == ["send_followup_message"], note
+assert note["next_action"] == "manual_followup_required", note
+PY
+'
+  assert "failed CRM create without completed steps closes as failed" bash -c '
+set -euo pipefail
+tmp_home=$(mktemp -d)
+trap "rm -rf \"$tmp_home\"" EXIT
+export HOME="$tmp_home"
+export LARC_TENANT_ID=default
+export LARC_HOME="$HOME/.larc"
+export LARC_CACHE="$LARC_HOME/cache"
+export LARC_CONFIG="$LARC_HOME/config.env"
+export LARC_BASE_APP_TOKEN=""
+export LIB_DIR="$PWD/lib"
+export _LARC_SCENARIO_PY="$LIB_DIR/ingress_scenario.py"
+mkdir -p "$LARC_CACHE/queue"
+log_info() { :; }; log_ok() { :; }; log_warn() { :; }; log_error() { echo "$*" >&2; }; log_head() { :; }
+source "$LIB_DIR/runtime-common.sh"
+source "$LIB_DIR/ingress.sh"
+openclaw() { return 1; }
+cmd_send() { echo "unexpected send" >&2; return 1; }
+_ingress_write_step_audit_log() { :; }
+cat > "$LARC_CACHE/queue/main.jsonl" <<'"'"'JSON'"'"'
+{"queue_id":"fixture-crm-create-fails","agent_id":"main","worker_agent_id":"main","source":"fixture","message_text":"Create a CRM record for Acme and send: Hello from sales.","task_types":["create_crm_record","send_crm_followup"],"scopes":[],"authority":"bot","gate":"preview","status":"in_progress"}
+JSON
+_ingress_execute_apply --queue-id fixture-crm-create-fails >/dev/null
+python3 - "$LARC_CACHE/queue/main.jsonl" <<'"'"'PY'"'"'
+import json, sys
+row = json.loads(open(sys.argv[1], encoding="utf-8").readline())
+note = json.loads(row["execution_note"])
+assert row["status"] == "failed", row
+assert note["step_done"] == [], note
+assert note["step_failed"] == ["create_crm_record"], note
+PY
+'
+  assert "generic follow-up request requires message body" bash -c '
+set -euo pipefail
+tmp_home=$(mktemp -d)
+trap "rm -rf \"$tmp_home\"" EXIT
+export HOME="$tmp_home"
+export LARC_TENANT_ID=default
+export LARC_HOME="$HOME/.larc"
+export LARC_CACHE="$LARC_HOME/cache"
+export LARC_CONFIG="$LARC_HOME/config.env"
+export LARC_BASE_APP_TOKEN=""
+export LIB_DIR="$PWD/lib"
+export _LARC_SCENARIO_PY="$LIB_DIR/ingress_scenario.py"
+mkdir -p "$LARC_CACHE/queue"
+log_info() { :; }; log_ok() { :; }; log_warn() { :; }; log_error() { echo "$*" >&2; }; log_head() { :; }
+source "$LIB_DIR/runtime-common.sh"
+source "$LIB_DIR/ingress.sh"
+openclaw() { return 0; }
+cmd_send() { echo "unexpected send" >&2; return 1; }
+_ingress_write_step_audit_log() { :; }
+cat > "$LARC_CACHE/queue/main.jsonl" <<'"'"'JSON'"'"'
+{"queue_id":"fixture-crm-generic-followup","agent_id":"main","worker_agent_id":"main","source":"fixture","message_text":"Create a CRM record for Acme and send a follow-up message","task_types":["create_crm_record","send_crm_followup"],"scopes":[],"authority":"bot","gate":"preview","status":"in_progress"}
+JSON
+_ingress_execute_apply --queue-id fixture-crm-generic-followup >/dev/null
+python3 - "$LARC_CACHE/queue/main.jsonl" <<'"'"'PY'"'"'
+import json, sys
+row = json.loads(open(sys.argv[1], encoding="utf-8").readline())
+note = json.loads(row["execution_note"])
+assert row["status"] == "partial", row
+assert note["step_done"] == ["create_crm_record"], note
+assert note["step_pending"] == ["send_followup_message"], note
+assert "followup_message" in note["missing_or_pending"], note
+PY
+'
+  assert "string false retry flag does not skip create_crm_record" bash -c '
+set -euo pipefail
+tmp_home=$(mktemp -d)
+trap "rm -rf \"$tmp_home\"" EXIT
+export HOME="$tmp_home"
+export LARC_TENANT_ID=default
+export LARC_HOME="$HOME/.larc"
+export LARC_CACHE="$LARC_HOME/cache"
+export LARC_CONFIG="$LARC_HOME/config.env"
+export LARC_BASE_APP_TOKEN=""
+export LIB_DIR="$PWD/lib"
+export _LARC_SCENARIO_PY="$LIB_DIR/ingress_scenario.py"
+mkdir -p "$LARC_CACHE/queue"
+log_info() { :; }; log_ok() { :; }; log_warn() { :; }; log_error() { echo "$*" >&2; }; log_head() { :; }
+source "$LIB_DIR/runtime-common.sh"
+source "$LIB_DIR/ingress.sh"
+cat > "$LARC_CACHE/queue/main.jsonl" <<'"'"'JSON'"'"'
+{"queue_id":"fixture-crm-false-string","agent_id":"main","worker_agent_id":"main","source":"fixture","message_text":"Create a CRM record for Acme and send: Hello from sales.","task_types":["create_crm_record","send_crm_followup"],"scopes":[],"authority":"bot","gate":"preview","status":"in_progress","execution_note":"{\"retry_only_eligible\":\"false\",\"resend_only_can_close\":\"false\"}"}
+JSON
+out=$(_ingress_execute_apply --queue-id fixture-crm-false-string --dry-run)
+printf "%s\n" "$out" | grep -q -- "- run: create_crm_record"
+! printf "%s\n" "$out" | grep -q -- "- skip: create_crm_record"
+'
+}
+
 # ── dispatcher ───────────────────────────────────────────────────────────────
 
 run_all() {
@@ -197,6 +357,7 @@ run_all() {
   check_hitl
   check_dedup
   check_executors
+  check_crm_split
 }
 
 case "${1:---check}" in
@@ -216,6 +377,7 @@ case "$mode" in
   dedup)      check_dedup ;;
   schema)     check_schema ;;
   executors)  check_executors ;;
+  crm-split)  check_crm_split ;;
   syntax)     check_syntax ;;
   *) echo "Unknown check: $mode"; usage; exit 2 ;;
 esac
