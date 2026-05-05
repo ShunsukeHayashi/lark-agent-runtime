@@ -139,7 +139,7 @@
     },
     "write_calendar": {
       "scopes": [
-        "calendar:calendar"
+        "calendar:calendar.event:create"
       ],
       "identity": "user",
       "description": "カレンダーイベントの作成・更新・削除"
@@ -429,7 +429,7 @@
         "bitable:app",
         "drive:file:create",
         "im:message:send_as_bot",
-        "calendar:calendar",
+        "calendar:calendar.event:create",
         "task:task",
         "sheets:spreadsheet"
       ]
@@ -446,7 +446,7 @@
         "drive:drive",
         "drive:file:create",
         "im:message:send_as_bot",
-        "calendar:calendar",
+        "calendar:calendar.event:create",
         "approval:approval:write",
         "approval:instance:write",
         "approval:task:write",

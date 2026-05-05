@@ -109,7 +109,7 @@ MIN_SCOPES = {
     "user_send": ["im:message"],
     "base_write": ["bitable:app"],
     "wiki_write": ["wiki:node:create"],
-    "calendar_write": ["calendar:calendar"],
+    "calendar_write": ["calendar:calendar.event:create"],
     "approval_create": ["approval:instance:write"],
     "approval_act": ["approval:task:write"],
 }
@@ -124,11 +124,15 @@ RESET = "\033[0m"
 # ── Rule 1: User-mandatory operations ───────────────────────────────────────
 # These operations MUST be attributed to a real named person.
 USER_MANDATORY_PATTERNS = [
-    (r"calendar|schedule\s+\w*\s*(?:meeting|event|call|appointment)|book\s+\w*\s*(?:room|meeting)",
-     "Calendar write requires user attribution", ["calendar:calendar"]),
+    (r"(?=.*(?:calendar|event|meeting|call|appointment|room))(?=.*(?:create|schedule|book|add|write|set\s*up|register))|(?=.*(?:カレンダー|予定|スケジュール|会議))(?=.*(?:作成|登録|追加|設定|予約|入れ|作る))",
+     "Calendar write requires user attribution", ["calendar:calendar.event:create"]),
     (r"(?:submit|create|route)\s+\w*\s*approval|approval\s+(?:instance|flow|request)",
      "Approval instance creation must be attributed to the submitter", ["approval:instance:write"]),
     (r"(?:approve|reject|act\s+on)\s+\w*\s*approval|approval\s+task",
+     "Approval task action must be performed as the named approver", ["approval:task:write"]),
+    (r"承認申請|稟議|申請.*承認|承認.*申請",
+     "Approval instance creation must be attributed to the submitter", ["approval:instance:write"]),
+    (r"承認をお願いします|承認してください|承認する|却下|差し戻し|承認タスク",
      "Approval task action must be performed as the named approver", ["approval:task:write"]),
     (r"on\s+behalf\s+of|as\s+the\s+user|user.?attributed",
      "Explicitly requested user attribution", []),
@@ -137,25 +141,30 @@ USER_MANDATORY_PATTERNS = [
 # ── Rule 2: External tenant DM blocked ──────────────────────────────────────
 # Sending DMs to users in a different Lark tenant is blocked by Lark API.
 # Error 230038: "The operator does not have the permission to send messages."
-EXTERNAL_TENANT_PATTERNS = [
+EXTERNAL_TENANT_MARKERS = [
     r"external\s+(?:user|tenant|organization|company|member)",
     r"(?:user|member)\s+(?:from|at|in)\s+(?:another|different|other)\s+(?:tenant|org|company)",
     r"cross.tenant|inter.tenant",
     r"outside\s+(?:our|the)\s+(?:org|organization|tenant|company)",
+    r"外部テナント|外部ユーザ|外部のユーザ|外部メンバー|別テナント|他テナント|ゲスト|取引先",
+]
+EXTERNAL_DM_MARKERS = [
+    r"\bdm\b|direct\s+message|send\s+\w*\s*(?:message|notification|chat|im)|message\s+send|notify",
+    r"dm送信|ＤＭ送信|メッセージ送信|通知|送信|チャット",
 ]
 
 # ── Rule 3: Bot default ──────────────────────────────────────────────────────
 # All other operations default to bot (tenant_access_token).
 BOT_SCOPE_PATTERNS = {
-    r"send\s+\w*\s*(?:message|notification|alert|chat)|notify": ["im:message:send_as_bot"],
+    r"send\s+\w*\s*(?:message|notification|alert|chat|im)|notify|メッセージ送信|通知|送信": ["im:message:send_as_bot"],
     r"read\s+\w*\s*message|message\s+history|chat\s+history": ["im:message:readonly"],
     r"read\s+\w*\s*(?:doc|document)|view\s+\w*\s*doc": ["docs:document:readonly"],
-    r"wiki|knowledge\s*base": ["wiki:space:read"],
+    r"wiki|knowledge\s*base|ノード読み取り": ["wiki:space:read"],
     r"(?:create|update|write)\s+\w*\s*wiki": ["wiki:node:create"],
     r"base|bitable|crm|record": ["bitable:app:readonly"],
     r"(?:create|add|insert)\s+\w*\s*record": ["bitable:app"],
-    r"drive|upload\s+\w*\s*file": ["drive:file:create"],
-    r"read\s+\w*\s*drive|list\s+file": ["drive:drive.metadata:readonly"],
+    r"read\s+\w*\s*drive|list\s+\w*\s*file|file\s+list|browse\s+drive|(?=.*drive)(?=.*(?:一覧|取得|読み取り|確認|検索))|(?=.*ファイル)(?=.*(?:一覧|取得|読み取り|確認|検索))": ["drive:drive.metadata:readonly"],
+    r"upload\s+\w*\s*file|attach\s+\w*\s*file|create\s+\w*\s*file|(?=.*drive)(?=.*(?:アップロード|作成|追加|登録))|(?=.*ファイル)(?=.*(?:アップロード|作成|追加|登録))": ["drive:file:create"],
 }
 
 decision = None
@@ -164,17 +173,17 @@ required_scopes = []
 rule_applied = ""
 
 # Check Rule 2 first (hard block)
-for pattern in EXTERNAL_TENANT_PATTERNS:
-    if re.search(pattern, task_desc):
-        decision = "blocked"
-        reason = (
-            "External tenant DM is blocked by Lark API.\n"
-            "  Error 230038: operator does not have permission to send messages to external users.\n"
-            "  Workaround: invite external user as a guest, then use their open_id."
-        )
-        rule_applied = "Rule 2 — External tenant DM blocked"
-        required_scopes = []
-        break
+is_external_target = any(re.search(pattern, task_desc) for pattern in EXTERNAL_TENANT_MARKERS)
+is_dm_action = any(re.search(pattern, task_desc) for pattern in EXTERNAL_DM_MARKERS)
+if is_external_target and is_dm_action:
+    decision = "blocked"
+    reason = (
+        "External tenant DM is blocked by Lark API.\n"
+        "  Error 230038: operator does not have permission to send messages to external users.\n"
+        "  Workaround: invite external user as a guest, then use their open_id."
+    )
+    rule_applied = "Rule 2 — External tenant DM blocked"
+    required_scopes = []
 
 # Check Rule 1 (user-mandatory)
 if decision is None:
@@ -194,7 +203,7 @@ if decision is None:
     for pattern, scopes in BOT_SCOPE_PATTERNS.items():
         if re.search(pattern, task_desc):
             required_scopes.extend(scopes)
-    required_scopes = sorted(set(required_scopes)) or ["im:message:send_as_bot"]
+    required_scopes = sorted(set(required_scopes))
 
 # ── Output ───────────────────────────────────────────────────────────────────
 decision_colors = {"user": GREEN, "bot": CYAN, "blocked": RED}
@@ -216,6 +225,10 @@ else:
     if decision == "blocked":
         print(f"\n  {RED}No authorization path available.{RESET}")
         print(f"  See: docs/known-issues/lark-external-user-api-gap.md")
+    else:
+        print(f"\n  {BOLD}Minimum required scopes:{RESET} (none inferred)")
+        print("  Try a more specific description, or run:")
+        print("    larc auth suggest \"<task description>\"")
 
 print()
 PYEOF

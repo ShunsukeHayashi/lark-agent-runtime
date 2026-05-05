@@ -69,7 +69,7 @@ larc auth router "send IM notification to team"
 # → bot + im:message:send_as_bot
 
 larc auth router "create calendar event for tomorrow"
-# → user + calendar:calendar
+# → user + calendar:calendar.event:create
 
 larc auth router "send DM to external user"
 # → blocked + error 230038 explanation

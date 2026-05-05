@@ -151,7 +151,7 @@ required "create expense" rather than bare "expense".
 |---|---|
 | `bitable:app` | App-level access for the Bitable CRM app |
 | `bitable:app:readonly` | Existence check before creation |
-| `calendar:calendar` | Creating a calendar event for the follow-up |
+| `calendar:calendar.event:create` | Creating a calendar event for the follow-up |
 | `contact:user.base:readonly` | Looking up the lead's user identity |
 
 **Authority path:** user — this task describes record creation plus calendar scheduling,
@@ -209,7 +209,7 @@ Expected minimum scope sets:
 [bitable:app, bitable:app:readonly, bitable:record] update the customer record after the meeting
 [approval:instance:write, bitable:app, im:message:send_as_bot] route expense to approval and notify the manager
 [drive:file:create, wiki:node:write, wiki:space:read] upload the contract file to drive and update the wiki with the key terms
-[bitable:app, bitable:app:readonly, calendar:calendar, contact:user.base:readonly] create a lead record and schedule a follow-up meeting
+[bitable:app, bitable:app:readonly, calendar:calendar.event:create, contact:user.base:readonly] create a lead record and schedule a follow-up meeting
 [attendance:task:readonly, sheets:spreadsheet] read the attendance records and generate a timesheet report
 [approval:task:write] 請求書発行の承認をお願いします
 ```
@@ -241,7 +241,7 @@ Expected minimum scope sets:
 
 **Expected decision:** `user`  
 **Rule:** Rule 1 — User-mandatory operation  
-**Expected scopes:** `calendar:calendar`
+**Expected scopes:** `calendar:calendar.event:create`
 
 **Status:** ✅ passing
 
@@ -285,6 +285,19 @@ Expected minimum scope sets:
 ---
 
 ### Router Regression Command
+
+```bash
+scripts/auth-router-check.sh
+```
+
+The script includes the Issue #57 Japanese regressions:
+
+- `カレンダー予定を作成` -> `USER` + `calendar:calendar.event:create`
+- `Drive ファイル一覧取得` -> `BOT` + `drive:drive.metadata:readonly`
+- `外部テナントの取引先にDM送信` -> `BLOCKED`
+- `Wiki ノード読み取り` -> `BOT` + `wiki:space:read`
+
+Legacy quick smoke:
 
 ```bash
 declare -A EXPECTED=(
