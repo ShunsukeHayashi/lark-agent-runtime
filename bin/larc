@@ -157,7 +157,124 @@ _qs_share_folder() {
     --as bot \
     --params "{\"token\":\"${folder_token}\",\"type\":\"folder\"}" \
     --data "{\"member_type\":\"openid\",\"member_id\":\"${open_id}\",\"perm\":\"full_access\",\"type\":\"user\"}" \
+    --yes \
     >/dev/null 2>&1
+}
+
+_qs_permissions_url() {
+  local app_id="${1:-}"
+  if [[ -n "$app_id" ]]; then
+    echo "https://open.larksuite.com/app/${app_id}/permissions"
+  else
+    echo "https://open.larksuite.com/app"
+  fi
+}
+
+_qs_validate_app_scopes() {
+  local app_id="$1" dry_run="$2"
+  local permissions_url
+  permissions_url="$(_qs_permissions_url "$app_id")"
+
+  _qs_info "Bot App scope を確認します"
+  echo -e "  ${_W}quickstart が必要とする App scope:${_E}"
+  echo "    - drive:drive / space:folder:create          (Drive folder 作成)"
+  echo "    - docs:permission.member:create              (生成フォルダの共有)"
+  echo "    - bitable:app / base:app:create              (LARC-memory Base 作成)"
+  echo "    - bitable:app / base:table:create            (Base table 作成)"
+  echo "    - bitable:app / base:field:create            (Base field 作成)"
+  echo "    - docs:document:write_only / docx:document:create (初期Doc作成)"
+  echo -e "  ${_B}申請: ${permissions_url}${_E}"
+
+  if [[ "$dry_run" == "true" ]]; then
+    _qs_skip "dry-run のため live scope 検証はスキップ"
+    return 0
+  fi
+  if [[ "${LARC_QUICKSTART_SKIP_SCOPE_CHECK:-}" == "1" ]]; then
+    _qs_skip "LARC_QUICKSTART_SKIP_SCOPE_CHECK=1 のため scope 検証をスキップ"
+    return 0
+  fi
+
+  local scopes_json=""
+  if ! scopes_json=$(lark-cli auth scopes --format json 2>&1); then
+    _qs_fail "Bot App scope を取得できませんでした。lark-cli v1.0.23+ を確認してください。"
+    echo "$scopes_json" >&2
+    echo -e "  ${_B}申請: ${permissions_url}${_E}" >&2
+    exit 1
+  fi
+
+  local missing_report=""
+  missing_report=$(LARC_APP_SCOPES_JSON="$scopes_json" python3 - <<'PY'
+import json
+import os
+import sys
+
+requirements = [
+    ("Drive folder 作成", ["drive:drive", "space:folder:create"]),
+    ("生成フォルダの共有", ["docs:permission.member:create"]),
+    ("LARC-memory Base 作成", ["bitable:app", "base:app:create"]),
+    ("Base table 作成", ["bitable:app", "base:table:create"]),
+    ("Base field 作成", ["bitable:app", "base:field:create"]),
+    ("初期Doc作成", ["docs:document:write_only", "docx:document:create", "docx:document:write_only"]),
+]
+
+raw = os.environ.get("LARC_APP_SCOPES_JSON", "")
+start = raw.find("{")
+end = raw.rfind("}")
+if start >= 0 and end >= start:
+    raw = raw[start:end + 1]
+try:
+    data = json.loads(raw)
+except Exception as exc:
+    print(f"__parse_error__\t{exc}")
+    sys.exit(0)
+
+scopes = set()
+
+def walk(value, key=""):
+    if isinstance(value, dict):
+        for child_key, child_value in value.items():
+            walk(child_value, child_key)
+    elif isinstance(value, list):
+        if "scope" in key.lower() or key.lower() in {"scopes", "userscopes", "botscopes"}:
+            for item in value:
+                if isinstance(item, str):
+                    scopes.add(item)
+        for item in value:
+            walk(item, key)
+    elif isinstance(value, str) and ":" in value and " " not in value:
+        if key.lower() in {"scope", "name", "id"} or "scope" in key.lower():
+            scopes.add(value)
+
+walk(data)
+
+for label, alternatives in requirements:
+    if not any(scope in scopes for scope in alternatives):
+        print(f"{label}\t{', '.join(alternatives)}")
+PY
+)
+
+  if [[ "$missing_report" == __parse_error__* ]]; then
+    _qs_fail "Bot App scope の応答を解析できませんでした。"
+    echo "$missing_report" >&2
+    echo -e "  ${_B}申請: ${permissions_url}${_E}" >&2
+    exit 1
+  fi
+
+  if [[ -n "$missing_report" ]]; then
+    _qs_fail "Bot App に必要な scope が不足しています:"
+    while IFS=$'\t' read -r label scopes; do
+      [[ -z "$label" ]] && continue
+      echo -e "    ${_R}✗${_E} ${label}: ${scopes}" >&2
+    done <<< "$missing_report"
+    echo "" >&2
+    echo -e "  ${_W}Lark Developer Console で上記 scope を申請・公開してください。${_E}" >&2
+    echo -e "  ${_B}${permissions_url}${_E}" >&2
+    echo "" >&2
+    echo -e "  申請完了後、再度 ${_C}larc quickstart${_E} を実行してください。" >&2
+    exit 1
+  fi
+
+  _qs_ok "Bot App scope 確認完了"
 }
 
 cmd_quickstart() {
@@ -201,8 +318,8 @@ cmd_quickstart() {
   echo -e "  ${_B}  LARC 専用フォルダのみ新規作成します${_E}"
   echo ""
 
-  # ── Step 1: Verify lark-cli auth ─────────────────────────────────────────
-  _qs_head "Step 1/7 — Lark 認証確認"
+  # ── Step 0: Verify lark-cli app config and enabled app scopes ────────────
+  _qs_head "Step 0/7 — Lark App 設定と scope 事前確認"
 
   # Sub-check 1a: Is lark-cli configured with an app?
   # Use `config show` (exists in v1.0.11+); `config list` does not exist.
@@ -259,6 +376,11 @@ except Exception:
     fi
     echo ""
   fi
+
+  _qs_validate_app_scopes "$app_id_configured" "$dry_run"
+
+  # ── Step 1: Verify lark-cli auth ─────────────────────────────────────────
+  _qs_head "Step 1/7 — Lark 認証確認"
 
   # Sub-check 1b: Is user logged in?
   local auth_json user_name user_oid token_status
@@ -333,7 +455,8 @@ except Exception:
     local ws_result
     ws_result=$(lark-cli drive files create_folder \
       --as bot \
-      --data '{"name":"larc-workspace","folder_token":""}' 2>&1)
+      --data '{"name":"larc-workspace","folder_token":""}' \
+      --yes 2>&1)
     ws_token=$(echo "$ws_result" | python3 -c \
       "import sys,json; d=json.load(sys.stdin); print(d.get('data',{}).get('token',''))" 2>/dev/null)
     if [[ -z "$ws_token" ]]; then
@@ -351,7 +474,8 @@ except Exception:
     local wd_result
     wd_result=$(lark-cli drive files create_folder \
       --as bot \
-      --data '{"name":"larc-workdir","folder_token":""}' 2>&1)
+      --data '{"name":"larc-workdir","folder_token":""}' \
+      --yes 2>&1)
     wd_token=$(echo "$wd_result" | python3 -c \
       "import sys,json; d=json.load(sys.stdin); print(d.get('data',{}).get('token',''))" 2>/dev/null)
     if [[ -z "$wd_token" ]]; then
