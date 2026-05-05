@@ -54,7 +54,7 @@ cases=(
   "4|update customer record|bitable:app,bitable:app:readonly,bitable:record|update the customer record after the meeting"
   "5|route expense + notify mgr|approval:instance:write,bitable:app,im:message:send_as_bot|route expense to approval and notify the manager"
   "6|upload to drive + wiki|drive:file:create,wiki:node:write,wiki:space:read|upload the contract file to drive and update the wiki with the key terms"
-  "7|crm lead + schedule meeting|bitable:app,bitable:app:readonly,calendar:calendar,contact:user.base:readonly|create a lead record and schedule a follow-up meeting"
+  "7|crm lead + schedule meeting|bitable:app,bitable:app:readonly,calendar:calendar.event:create,contact:user.base:readonly|create a lead record and schedule a follow-up meeting"
   "8|attendance + timesheet|attendance:task:readonly,sheets:spreadsheet|read the attendance records and generate a timesheet report"
   "9|Japanese invoice approval|approval:task:write|請求書発行の承認をお願いします"
 )
