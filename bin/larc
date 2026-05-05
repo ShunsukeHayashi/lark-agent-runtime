@@ -148,6 +148,7 @@ cmd_onboard()   { _cmd_onboard "$@"; }
 cmd_template()  { _cmd_template "$@"; }
 cmd_dashboard() { source "$LIB_DIR/dashboard.sh"; cmd_dashboard "$@"; }
 cmd_billing()   { source "$LIB_DIR/billing.sh";   cmd_billing   "$@"; }
+cmd_base2pdf()  { source "$LIB_DIR/base2pdf.sh";  cmd_base2pdf  "$@"; }
 
 # Share a Drive folder with the current user (full edit access).
 # Uses bot identity; drive:drive scope is not available on user OAuth tokens.
@@ -1426,6 +1427,7 @@ main() {
     template)   shift; cmd_template "$@" ;;
     dashboard)  shift; cmd_dashboard "$@" ;;
     billing)    shift; cmd_billing "$@" ;;
+    base2pdf)   shift; require_lark_cli; cmd_base2pdf "$@" ;;
     ocr)        shift; require_lark_cli; cmd_ocr "$@" ;;
     status)     shift; cmd_status "$@" ;;
     help|--help|-h) cmd_help ;;
