@@ -94,6 +94,7 @@ larc status
 ```
 
 → Full guide: [docs/quickstart-ja.md](docs/quickstart-ja.md)
+→ Self-paced onboarding course: [course/README.md](course/README.md)
 
 ---
 
