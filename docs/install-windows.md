@@ -176,23 +176,32 @@ $env:LARC_BASH = "C:\Program Files\Git\bin\bash.exe"
 
 ---
 
-## 5. Start the daemon (optional)
+## 5. Daemon support stance
+
+`larc daemon` is experimental on every platform and has extra constraints on Windows. The supported Windows stance is documented in [Windows Daemon Support Stance](windows-daemon.md).
+
+Use the daemon only after the read-only smoke test passes. For most users, keep it in a dedicated Git Bash session:
 
 ```bash
 larc daemon start --agent main --interval 30
 larc daemon status
 ```
 
-**Windows caveat.** LARC's daemon uses PID files and `kill -0` for process control. On Git Bash this works but background processes are tied to the terminal session (no `systemd`/`launchd` equivalent). Two workable patterns:
+Windows caveat: LARC's daemon uses PID files and `kill -0` for process control. On Git Bash this works, but background processes are tied to the terminal session. There is no built-in Windows Service integration.
 
-1. Keep a dedicated Git Bash window open for the daemon.
-2. Use the Windows **Task Scheduler** or **NSSM** to supervise the daemon as a service. Example NSSM config (advanced users):
+Supported patterns:
 
-   ```powershell
-   nssm install larc-daemon "C:\Program Files\Git\bin\bash.exe" "-lc 'larc daemon start --agent main --interval 30 && sleep infinity'"
-   ```
+1. Keep a dedicated Git Bash window open for validation and pilot runs.
+2. Use Task Scheduler with Git Bash, under the same Windows user that completed `lark-cli auth login`.
+3. Use NSSM only as an advanced manual supervisor.
 
-Official service-integration story is tracked under the [Windows Support milestone](../../milestone/1).
+Not supported:
+
+- native PowerShell daemon
+- automatic Windows Service installation
+- service-account daemon runs unless that same account completed `lark-cli auth login`
+
+See [docs/windows-daemon.md](windows-daemon.md) for Task Scheduler and NSSM wrapper patterns.
 
 ---
 
@@ -250,7 +259,7 @@ Fixed in #19. Pull the latest `main`.
 ## What is NOT supported on Windows (yet)
 
 - Native PowerShell LARC (the `.ps1` is a launcher, not a rewrite)
-- Running the daemon as a Windows Service out of the box (use NSSM or Task Scheduler manually)
+- Running the daemon as a Windows Service out of the box. See [Windows Daemon Support Stance](windows-daemon.md) for the manual Task Scheduler / NSSM posture.
 - Symlinks created on Git Bash may appear as junction points under PowerShell — rare issue, but worth knowing
 
 See issue #9 for the live tracking of Windows-specific work.
@@ -259,7 +268,7 @@ See issue #9 for the live tracking of Windows-specific work.
 
 ## Feedback
 
-If you hit a Windows-specific bug, file an issue linked from [#9](../../issues/9) with:
+If you hit a Windows-specific bug, file an issue linked from [#9](https://github.com/ShunsukeHayashi/lark-harness/issues/9) with:
 
 1. Windows version + shell (PowerShell version / Git Bash version / WSL distro)
 2. `larc --version` and `lark-cli --version`
