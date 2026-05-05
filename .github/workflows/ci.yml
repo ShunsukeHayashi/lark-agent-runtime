@@ -39,3 +39,6 @@ jobs:
 
       - name: Verify auth-suggest regression cases
         run: bash scripts/auth-suggest-check.sh --verify
+
+      - name: Verify quickstart preflight regression cases
+        run: bash scripts/quickstart-preflight-check.sh
