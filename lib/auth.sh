@@ -11,10 +11,12 @@
 #
 #   larc auth check [--task <task_type>] [--profile <profile_name>]
 #       Check current auth state and permission scopes
-#       If scopes are missing, runs lark-cli auth login --scope "..." to issue auth URL
+#       If scopes are missing, runs lark-cli auth login with additive scopes to issue auth URL
 #
-#   larc auth login [--scope "<scope ...>"] [--profile <profile_name>]
-#       Start authorization for the given scopes and display the auth URL
+#   larc auth login [--scope "<scope ...>"] [--add-scope "<scope ...>"]
+#       [--profile <profile_name>] [--replace]
+#       Start authorization for the given scopes and display the auth URL.
+#       Existing granted scopes are preserved unless --replace is explicit.
 #
 #   larc auth refresh [--force]
 #       Check user_access_token expiry and auto-refresh if < 10 min remaining
@@ -50,7 +52,7 @@ ${BOLD}Commands:${RESET}
   ${CYAN}check${RESET} [--task <type>]            Check current permission state (suggests login if gaps found)
          [--profile <name>]
   ${CYAN}login${RESET} [--scope "<scope ...>"]    Issue auth URL for specified scopes
-         [--profile <name>]
+         [--add-scope "<scope ...>"] [--profile <name>] [--replace]
   ${CYAN}refresh${RESET} [--force]               Auto-refresh user_access_token if < 10 min remaining
 
 ${BOLD}Examples:${RESET}
@@ -61,6 +63,8 @@ ${BOLD}Examples:${RESET}
   larc auth check --task create_expense
   larc auth check --profile writer
   larc auth login --scope "docs:document:copy bitable:app"
+  larc auth login --add-scope "docs:document:copy"
+  larc auth login --replace --scope "docs:document:copy"  # intentionally replace current scopes
   larc auth login --profile backoffice_agent
   larc auth refresh
   larc auth refresh --force
@@ -211,7 +215,7 @@ if required_scopes:
     scope_str = " ".join(required_scopes)
     if decision != "blocked":
         print(f"\n  To authorize:")
-        print(f"    larc auth login --scope \"{scope_str}\"")
+        print(f"    larc auth login --add-scope \"{scope_str}\"")
 else:
     if decision == "blocked":
         print(f"\n  {RED}No authorization path available.{RESET}")
@@ -447,7 +451,7 @@ if effective_identity == "either":
 
 scope_str = " ".join(sorted(all_scopes.keys()))
 print(f"\n  To issue auth URL:")
-print(f"    larc auth login --scope \"{scope_str}\"")
+print(f"    larc auth login --add-scope \"{scope_str}\"")
 
 # Known API limitation warnings — surface before caller invests effort
 TASK_WARNINGS = {
@@ -692,13 +696,13 @@ if missing:
     missing_str = " ".join(missing)
     print(f"\n  \033[33m{len(missing)} missing scope(s) found.\033[0m")
     print(f"\n  To issue auth URL, run:")
-    print(f"    larc auth login --scope \"{missing_str}\"")
+    print(f"    larc auth login --add-scope \"{missing_str}\"")
 elif current_scopes:
     print(f"\n  \033[32m✓ All required scopes are already granted.\033[0m")
 else:
     scope_str = " ".join(sorted(required_scopes))
     print(f"\n  Could not verify scope grant status. Re-auth recommended:")
-    print(f"    larc auth login --scope \"{scope_str}\"")
+    print(f"    larc auth login --add-scope \"{scope_str}\"")
 PYEOF
 
   local exit_code=$?
@@ -735,14 +739,88 @@ PYEOF2
 }
 
 # ── auth login ────────────────────────────────────────────────────────────
+_auth_normalize_scope_list() {
+  python3 - "$@" <<'PYEOF'
+import sys
+
+scopes = []
+for raw in sys.argv[1:]:
+    for item in raw.replace(",", " ").split():
+        item = item.strip()
+        if item:
+            scopes.append(item)
+
+print(" ".join(sorted(set(scopes))))
+PYEOF
+}
+
+_auth_current_granted_scopes() {
+  local auth_json
+  auth_json=$(lark-cli auth status 2>/dev/null) || return 1
+
+  printf '%s\n' "$auth_json" | python3 -c '
+import json
+import sys
+
+try:
+    data = json.load(sys.stdin)
+except Exception:
+    sys.exit(1)
+
+raw = data.get("scope")
+if raw is None:
+    raw = data.get("scopes", [])
+
+if isinstance(raw, str):
+    scopes = raw.replace(",", " ").split()
+elif isinstance(raw, list):
+    scopes = []
+    for item in raw:
+        scopes.extend(str(item).replace(",", " ").split())
+else:
+    scopes = []
+
+print(" ".join(sorted(set(s for s in scopes if s))))
+'
+}
+
+_auth_scope_difference() {
+  python3 - "$1" "$2" <<'PYEOF'
+import sys
+
+def parse(raw):
+    return {item for item in raw.replace(",", " ").split() if item}
+
+left = parse(sys.argv[1])
+right = parse(sys.argv[2])
+print(" ".join(sorted(right - left)))
+PYEOF
+}
+
+_auth_scope_count() {
+  python3 - "$1" <<'PYEOF'
+import sys
+print(len([item for item in sys.argv[1].replace(",", " ").split() if item]))
+PYEOF
+}
+
 _auth_login() {
   local scopes=""
   local profile_name=""
+  local replace=false
 
   while [[ $# -gt 0 ]]; do
     case "$1" in
-      --scope)   scopes="$2";       shift 2 ;;
+      --scope|--add-scope)
+        if [[ -n "$scopes" ]]; then
+          scopes="${scopes} $2"
+        else
+          scopes="$2"
+        fi
+        shift 2
+        ;;
       --profile) profile_name="$2"; shift 2 ;;
+      --replace) replace=true; shift ;;
       *) log_warn "Unknown option: $1"; shift ;;
     esac
   done
@@ -785,6 +863,8 @@ PYEOF
     echo ""
     echo "  Examples:"
     echo "    larc auth login --scope \"docs:document:copy base:record:create\""
+    echo "    larc auth login --add-scope \"docs:document:copy\""
+    echo "    larc auth login --replace --scope \"docs:document:copy\"  # intentionally replace current scopes"
     echo "    larc auth login --profile readonly"
     echo "    larc auth login --profile writer"
     echo ""
@@ -802,19 +882,48 @@ for k, v in m.get('profiles',{}).items():
     return 1
   fi
 
-  log_head "Starting Lark authorization"
-  log_info "Scopes: $scopes"
-  echo ""
-
   # Normalize scopes (deduplicate and sort)
   local normalized_scopes
-  normalized_scopes=$(echo "$scopes" | tr ', ' '\n\n' | sed '/^$/d' | sort -u | tr '\n' ' ' | sed 's/[[:space:]]*$//')
+  normalized_scopes="$(_auth_normalize_scope_list "$scopes")"
+
+  local effective_scopes="$normalized_scopes"
+  local current_scopes=""
+  local preserved_scopes=""
+  local replacing_scopes=""
+
+  current_scopes="$(_auth_current_granted_scopes 2>/dev/null || true)"
+  if [[ -n "$current_scopes" ]]; then
+    replacing_scopes="$(_auth_scope_difference "$normalized_scopes" "$current_scopes")"
+    if [[ -n "$replacing_scopes" ]]; then
+      if [[ "$replace" == "true" ]]; then
+        log_warn "--replace requested: existing granted scopes not included in this request may be removed."
+        log_warn "Current scopes: $(_auth_scope_count "$current_scopes"); requested scopes: $(_auth_scope_count "$normalized_scopes")"
+      else
+        preserved_scopes="$replacing_scopes"
+        effective_scopes="$(_auth_normalize_scope_list "$normalized_scopes" "$current_scopes")"
+      fi
+    fi
+  else
+    log_warn "Could not read current lark-cli scopes; proceeding with requested scopes only."
+  fi
+
+  log_head "Starting Lark authorization"
+  log_info "Requested scopes: $normalized_scopes"
+  if [[ -n "$preserved_scopes" ]]; then
+    log_warn "Scope overwrite guard is active."
+    log_warn "LARC will request current scopes + requested scopes to avoid narrowing the existing token."
+    log_warn "Current scopes: $(_auth_scope_count "$current_scopes"); requested scopes: $(_auth_scope_count "$normalized_scopes"); effective scopes: $(_auth_scope_count "$effective_scopes")"
+    echo -e "  To intentionally replace current scopes, run:"
+    echo -e "    ${CYAN}larc auth login --replace --scope \"$normalized_scopes\"${RESET}"
+  fi
+  log_info "Effective scopes: $effective_scopes"
+  echo ""
 
   log_info "Running lark-cli auth login..."
   echo ""
 
   # Issue auth URL via lark-cli auth login
-  if lark-cli auth login --scope "$normalized_scopes"; then
+  if lark-cli auth login --scope "$effective_scopes"; then
     echo ""
     log_ok "Auth URL issued. Open the URL in your browser and approve the permissions."
     echo ""
@@ -826,7 +935,7 @@ for k, v in m.get('profiles',{}).items():
     log_error "lark-cli auth login failed (exit: $exit_code)"
     echo ""
     echo -e "  To run manually:"
-    echo -e "    ${CYAN}lark-cli auth login --scope \"$normalized_scopes\"${RESET}"
+    echo -e "    ${CYAN}lark-cli auth login --scope \"$effective_scopes\"${RESET}"
     echo ""
     echo -e "  You can also configure scopes directly in Lark Open Platform:"
     echo -e "    https://open.larksuite.com/app"

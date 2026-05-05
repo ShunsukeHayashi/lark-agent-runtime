@@ -209,7 +209,7 @@ def suggest(task_desc, scope_map, scope_index):
     # Auth command
     scope_str = " ".join(sorted(all_scopes.keys()))
     print(f"\n{BOLD}To authorize:{RESET}")
-    print(f"  larc auth login --scope \"{scope_str}\"")
+    print(f"  larc auth login --add-scope \"{scope_str}\"")
 
     if has_issues:
         print(f"\n{YELLOW}{BOLD}⚠  一部のスコープに制限があります。上記の notes を確認してください。{RESET}")
