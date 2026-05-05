@@ -89,6 +89,7 @@ larc status
 ```
 
 → 詳細ガイド: [docs/quickstart-ja.md](docs/quickstart-ja.md)
+→ オンライン講座: [course/README.md](course/README.md)
 → OpenClaw 統合: [docs/openclaw-integration.md](docs/openclaw-integration.md)
 → Lark アプリ設定（テスト担当者向け）: [docs/lark-app-setup.md](docs/lark-app-setup.md)
 

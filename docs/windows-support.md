@@ -4,6 +4,7 @@ Live status doc tracking Windows-specific Lark Harness defects and the
 sub-issues filed under [#9 — tracking: Windows support](https://github.com/ShunsukeHayashi/lark-harness/issues/9).
 
 > Setup instructions live in [docs/install-windows.md](install-windows.md).
+> Daemon posture lives in [docs/windows-daemon.md](windows-daemon.md).
 > This file is for **defect reproductions** only.
 
 ## Cadence
@@ -16,15 +17,21 @@ sub-issues filed under [#9 — tracking: Windows support](https://github.com/Shu
 
 ## Last reviewed
 
-`2026-04-26` (created)
+`2026-05-05` (daemon support stance documented)
 
-Next scheduled review: `2026-05-01`.
+Next scheduled review: `2026-06-01`.
 
 ## Environment shapes covered
 
 - Windows 11 + PowerShell 7 (`pwsh`) via `bin\larc.ps1` launcher
 - Windows 11 + Git Bash (MSYS2 / MinGW)
 - Windows 11 + WSL2 (Ubuntu 22.04+)
+
+## Current daemon stance
+
+`larc daemon` remains experimental. On Windows, it is supported only as a controlled Git Bash or WSL run, with optional manual Task Scheduler / NSSM supervision. It is not a native PowerShell daemon and LARC does not install a Windows Service automatically.
+
+Daemon reports should include the supervisor shape and whether the same Windows user completed `lark-cli auth login`. Do not include secrets, QR screenshots, auth URLs, or config contents.
 
 ## Open reproductions
 

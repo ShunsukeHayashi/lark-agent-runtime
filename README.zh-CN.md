@@ -106,6 +106,7 @@ larc status
 > **注意**：LARC 自动安装到 `~/.larc/runtime/`，请勿直接编辑该目录内的文件。升级请使用 `larc update`。
 
 → 完整指南：[docs/quickstart-ja.md](docs/quickstart-ja.md)
+→ 在线课程：[course/README.md](course/README.md)
 → OpenClaw 集成：[docs/openclaw-integration.md](docs/openclaw-integration.md)
 → Lark 应用设置（面向协调者）：[docs/lark-app-setup.md](docs/lark-app-setup.md)
 
